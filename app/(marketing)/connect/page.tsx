@@ -1,11 +1,13 @@
 import { Eye, Lock, Send, ShieldCheck, Trash, User } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
+import { ConnectButton, ConnectError } from "@/components/marketing/connect-actions";
 import { DemoButton } from "@/components/marketing/demo-button";
 import { Reveal, Stagger, StaggerItem } from "@/components/motion/reveal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { isThreadsLoginEnabled } from "@/lib/threads/config";
 
 export const metadata: Metadata = { title: "Connect Threads" };
 
@@ -74,13 +76,27 @@ export default function ConnectPage() {
         </ul>
 
         <Card className="mt-10 p-6">
-          <Button size="lg" className="w-full" disabled>
-            Continue with Threads
-          </Button>
-          <p className="mt-4 text-center text-muted text-sm">
-            Threads sign-in isn't open yet. You can explore everything with a demo account in the meantime.
-          </p>
-          <DemoButton variant="outline" size="lg" className="mt-4 w-full" />
+          <Suspense>
+            <ConnectError />
+          </Suspense>
+          {isThreadsLoginEnabled() ? (
+            <>
+              <ConnectButton />
+              <DemoButton variant="ghost" size="lg" className="mt-3 w-full">
+                Or explore a demo account first
+              </DemoButton>
+            </>
+          ) : (
+            <>
+              <Button size="lg" className="w-full" disabled>
+                Continue with Threads
+              </Button>
+              <p className="mt-4 text-center text-muted text-sm">
+                Threads sign-in isn't open yet. You can explore everything with a demo account in the meantime.
+              </p>
+              <DemoButton variant="outline" size="lg" className="mt-4 w-full" />
+            </>
+          )}
         </Card>
 
         <p className="mt-6 text-center text-subtle text-xs">

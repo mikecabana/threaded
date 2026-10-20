@@ -24,9 +24,14 @@ With no environment variables set, the app runs entirely on the demo accounts.
 | `pnpm lint` / `pnpm format` | Biome check / auto-fix |
 | `pnpm typecheck` | Route types + `tsc` |
 | `pnpm test` | Unit tests (Vitest) |
-| `pnpm build && pnpm test:e2e` | Production build + Playwright (desktop and mobile) |
+| `pnpm test:int` | Integration tests against `TEST_DATABASE_URL` (wipes that database) |
+| `pnpm build && pnpm test:e2e` | Production build + Playwright (desktop and mobile). With `TEST_DATABASE_URL` set, also runs real Threads sign-in against a local mock of Meta (`e2e/mock-meta.mjs`) |
 | `pnpm db:generate` | New SQL migration from `lib/db/schema.ts` |
 | `pnpm db:migrate` | Apply migrations to `DATABASE_URL` |
+
+For the integration and sign-in tests, any throwaway Postgres 16 works, for example
+`docker run -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=threaded_test postgres:16`
+with `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/threaded_test`.
 
 If your machine already has a Chromium build, point Playwright at it with
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chrome` instead of running
@@ -52,7 +57,7 @@ If your machine already has a Chromium build, point Playwright at it with
 ## 2. Vercel project
 
 1. Import the GitHub repo into Vercel. The framework preset is detected automatically.
-2. **Storage → Neon Postgres** (Marketplace). This injects `DATABASE_URL`. Enable preview branching so each preview deployment gets its own database branch.
+2. **Storage → Neon Postgres** (Marketplace). This injects `DATABASE_URL`. Use the **pooled** connection string (host contains `-pooler`): the app connects with node-postgres and Vercel's `attachDatabasePool`. Enable preview branching so each preview deployment gets its own database branch.
 3. **Storage → Upstash Redis** (Marketplace). This injects `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
 4. **AI Gateway:** enable it for the team. Deployments authenticate with OIDC automatically. For local development, create an API key and put it in `AI_GATEWAY_API_KEY`, or run `vercel env pull .env.local` after `vercel link`.
 5. Add the remaining variables from `.env.example` under Settings → Environment Variables:

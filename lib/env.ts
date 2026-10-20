@@ -24,6 +24,9 @@ const schema = z.object({
   RESEND_API_KEY: optional,
   CRON_SECRET: optional,
   DEMO_MODE: z.enum(["0", "1"]).optional(),
+  /** Test only: point the Threads client at a mock server (see e2e/mock-meta.mjs). */
+  THREADS_GRAPH_URL: z.url().optional(),
+  THREADS_AUTHORIZE_URL: z.url().optional(),
 });
 
 export type ServerEnv = z.infer<typeof schema>;

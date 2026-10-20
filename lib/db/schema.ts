@@ -369,6 +369,15 @@ export const scheduledPosts = pgTable(
   (t) => [index("scheduled_posts_due_idx").on(t.status, t.scheduledFor)],
 );
 
+/** Meta data-deletion callbacks; the code is shown on the public status page. */
+export const deletionRequests = pgTable("deletion_requests", {
+  confirmationCode: text("confirmation_code").primaryKey(),
+  /** SHA-256 of the Threads user id, kept so the status page can confirm without storing the id. */
+  threadsUserIdHash: text("threads_user_id_hash").notNull(),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});
+
 export const syncRuns = pgTable(
   "sync_runs",
   {

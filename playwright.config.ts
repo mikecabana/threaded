@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PORT ?? 3100);
+const mockMetaPort = 3999;
+const databaseUrl = process.env.TEST_DATABASE_URL;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -18,12 +20,33 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", use: { ...devices["Pixel 7"] } },
+    { name: "mobile", use: { ...devices["Pixel 7"] }, testIgnore: /auth\.spec\.ts/ },
   ],
-  webServer: {
-    command: `pnpm start --port ${port}`,
-    port,
-    reuseExistingServer: !process.env.CI,
-    env: { DEMO_MODE: "1" },
-  },
+  webServer: [
+    {
+      command: `node e2e/mock-meta.mjs`,
+      url: `http://localhost:${mockMetaPort}/health`,
+      reuseExistingServer: !process.env.CI,
+      env: { MOCK_META_PORT: String(mockMetaPort) },
+    },
+    {
+      command: `pnpm start --port ${port}`,
+      port,
+      reuseExistingServer: !process.env.CI,
+      // Real sign-in runs against the mock Meta server whenever a test database
+      // is available; without one, only the demo flows are tested.
+      env: databaseUrl
+        ? {
+            DATABASE_URL: databaseUrl,
+            THREADS_APP_ID: "test-app",
+            THREADS_APP_SECRET: "test-app-secret",
+            THREADS_REDIRECT_URI: `http://localhost:${port}/api/auth/threads/callback`,
+            THREADS_GRAPH_URL: `http://localhost:${mockMetaPort}/v1.0`,
+            THREADS_AUTHORIZE_URL: `http://localhost:${mockMetaPort}/oauth/authorize`,
+            SECRETS_ENC_KEY: "test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            SESSION_SECRET: "test-session-secret",
+          }
+        : {},
+    },
+  ],
 });

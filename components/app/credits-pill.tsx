@@ -8,7 +8,7 @@ export function CreditsPill({ credits }: { credits: number }) {
   return (
     <Link
       href="/settings"
-      title={`${credits} credits (about $${creditsToUsd(credits).toFixed(2)})`}
+      aria-label={`${credits} credits, about $${creditsToUsd(credits).toFixed(2)}`}
       className="flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3 font-medium text-sm transition-colors hover:border-border-strong"
     >
       <Coins className="size-4 text-accent" aria-hidden />

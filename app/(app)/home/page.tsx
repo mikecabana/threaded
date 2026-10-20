@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { FirstSync, NoPlaysYet } from "@/components/home/empty-states";
 import { KpiTile } from "@/components/home/kpi-tile";
 import { PlayCard } from "@/components/home/play-card";
 import { BestTimeCard, TopPostsCard, UpNextCard } from "@/components/home/side-cards";
@@ -30,14 +31,18 @@ function greeting(hour: number): string {
 
 async function HomeContent() {
   const viewer = await requireViewer();
-  const { persona, data, goal, now, timezone } = viewer;
-  const author = { ...persona.profile, avatarHue: persona.avatarHue };
+  const { profile, data, goal, now, timezone } = viewer;
+  const author = profile;
+  const firstName = profile.name.split(" ")[0];
+  if (data.posts.length === 0) return <FirstSync firstName={firstName} viewer={viewer} />;
+
   const kpis = buildKpis(goal, data.posts, data.days, now);
   const best = bestTimeToPost(goal, data.posts, timezone, now);
   const top = topPosts(goal, data.posts, now);
-  const firstName = persona.profile.name.split(" ")[0];
+  const plays = viewer.kind === "demo" ? viewer.persona.suggestions[goal] : [];
+  const upNext = viewer.kind === "demo" ? viewer.persona.upNext : null;
   // Remount the staggered groups when what they show changes, so new items animate in.
-  const revealKey = `${persona.id}:${goal}`;
+  const revealKey = `${profile.id}:${goal}`;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -67,22 +72,28 @@ async function HomeContent() {
             </h2>
             {viewer.kind === "demo" && <Badge>Sample</Badge>}
           </div>
-          <Stagger key={`plays:${revealKey}`} className="grid gap-4" delay={0.15}>
-            {persona.suggestions[goal].map((play) => (
-              <StaggerItem key={play.text}>
-                <PlayCard author={author} play={play} />
-              </StaggerItem>
-            ))}
-          </Stagger>
+          {plays.length > 0 ? (
+            <Stagger key={`plays:${revealKey}`} className="grid gap-4" delay={0.15}>
+              {plays.map((play) => (
+                <StaggerItem key={play.text}>
+                  <PlayCard author={author} play={play} />
+                </StaggerItem>
+              ))}
+            </Stagger>
+          ) : (
+            <NoPlaysYet goal={goal} />
+          )}
         </section>
 
         <Stagger key={`side:${revealKey}`} className="flex flex-col gap-4" delay={0.25}>
           <StaggerItem>
             <BestTimeCard best={best} goal={goal} now={now} />
           </StaggerItem>
-          <StaggerItem>
-            <UpNextCard author={author} post={persona.upNext} />
-          </StaggerItem>
+          {upNext && (
+            <StaggerItem>
+              <UpNextCard author={author} post={upNext} />
+            </StaggerItem>
+          )}
           <StaggerItem>
             <TopPostsCard author={author} posts={top} goal={goal} now={now} />
           </StaggerItem>
