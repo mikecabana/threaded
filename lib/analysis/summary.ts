@@ -179,11 +179,15 @@ function slotLabel(hour: number): string {
 }
 
 /**
- * The hour (in the profile's timezone) whose posts score best for the goal.
- * Prefers one of the top three hours if it's still ahead today, otherwise the
- * best hour tomorrow. Hours need at least two posts to count.
+ * Hours of the day (in the profile's timezone) ranked by how well their posts
+ * score for the goal, best first. Hours need at least two posts to count.
  */
-export function bestTimeToPost(goal: Goal, posts: PostWithInsights[], timeZone: string, now: Date): BestTime | null {
+export function rankHours(
+  goal: Goal,
+  posts: PostWithInsights[],
+  timeZone: string,
+  now: Date,
+): { hour: number; score: number }[] {
   const settled = posts.filter((p) => isSettled(p, now));
   const scores = goalScores(goal, settled);
   const byHour = new Map<number, number[]>();
@@ -191,10 +195,18 @@ export function bestTimeToPost(goal: Goal, posts: PostWithInsights[], timeZone: 
     const { hour } = zonedParts(new Date(post.timestamp), timeZone);
     byHour.set(hour, [...(byHour.get(hour) ?? []), scores.get(post.id) ?? 0]);
   }
-  const ranked = [...byHour.entries()]
+  return [...byHour.entries()]
     .filter(([, s]) => s.length >= 2)
     .map(([hour, s]) => ({ hour, score: sum(s) / s.length }))
     .sort((a, b) => b.score - a.score);
+}
+
+/**
+ * The best hour for the goal: one of the top three if it's still ahead today,
+ * otherwise the best hour tomorrow.
+ */
+export function bestTimeToPost(goal: Goal, posts: PostWithInsights[], timeZone: string, now: Date): BestTime | null {
+  const ranked = rankHours(goal, posts, timeZone, now);
   if (ranked.length === 0) return null;
 
   const local = zonedParts(now, timeZone);

@@ -27,6 +27,8 @@ const schema = z.object({
   /** Test only: point the Threads client at a mock server (see e2e/mock-meta.mjs). */
   THREADS_GRAPH_URL: z.url().optional(),
   THREADS_AUTHORIZE_URL: z.url().optional(),
+  /** Test only: "1" streams canned ideas from lib/ai/mock-model.ts; "error" simulates a provider failure. */
+  AI_MOCK: z.enum(["1", "error", ""]).optional(),
 });
 
 export type ServerEnv = z.infer<typeof schema>;

@@ -282,6 +282,11 @@ export const generations = pgTable(
     costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
     creditsCharged: integer("credits_charged").notNull().default(0),
     billingMode: billingModeEnum("billing_mode").notNull(),
+    status: text("status", { enum: ["running", "done", "failed"] })
+      .notNull()
+      .default("running"),
+    /** Suggestions dropped in post-processing (too long, or repeating a past post). */
+    dropped: integer("dropped").notNull().default(0),
     createdAt: createdAt(),
   },
   (t) => [index("generations_profile_idx").on(t.profileId, t.createdAt)],

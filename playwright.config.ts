@@ -50,6 +50,8 @@ export default defineConfig({
             SECRETS_ENC_KEY: "test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
             SESSION_SECRET: "test-session-secret",
             CRON_SECRET: "test-cron-secret",
+            // Studio generates with a deterministic mock model (lib/ai/mock-model.ts).
+            AI_MOCK: "1",
           }
         : {},
     },

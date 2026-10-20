@@ -18,8 +18,11 @@
     "test:int": "vitest run --config vitest.int.config.mts"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "4.0.120",
+    "@ai-sdk/react": "4.0.151",
     "@radix-ui/react-slot": "^1.5.0",
     "@vercel/functions": "3.10.1",
+    "ai": "7.0.147",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "0.45.4",

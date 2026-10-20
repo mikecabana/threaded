@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { bestTimeToPost, buildKpis, topPosts } from "@/lib/analysis/summary";
 import { zonedParts } from "@/lib/analysis/time";
-import { GOAL_META } from "@/lib/goals";
+import { listSuggestions } from "@/lib/data/suggestions";
+import { GOAL_META, type Goal } from "@/lib/goals";
 import { requireViewer } from "@/lib/session/viewer";
 import { toSyncStatus } from "@/lib/sync/status";
 import { latestSyncRun } from "@/lib/sync/sync";
@@ -22,6 +23,14 @@ export default function HomePage() {
       <HomeContent />
     </Suspense>
   );
+}
+
+/** The best recent ideas for the goal: saved ones first, then by goal fit. */
+async function accountPlays(profileId: string, goal: Goal) {
+  const recent = await listSuggestions(profileId, { statuses: ["saved", "new"], goal, sinceDays: 7, limit: 20 });
+  return recent
+    .sort((a, b) => Number(b.status === "saved") - Number(a.status === "saved") || b.goalFit - a.goalFit)
+    .slice(0, 3);
 }
 
 function greeting(hour: number): string {
@@ -44,7 +53,7 @@ async function HomeContent() {
   const kpis = buildKpis(goal, data.posts, data.days, now);
   const best = bestTimeToPost(goal, data.posts, timezone, now);
   const top = topPosts(goal, data.posts, now);
-  const plays = viewer.kind === "demo" ? viewer.persona.suggestions[goal] : [];
+  const plays = viewer.kind === "demo" ? viewer.persona.suggestions[goal] : await accountPlays(profile.id, goal);
   const upNext = viewer.kind === "demo" ? viewer.persona.upNext : null;
   // Remount the staggered groups when what they show changes, so new items animate in.
   const revealKey = `${profile.id}:${goal}`;

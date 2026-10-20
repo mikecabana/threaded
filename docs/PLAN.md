@@ -654,7 +654,16 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - A daily cron runs refreshes, and Settings has a throttled "Sync now".
 - Follower counts are snapshotted, never backdated.
 
-**Next:** 1c AI generation (model catalog, Studio streaming, credits reserve/settle), 1d billing (Stripe top-ups, bring-your-own key), 1e publishing (composer, post now, scheduling, Queue).
+**1c, AI generation (done):**
+- A model catalog in the database, seeded with Claude Haiku/Sonnet/Opus 5.5. A nightly sync takes live prices from `gateway.getAvailableModels()` and disables models the Gateway drops. Markups are never overwritten.
+- Users pick a model per task; fallbacks stay within the same price tier. Every call sets `disallowPromptTraining`, matching the privacy policy.
+- The prompt is built from the author's own data: voice stats, their five best and three weakest posts for the goal, recent posts to avoid, best hours, and only insights the numbers support (prompt `generate.v1`).
+- Generations stream structured output into Studio. Post-processing enforces the Threads length rule and drops near-duplicates of past posts (character-trigram similarity ≥ 0.6).
+- Billing reserves the worst case, then charges the Gateway's reported cost × markup, and **only if at least one idea comes back**. Failures, cancellations and fully-dropped batches are refunded. The wallet is race-safe (tested with concurrent reserves and a settle racing a release).
+- Rate limit: 10 generations per 10 minutes per profile, counted in Postgres. Upstash isn't needed yet.
+- Studio: tone, format, count, model with a per-use estimate, ideas that write themselves in, save/dismiss, and saved ideas. Home's "Today's plays" shows real accounts' best recent ideas. The demo streams sample ideas for free.
+
+**Next:** 1d billing (Stripe top-ups, auto-recharge, bring-your-own key, $5/month BYOK fee), 1e publishing (composer, post now, scheduling, Queue).
 
 **Waiting on you** (see `docs/SETUP.md`):
 - Meta app and App Review submission

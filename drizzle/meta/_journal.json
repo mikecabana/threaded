@@ -15,6 +15,13 @@
       "when": 1792527793880,
       "tag": "0001_deletion_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792532253692,
+      "tag": "0002_generation_status",
+      "breakpoints": true
     }
   ]
 }

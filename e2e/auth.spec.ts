@@ -56,12 +56,37 @@ test("signs in with Threads, syncs history, and signs out", async ({ page }) => 
   await expect(page).toHaveURL("/");
 });
 
+test("generates ideas in Studio, charges credits, and surfaces saved ideas on Home", async ({ page }) => {
+  // Signing back in reuses the synced account.
+  await page.goto("/api/auth/threads/start?tz=America/Toronto");
+  await expect(page).toHaveURL("/home");
+  await expect(page.getByLabel("Key metrics")).toBeVisible();
+  await expect(page.getByRole("link", { name: /credits/ })).toContainText("100");
+
+  await page.goto("/studio");
+  await expect(page.getByRole("button", { name: /Generate/ })).toContainText("cr");
+  await page.getByRole("button", { name: /Generate/ }).click();
+  await expect(page.getByRole("button", { name: "Copy" })).toHaveCount(3, { timeout: 20_000 });
+
+  // The mock call costs 2 credits (actual cost × markup), charged after it finishes.
+  await expect(page.getByRole("link", { name: /credits/ })).toContainText("98");
+
+  await page.getByRole("button", { name: "Save", exact: true }).first().click();
+  await expect(page.getByRole("heading", { name: /Saved ideas/ })).toBeVisible();
+
+  await page.goto("/home");
+  await expect(page.getByText("No ideas yet.")).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Today's plays" }).getByRole("button", { name: "Copy" }),
+  ).not.toHaveCount(0);
+});
+
 test("the daily cron refreshes connected profiles", async ({ request }) => {
   expect((await request.get("/api/cron/daily")).status()).toBe(401);
   expect((await request.get("/api/cron/daily", { headers: { authorization: "Bearer nope" } })).status()).toBe(401);
 
   const response = await request.get("/api/cron/daily", { headers: { authorization: "Bearer test-cron-secret" } });
-  expect(await response.json()).toEqual({ profiles: 1, started: 1 });
+  expect(await response.json()).toMatchObject({ profiles: 1, started: 1 });
 
   // The refresh runs as its own workflow; wait for it to land.
   const pool = new Pool({ connectionString: databaseUrl });

@@ -57,7 +57,7 @@ test.describe("demo flow", () => {
     await expect(page).toHaveURL("/");
   });
 
-  test("coming-soon sections render inside the shell", async ({ page }) => {
+  test("every section renders inside the shell", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "Try a demo account" }).first().click();
     await expect(page).toHaveURL("/home");

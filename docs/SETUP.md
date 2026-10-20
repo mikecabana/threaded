@@ -63,7 +63,7 @@ If your machine already has a Chromium build, point Playwright at it with
 1. Import the GitHub repo into Vercel. The framework preset is detected automatically.
 2. **Storage → Neon Postgres** (Marketplace). This injects `DATABASE_URL`. Use the **pooled** connection string (host contains `-pooler`): the app connects with node-postgres and Vercel's `attachDatabasePool`. Enable preview branching so each preview deployment gets its own database branch.
 3. **Storage → Upstash Redis** (Marketplace). This injects `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
-4. **AI Gateway:** enable it for the team. Deployments authenticate with OIDC automatically. For local development, create an API key and put it in `AI_GATEWAY_API_KEY`, or run `vercel env pull .env.local` after `vercel link`.
+4. **AI Gateway:** enable it for the team. The model catalog is seeded with Claude Haiku/Sonnet/Opus 5.5 (`lib/ai/catalog.ts`). Check those ids against `gateway.getAvailableModels()` (any the Gateway doesn't list are disabled at the next nightly sync). Deployments authenticate with OIDC automatically. For local development, create an API key and put it in `AI_GATEWAY_API_KEY`, or run `vercel env pull .env.local` after `vercel link`.
 5. Add the remaining variables from `.env.example` under Settings → Environment Variables:
    - Generate `SECRETS_ENC_KEY` and `SESSION_SECRET` with `openssl rand -base64 32`. Use **different values per environment**, and never rotate `SECRETS_ENC_KEY` without a re-encryption step, since it encrypts stored tokens.
    - Set `DEMO_MODE=1` for the **Preview** environment only.
