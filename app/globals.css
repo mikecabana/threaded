@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+/* Theme and goal live as attributes on <html>, set before first paint by
+   the inline script in app/layout.tsx. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Registered so the goal accent can transition smoothly between colors. */
+@property --accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.72 0.18 20);
+}
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a0a0b;
+  --surface: #141416;
+  --surface-2: #1c1c1f;
+  --border: rgb(255 255 255 / 0.08);
+  --border-strong: rgb(255 255 255 / 0.16);
+  --fg: #f5f5f6;
+  --muted: #9a9aa1;
+  --subtle: #63636a;
+  --positive: oklch(0.78 0.15 155);
+  --negative: oklch(0.7 0.17 25);
+  --accent-ink: #0a0a0b;
+  --grain-opacity: 0.05;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f2f2f3;
+  --border: rgb(0 0 0 / 0.08);
+  --border-strong: rgb(0 0 0 / 0.16);
+  --fg: #0a0a0b;
+  --muted: #5f5f66;
+  --subtle: #9a9aa1;
+  --positive: oklch(0.55 0.15 155);
+  --negative: oklch(0.55 0.2 25);
+  --accent-ink: #ffffff;
+  --grain-opacity: 0.03;
+}
+
+/* Goal accents. Each goal re-themes everything below the element that carries
+   data-goal, so marketing sections can preview a goal locally. */
+[data-goal="followers"] {
+  --accent: oklch(0.7 0.19 295);
+}
+[data-goal="views"] {
+  --accent: oklch(0.8 0.14 220);
+}
+[data-goal="engagement"] {
+  --accent: oklch(0.72 0.18 20);
+}
+[data-theme="light"] [data-goal="followers"],
+[data-theme="light"][data-goal="followers"] {
+  --accent: oklch(0.55 0.22 295);
+}
+[data-theme="light"] [data-goal="views"],
+[data-theme="light"][data-goal="views"] {
+  --accent: oklch(0.58 0.15 230);
+}
+[data-theme="light"] [data-goal="engagement"],
+[data-theme="light"][data-goal="engagement"] {
+  --accent: oklch(0.6 0.2 22);
+}
+
+[data-goal] {
+  transition: --accent 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-instrument-serif), ui-serif, Georgia, serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  /* Film grain over everything; purely decorative. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+    opacity: var(--grain-opacity);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--accent) 35%, transparent);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}

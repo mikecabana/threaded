@@ -15,6 +15,11 @@ Implementation and UI/UX plan. Working name: **Threaded** (after the repo).
 | Direct publishing and scheduling in v1? | **Yes.** It's in the MVP, so `threads_content_publish` is part of the first App Review submission. |
 | Personal tool or product? | **Multi-tenant SaaS.** |
 | Who picks AI models? | **Each user**, from a curated list priced per use. Users can also **BYOK** (their own Vercel AI Gateway key) and pay Vercel directly. |
+| Do BYOK users pay us? | **Yes: a $5/month platform fee** covering sync, analytics and scheduling. |
+| Markup, packs, trial | **1.5× default markup** (per model in the catalog), packs of **$5 / $20 / $50**, **$1 trial** (100 credits) once per Threads account. |
+| Expiry and refunds | Purchased credits **expire 12 months** after purchase. **Not refundable** except where the law requires; failed generations are refunded automatically. |
+
+All commercial values live in `lib/pricing.ts`, so marketing, legal and billing stay in sync.
 
 ---
 
@@ -616,8 +621,25 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 
 ---
 
-## 15. Open decisions
+## 15. Decisions log
 
-1. **Do BYOK users pay us anything?** Options: free; a small monthly platform fee covering sync, analytics and scheduling; or a lower per-use "service fee" in credits. Recommendation: a modest platform fee for BYOK only. Otherwise our infrastructure and background analysis are free to them.
-2. **Markup, packs and trial size.** The starting proposal is 1.5× markup, packs of $5, $20 and $50, and a ~$1 trial. Tune these once the margin dashboard has real data.
-3. **Credit expiry and refund policy.** For example, credits expire after 12 months and unused purchases aren't refundable. This needs to be in the Terms before charging real money.
+All open decisions are resolved; see the table at the top. Revisit the markup, packs and trial size once the margin dashboard has real data.
+
+## 16. Phase 0 status
+
+**Done in code:**
+- Next.js 16 scaffold with Cache Components, Tailwind 4, Biome, Vitest, Playwright and a CI workflow
+- Design tokens: dark/light themes, a goal accent that morphs on switch, set before first paint
+- Motion building blocks: `CountUp`, `ThreadLine`/`DrawPath`, `Reveal`/`Stagger`, `TiltCard`, `AccentAurora`, `Sparkline`, `GoalFitRing`, and a `Segmented` control built on native radios
+- Landing, connect (permission explainer), and draft Terms and Privacy pages
+- App shell with rail and bottom-tab navigation, goal switcher, credits pill and demo banner
+- Home screen: goal-specific KPIs, "Today's plays", best time to post, up next, and what's working
+- Three demo personas with a seeded, always-current 60-day history
+- Analysis core: robust z-scores, goal scoring, outperformance, KPIs, best hour, Threads length rule
+- Drizzle schema for everything in §8, with the initial migration verified against Postgres 16
+
+**Waiting on you** (see `docs/SETUP.md`):
+- Meta app and App Review submission
+- Vercel project with Neon, Upstash and AI Gateway
+- Stripe (test mode) and Resend accounts
+- Legal review of the Terms and Privacy drafts

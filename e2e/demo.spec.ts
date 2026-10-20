@@ -1,0 +1,74 @@
+import { expect, test } from "@playwright/test";
+
+test.describe("demo flow", () => {
+  test("app routes need a session", async ({ page }) => {
+    await page.goto("/home");
+    await expect(page).toHaveURL("/");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Grow on Threads");
+  });
+
+  test("landing → demo account → Home", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Try a demo account" }).first().click();
+
+    await expect(page).toHaveURL("/home");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Maya");
+    await expect(page.getByText("Demo account", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Key metrics").locator("> div")).toHaveCount(4);
+    await expect(page.getByRole("heading", { name: "Today's plays" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy" })).toHaveCount(3);
+  });
+
+  test("switching goal re-themes the app and reorders KPIs", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Try a demo account" }).first().click();
+    await expect(page).toHaveURL("/home");
+    await expect(page.locator("html")).toHaveAttribute("data-goal", "engagement");
+
+    await page.getByRole("radio", { name: "Views" }).check({ force: true });
+    await expect(page.locator("html")).toHaveAttribute("data-goal", "views");
+    await expect(page.getByLabel("Key metrics").getByText("Views (7d)").first()).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 }).locator("..")).toContainText("more views");
+
+    // Cards that changed with the goal must animate in, not stay at their hidden start state.
+    // (toBeVisible() counts opacity: 0 as visible, so check the computed opacity.)
+    const tiles = page.getByLabel("Key metrics").locator("> div");
+    const plays = page.getByRole("region", { name: "Today's plays" }).locator("> div").nth(1).locator("> div");
+    for (let i = 0; i < 4; i++) await expect(tiles.nth(i)).toHaveCSS("opacity", "1");
+    for (let i = 0; i < 3; i++) await expect(plays.nth(i)).toHaveCSS("opacity", "1");
+
+    // Persists across reloads via the goal cookie.
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-goal", "views");
+  });
+
+  test("switching persona and exiting the demo", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Try a demo account" }).first().click();
+    await expect(page).toHaveURL("/home");
+
+    await page.getByRole("button", { name: "Running coach" }).first().click();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Priya");
+
+    await page
+      .getByRole("button", { name: /Exit demo/ })
+      .first()
+      .click();
+    await expect(page).toHaveURL("/");
+  });
+
+  test("coming-soon sections render inside the shell", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Try a demo account" }).first().click();
+    await expect(page).toHaveURL("/home");
+    for (const [path, title] of [
+      ["/studio", "Studio"],
+      ["/queue", "Queue"],
+      ["/insights", "Insights"],
+      ["/settings", "Settings"],
+    ]) {
+      await page.goto(path);
+      await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    }
+  });
+});
