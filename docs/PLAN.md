@@ -77,7 +77,7 @@ Base URL: `https://graph.threads.net/v1.0`. Meta's docs site was blocked from my
 
 **Limits and gaps the design has to work around**
 - **The 500-character limit counts emojis by their UTF-8 bytes.** The composer's counter and the AI post-processor both use a `threadsLength()` helper that implements this rule, not `string.length`.
-- **No native scheduling.** We schedule it ourselves (§7).
+- **No native scheduling.** Checked again for 1e: the Threads publishing endpoints have no publish-time parameter (nothing like the Pages API's `scheduled_publish_time`), and Meta's docs leave timing to the app. A media container can't be parked as a draft either: it's meant to be published soon after creation, and an unpublished one expires ⚠. So we schedule it ourselves (§7). The workflow wakes shortly before the slot, re-checks `threads_publishing_limit`, creates the container, then publishes on time.
 - **No per-post follower attribution.** `followers_count` is a current total only. We **snapshot it daily** to build a growth history, and estimate which posts drove follows by correlating daily follower changes with that day's posts. The UI labels this as an *estimate*.
 - **No insights webhooks.** We poll with the daily cron, plus snapshots at +1h, +24h and +72h after we publish a post.
 - **Demographics** need at least 100 followers on creator and personal accounts ⚠. Hide that panel below the threshold.
