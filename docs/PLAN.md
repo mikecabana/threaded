@@ -638,6 +638,24 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Analysis core: robust z-scores, goal scoring, outperformance, KPIs, best hour, Threads length rule
 - Drizzle schema for everything in §8, with the initial migration verified against Postgres 16
 
+## 17. Phase 1 progress
+
+**1a, accounts (done):**
+- Threads OAuth with a signed state cookie
+- Encrypted tokens (AES-256-GCM keyring, AAD-bound)
+- DB sessions storing only token hashes
+- Transactional account provisioning, with a trial granted once per Threads account
+- Meta uninstall and data-deletion callbacks, plus a deletion status page
+- The viewer is now either a demo or a real account
+
+**1b, sync (done):**
+- `initialSync` and `refreshSync` run as Vercel Workflow runs. Steps take only ids, so tokens and post text never enter the event log, and auth and rate-limit errors map to fatal or delayed retries.
+- The first sync starts at sign-in, and Home shows live progress.
+- A daily cron runs refreshes, and Settings has a throttled "Sync now".
+- Follower counts are snapshotted, never backdated.
+
+**Next:** 1c AI generation (model catalog, Studio streaming, credits reserve/settle), 1d billing (Stripe top-ups, bring-your-own key), 1e publishing (composer, post now, scheduling, Queue).
+
 **Waiting on you** (see `docs/SETUP.md`):
 - Meta app and App Review submission
 - Vercel project with Neon, Upstash and AI Gateway

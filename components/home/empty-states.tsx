@@ -1,33 +1,32 @@
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
 import { Reveal } from "@/components/motion/reveal";
-import { ThreadLine } from "@/components/motion/thread-line";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { GOAL_META, type Goal } from "@/lib/goals";
-import type { Viewer } from "@/lib/session/viewer";
+import type { SyncStatus } from "@/lib/sync/status";
+import { SyncProgress } from "./sync-progress";
 
-/** Home before the first sync has brought in any posts. */
-export function FirstSync({ firstName, viewer }: { firstName: string; viewer: Viewer }) {
-  const synced = viewer.kind === "account" && viewer.lastSyncedAt !== null;
+/** Home before any posts have been synced: live sync progress, or a nudge if there's nothing to sync. */
+export function FirstSync({ firstName, sync }: { firstName: string; sync: SyncStatus }) {
+  const finishedEmpty = sync.status === "succeeded";
   return (
-    <Reveal className="mx-auto flex max-w-xl flex-col items-center py-16 text-center">
-      <div className="flex flex-col items-center">
-        <span className="size-3 rounded-full bg-accent" />
-        <ThreadLine className="h-16 bg-accent/60" />
-        <span className="size-3 rounded-full border-2 border-accent motion-safe:animate-pulse" />
-      </div>
-      <h1 className="mt-8 font-semibold text-2xl tracking-tight sm:text-3xl">Welcome, {firstName}</h1>
-      <p className="mt-3 text-muted leading-relaxed">
-        {synced
+    <Reveal className="mx-auto flex max-w-xl flex-col items-center py-12 text-center">
+      <h1 className="font-semibold text-2xl tracking-tight sm:text-3xl">Welcome, {firstName}</h1>
+      <p className="mt-3 mb-10 text-muted leading-relaxed">
+        {finishedEmpty
           ? "We didn't find any posts on your Threads account yet. Threaded learns from what you post, so suggestions get sharper as your history grows. You can start generating ideas right away."
-          : "We're reading your Threads posts and insights. This page fills in as soon as the first sync finishes, usually within a minute or two."}
+          : "We're reading your Threads posts and insights to learn what your audience rewards. This usually takes a minute or two."}
       </p>
-      <Button asChild className="mt-8">
-        <Link href="/studio">
-          <Sparkles /> Open Studio
-        </Link>
-      </Button>
+      {finishedEmpty ? (
+        <Button asChild>
+          <Link href="/studio">
+            <Sparkles /> Open Studio
+          </Link>
+        </Button>
+      ) : (
+        <SyncProgress initial={sync} />
+      )}
     </Reveal>
   );
 }

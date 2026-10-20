@@ -29,6 +29,10 @@ With no environment variables set, the app runs entirely on the demo accounts.
 | `pnpm db:generate` | New SQL migration from `lib/db/schema.ts` |
 | `pnpm db:migrate` | Apply migrations to `DATABASE_URL` |
 
+Background jobs (the Threads sync) run on [Vercel Workflow](https://vercel.com/docs/workflow). Locally they
+use the built-in Local World, so `pnpm dev` runs them with no setup; inspect runs with `npx workflow web`
+or `npx workflow inspect runs`. Run data lives in `.workflow-data/` (gitignored).
+
 For the integration and sign-in tests, any throwaway Postgres 16 works, for example
 `docker run -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=threaded_test postgres:16`
 with `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/threaded_test`.
@@ -63,7 +67,8 @@ If your machine already has a Chromium build, point Playwright at it with
 5. Add the remaining variables from `.env.example` under Settings → Environment Variables:
    - Generate `SECRETS_ENC_KEY` and `SESSION_SECRET` with `openssl rand -base64 32`. Use **different values per environment**, and never rotate `SECRETS_ENC_KEY` without a re-encryption step, since it encrypts stored tokens.
    - Set `DEMO_MODE=1` for the **Preview** environment only.
-   - Generate `CRON_SECRET` the same way.
+   - Generate `CRON_SECRET` the same way. Vercel Cron sends it as a Bearer token to `/api/cron/daily` (scheduled in `vercel.json` for 06:00 UTC), which starts a refresh workflow per connected profile.
+   - Keep **Fluid compute** on (the default for new projects); Vercel Workflow needs it.
 6. Apply the schema: `pnpm db:migrate` with the production `DATABASE_URL` (or let a deploy hook run it once Phase 1 adds one).
 
 ## 3. Stripe (test mode)

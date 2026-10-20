@@ -2,6 +2,7 @@ import { LogOut } from "lucide-react";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Avatar } from "@/components/app/avatar";
+import { SyncNowButton } from "@/components/app/sync-now-button";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { exitDemoAction, startDemoAction } from "@/lib/actions/demo";
 import { signOutAction } from "@/lib/actions/session";
 import { DEMO_PERSONA_IDS, DEMO_PERSONAS } from "@/lib/demo/personas";
+import { timeAgo } from "@/lib/format";
 import { type DemoViewer, requireViewer } from "@/lib/session/viewer";
 import { cn } from "@/lib/utils";
 
@@ -76,6 +78,14 @@ async function AccountCard() {
             <LogOut /> Sign out
           </Button>
         </form>
+      </CardContent>
+      <CardContent className="flex flex-wrap items-center justify-between gap-3 border-border border-t pt-4">
+        <p className="text-muted text-sm">
+          {viewer.lastSyncedAt
+            ? `Last synced ${timeAgo(viewer.lastSyncedAt.toISOString(), viewer.now)} ago. Threaded refreshes every morning.`
+            : "Your first sync hasn't finished yet."}
+        </p>
+        {viewer.connected && <SyncNowButton />}
       </CardContent>
     </Card>
   );

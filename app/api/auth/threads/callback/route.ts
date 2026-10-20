@@ -4,6 +4,7 @@ import { provisionThreadsAccount } from "@/lib/accounts/provision";
 import { OAUTH_COOKIE, verifyOAuthState } from "@/lib/auth/oauth-state";
 import { GOAL_COOKIE } from "@/lib/goals";
 import { startSession } from "@/lib/session/session";
+import { startSync } from "@/lib/sync/trigger";
 import { createThreadsClient } from "@/lib/threads/client";
 import { isThreadsLoginEnabled, threadsAppConfig } from "@/lib/threads/config";
 import { ThreadsApiError } from "@/lib/threads/errors";
@@ -42,7 +43,13 @@ export async function GET(request: NextRequest) {
     await startSession(account.userId, request.headers.get("user-agent"));
     // Drop any demo goal so the account's own goal applies on the next paint.
     store.delete(GOAL_COOKIE);
-    // Phase 1b starts the initial sync here and lands new profiles on /onboarding.
+    if (!account.lastSyncedAt) {
+      // Home shows live progress while the first sync runs. If it can't start,
+      // Home offers a "Start sync" button instead, so sign-in still succeeds.
+      await startSync(account.profileId, "initial").catch((error) =>
+        console.error("Could not start the first sync", error),
+      );
+    }
     return NextResponse.redirect(new URL("/home", request.url));
   } catch (error) {
     console.error("Threads sign-in failed", error instanceof ThreadsApiError ? error.message : error);

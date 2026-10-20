@@ -34,6 +34,8 @@ export interface ProvisionResult {
   profileId: string;
   isNewProfile: boolean;
   trialGranted: boolean;
+  /** Null until the first sync finishes. */
+  lastSyncedAt: Date | null;
 }
 
 export function isValidTimeZone(zone: string | undefined): zone is string {
@@ -57,7 +59,7 @@ export async function provisionThreadsAccount(input: ProvisionInput): Promise<Pr
   const { profile } = input;
   return db().transaction(async (tx) => {
     const [existing] = await tx
-      .select({ workspaceId: threadsProfiles.workspaceId })
+      .select({ workspaceId: threadsProfiles.workspaceId, lastSyncedAt: threadsProfiles.lastSyncedAt })
       .from(threadsProfiles)
       .where(eq(threadsProfiles.id, profile.id))
       .for("update");
@@ -109,7 +111,14 @@ export async function provisionThreadsAccount(input: ProvisionInput): Promise<Pr
       });
 
     const trialGranted = await grantTrialOnce(tx, workspaceId, profile.id);
-    return { userId, workspaceId, profileId: profile.id, isNewProfile: !existing, trialGranted };
+    return {
+      userId,
+      workspaceId,
+      profileId: profile.id,
+      isNewProfile: !existing,
+      trialGranted,
+      lastSyncedAt: existing?.lastSyncedAt ?? null,
+    };
   });
 }
 

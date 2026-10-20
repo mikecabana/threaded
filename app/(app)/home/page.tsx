@@ -11,6 +11,8 @@ import { bestTimeToPost, buildKpis, topPosts } from "@/lib/analysis/summary";
 import { zonedParts } from "@/lib/analysis/time";
 import { GOAL_META } from "@/lib/goals";
 import { requireViewer } from "@/lib/session/viewer";
+import { toSyncStatus } from "@/lib/sync/status";
+import { latestSyncRun } from "@/lib/sync/sync";
 
 export const metadata: Metadata = { title: "Home" };
 
@@ -34,7 +36,10 @@ async function HomeContent() {
   const { profile, data, goal, now, timezone } = viewer;
   const author = profile;
   const firstName = profile.name.split(" ")[0];
-  if (data.posts.length === 0) return <FirstSync firstName={firstName} viewer={viewer} />;
+  if (data.posts.length === 0) {
+    const run = viewer.kind === "account" ? await latestSyncRun(profile.id) : null;
+    return <FirstSync firstName={firstName} sync={toSyncStatus(run)} />;
+  }
 
   const kpis = buildKpis(goal, data.posts, data.days, now);
   const best = bestTimeToPost(goal, data.posts, timezone, now);

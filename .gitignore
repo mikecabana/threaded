@@ -44,3 +44,8 @@ next-env.d.ts
 /playwright-report
 /blob-report
 !.env.example
+
+# workflow (generated routes + local world data)
+/app/.well-known/workflow/
+.workflow-data/
+/.swc

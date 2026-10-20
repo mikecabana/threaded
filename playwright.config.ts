@@ -10,6 +10,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "list",
+  // The sign-in test waits for a real (local) workflow run to finish.
+  timeout: 60_000,
   use: {
     baseURL: `http://localhost:${port}`,
     trace: "retain-on-failure",
@@ -37,6 +39,8 @@ export default defineConfig({
       // is available; without one, only the demo flows are tested.
       env: databaseUrl
         ? {
+            // The local Workflow world delivers queue messages back to this port.
+            PORT: String(port),
             DATABASE_URL: databaseUrl,
             THREADS_APP_ID: "test-app",
             THREADS_APP_SECRET: "test-app-secret",
@@ -45,6 +49,7 @@ export default defineConfig({
             THREADS_AUTHORIZE_URL: `http://localhost:${mockMetaPort}/oauth/authorize`,
             SECRETS_ENC_KEY: "test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
             SESSION_SECRET: "test-session-secret",
+            CRON_SECRET: "test-cron-secret",
           }
         : {},
     },
