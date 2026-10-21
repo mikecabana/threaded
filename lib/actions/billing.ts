@@ -8,7 +8,7 @@ import { z } from "zod";
 import { maybeStartAutoRecharge } from "@/lib/billing/auto-recharge";
 import { checkGatewayKey, storeByokKey, switchToCredits } from "@/lib/billing/byok";
 import { createByokCheckout, createCardCheckout, createTopUpCheckout } from "@/lib/billing/checkout";
-import { isStripeConfigured, portalUrl, savedCard } from "@/lib/billing/stripe";
+import { isStripeConfigured, portalUrl, readyForAutoRecharge, stripeLocales } from "@/lib/billing/stripe";
 import { db } from "@/lib/db";
 import { workspaces } from "@/lib/db/schema";
 import { packById, RECHARGE_THRESHOLDS } from "@/lib/pricing";
@@ -25,6 +25,11 @@ async function appOrigin(): Promise<string> {
   if (origin) return origin;
   const host = h.get("x-forwarded-host") ?? h.get("host");
   return `${h.get("x-forwarded-proto") ?? "https"}://${host}`;
+}
+
+/** The language for a new Stripe customer's receipts, from the browser's. */
+async function customerLocales(): Promise<string[] | undefined> {
+  return stripeLocales((await headers()).get("accept-language"));
 }
 
 async function requireAccount(): Promise<AccountIdentity> {
@@ -44,7 +49,14 @@ export async function buyCreditsAction(formData: FormData): Promise<void> {
   const pack = packById(String(formData.get("packId")));
   if (!pack) return;
   if (!isStripeConfigured()) redirect("/settings/billing?checkout=unavailable");
-  redirect(await createTopUpCheckout({ workspaceId: identity.workspaceId, pack, origin: await appOrigin() }));
+  redirect(
+    await createTopUpCheckout({
+      workspaceId: identity.workspaceId,
+      pack,
+      origin: await appOrigin(),
+      locales: await customerLocales(),
+    }),
+  );
 }
 
 const autoRechargeSchema = z.object({
@@ -54,8 +66,9 @@ const autoRechargeSchema = z.object({
 });
 
 /**
- * Saves auto-recharge settings. Turning it on without a saved card goes
- * through Checkout to save one first; it switches on when that completes.
+ * Saves auto-recharge settings. Turning it on without a saved card (or, with
+ * Stripe Tax on, without an address) goes through Checkout to save one first;
+ * it switches on when that completes.
  */
 export async function saveAutoRechargeAction(_: BillingFormState, formData: FormData): Promise<BillingFormState> {
   const identity = await requireAccount();
@@ -73,12 +86,13 @@ export async function saveAutoRechargeAction(_: BillingFormState, formData: Form
       .select({ customerId: workspaces.stripeCustomerId })
       .from(workspaces)
       .where(eq(workspaces.id, identity.workspaceId));
-    if (!(await savedCard(workspace?.customerId ?? null))) {
+    if (!(await readyForAutoRecharge(workspace?.customerId ?? null))) {
       redirect(
         await createCardCheckout({
           workspaceId: identity.workspaceId,
           settings: { thresholdCredits: settings.thresholdCredits, packId: settings.packId },
           origin: await appOrigin(),
+          locales: await customerLocales(),
         }),
       );
     }
@@ -120,7 +134,13 @@ export async function saveKeyAction(_: BillingFormState, formData: FormData): Pr
   const result = await storeByokKey(identity.workspaceId, key);
   if (result === "needs_plan") {
     if (!isStripeConfigured()) return { ok: false, message: NOT_SET_UP };
-    redirect(await createByokCheckout({ workspaceId: identity.workspaceId, origin: await appOrigin() }));
+    redirect(
+      await createByokCheckout({
+        workspaceId: identity.workspaceId,
+        origin: await appOrigin(),
+        locales: await customerLocales(),
+      }),
+    );
   }
   refresh();
   return {
@@ -136,7 +156,13 @@ export async function saveKeyAction(_: BillingFormState, formData: FormData): Pr
 export async function startPlanAction(): Promise<void> {
   const identity = await requireAccount();
   if (!isStripeConfigured()) redirect("/settings/billing?checkout=unavailable");
-  redirect(await createByokCheckout({ workspaceId: identity.workspaceId, origin: await appOrigin() }));
+  redirect(
+    await createByokCheckout({
+      workspaceId: identity.workspaceId,
+      origin: await appOrigin(),
+      locales: await customerLocales(),
+    }),
+  );
 }
 
 /** Back to credits: deletes the key; a live plan ends with its current period. */
@@ -150,7 +176,7 @@ export async function switchToCreditsAction(): Promise<void> {
 export async function openPortalAction(): Promise<void> {
   const identity = await requireAccount();
   if (!isStripeConfigured()) redirect("/settings/billing?checkout=unavailable");
-  redirect(await portalUrl(identity.workspaceId, `${await appOrigin()}/settings/billing`));
+  redirect(await portalUrl(identity.workspaceId, `${await appOrigin()}/settings/billing`, await customerLocales()));
 }
 
 export async function dismissBillingNoticeAction(): Promise<void> {

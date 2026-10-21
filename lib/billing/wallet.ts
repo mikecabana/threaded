@@ -1,8 +1,7 @@
 import "server-only";
-import { and, asc, eq, gt, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, sql } from "drizzle-orm";
 import { db, type Tx } from "@/lib/db";
 import { creditLedger, creditLots, wallets } from "@/lib/db/schema";
-import { CREDIT_EXPIRY_MONTHS } from "@/lib/pricing";
 
 // Two-phase spending. A generation first reserves the most it could cost
 // (one conditional UPDATE, so concurrent requests can't overdraw), then settles
@@ -10,10 +9,12 @@ import { CREDIT_EXPIRY_MONTHS } from "@/lib/pricing";
 // (kind, ref) is unique, so retries can't double-charge or double-refund.
 //
 // Ledger `delta` is the change to the spendable balance:
-//   purchase/trial  +n     reserve  −max     settle  +(max − charged)     release  +max     expire  −left
+//   purchase/trial  +n     reserve  −max     settle  +(max − charged)     release  +max
 //
-// Credits arrive in lots (one per purchase or grant) so each can expire on its
-// own date. Only the settled charge draws on lots, soonest-expiring first.
+// Credits never expire. They still arrive in lots (one per purchase or grant),
+// which say how much of each purchase is left, for refunds and for accounting
+// (unspent credits are owed to the customer). Only the settled charge draws on
+// lots, oldest first.
 // Lock order is reserve row → wallet → lots everywhere, so nothing deadlocks.
 
 export class InsufficientCreditsError extends Error {
@@ -33,20 +34,12 @@ export interface Hold {
   amount: number;
 }
 
-/** When credits bought (or granted) at `from` expire. */
-export function creditExpiry(from: Date): Date {
-  const at = new Date(from);
-  at.setUTCMonth(at.getUTCMonth() + CREDIT_EXPIRY_MONTHS);
-  return at;
-}
-
 export interface Grant {
   workspaceId: string;
   amount: number;
   kind: "purchase" | "trial" | "adjust";
   /** Idempotency reference: the Checkout Session or invoice id, a hashed Threads id, etc. */
   ref: string;
-  expiresAt: Date | null;
 }
 
 /**
@@ -63,7 +56,6 @@ export async function grantCredits(grant: Grant, tx?: Tx): Promise<boolean> {
       delta: grant.amount,
       kind: grant.kind,
       ref: grant.ref,
-      expiresAt: grant.expiresAt,
     })
     .onConflictDoNothing({ target: [creditLedger.kind, creditLedger.ref] })
     .returning({ id: creditLedger.id });
@@ -73,7 +65,6 @@ export async function grantCredits(grant: Grant, tx?: Tx): Promise<boolean> {
     ledgerId: ledger.id,
     amount: grant.amount,
     remaining: grant.amount,
-    expiresAt: grant.expiresAt,
   });
   await tx
     .update(wallets)
@@ -82,14 +73,14 @@ export async function grantCredits(grant: Grant, tx?: Tx): Promise<boolean> {
   return true;
 }
 
-/** Draws `amount` from the workspace's lots, soonest-expiring first. Caller holds the wallet lock. */
+/** Draws `amount` from the workspace's lots, oldest first. Caller holds the wallet lock. */
 async function consumeLots(tx: Tx, workspaceId: string, amount: number) {
   if (amount <= 0) return;
   const lots = await tx
     .select({ id: creditLots.id, remaining: creditLots.remaining })
     .from(creditLots)
     .where(and(eq(creditLots.workspaceId, workspaceId), gt(creditLots.remaining, 0)))
-    .orderBy(sql`${creditLots.expiresAt} asc nulls last`, asc(creditLots.createdAt))
+    .orderBy(asc(creditLots.createdAt))
     .for("update");
   let left = amount;
   for (const lot of lots) {
@@ -170,53 +161,4 @@ export async function settleCredits(hold: Hold, charged: number): Promise<boolea
 /** Returns the whole hold, e.g. when the provider failed before producing anything. Idempotent. */
 export async function releaseCredits(hold: Hold): Promise<boolean> {
   return close(hold, "release", 0);
-}
-
-/**
- * Expires lots past their date (daily cron). A wallet with a generation in
- * flight is skipped until the next run, so a settle never finds its credits gone.
- */
-export async function expireCredits(now = new Date()): Promise<{ workspaces: number; credits: number }> {
-  const due = await db()
-    .selectDistinct({ workspaceId: creditLots.workspaceId })
-    .from(creditLots)
-    .where(and(gt(creditLots.remaining, 0), lte(creditLots.expiresAt, now)));
-  const result = { workspaces: 0, credits: 0 };
-  for (const { workspaceId } of due) {
-    const expired = await db().transaction(async (tx) => {
-      const [wallet] = await tx
-        .select({ reserved: wallets.reserved })
-        .from(wallets)
-        .where(eq(wallets.workspaceId, workspaceId))
-        .for("update");
-      if (!wallet || wallet.reserved > 0) return 0;
-      const lots = await tx
-        .select({ id: creditLots.id, remaining: creditLots.remaining })
-        .from(creditLots)
-        .where(
-          and(eq(creditLots.workspaceId, workspaceId), gt(creditLots.remaining, 0), lte(creditLots.expiresAt, now)),
-        )
-        .for("update");
-      let total = 0;
-      for (const lot of lots) {
-        await tx.update(creditLots).set({ remaining: 0 }).where(eq(creditLots.id, lot.id));
-        await tx
-          .insert(creditLedger)
-          .values({ workspaceId, delta: -lot.remaining, kind: "expire", ref: `expire:${lot.id}` });
-        total += lot.remaining;
-      }
-      if (total > 0) {
-        await tx
-          .update(wallets)
-          .set({ balance: sql`${wallets.balance} - ${total}` })
-          .where(eq(wallets.workspaceId, workspaceId));
-      }
-      return total;
-    });
-    if (expired > 0) {
-      result.workspaces++;
-      result.credits += expired;
-    }
-  }
-  return result;
 }

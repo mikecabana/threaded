@@ -1,6 +1,13 @@
 // Commercial terms in one place so marketing, legal and billing agree.
 // Starting values from docs/PLAN.md §15; tune once the margin dashboard has data.
 
+/**
+ * Everything is priced in US dollars, though the business (and its Stripe
+ * account) is in Quebec. Pass it on every Stripe object that takes a currency:
+ * Stripe otherwise falls back to the account's, CAD.
+ */
+export const CURRENCY = "usd";
+
 /** Retail value of one credit in USD. */
 export const CREDIT_USD = 0.01;
 
@@ -27,9 +34,6 @@ export const RECHARGE_THRESHOLDS = [50, 100, 200, 500] as const;
 
 /** Monthly platform fee for workspaces that bring their own AI Gateway key. */
 export const BYOK_PLATFORM_FEE_USD = 5;
-
-/** Purchased credits expire this many months after purchase. */
-export const CREDIT_EXPIRY_MONTHS = 12;
 
 export function creditsToUsd(credits: number): number {
   return Math.round(credits * CREDIT_USD * 100) / 100;

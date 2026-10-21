@@ -10,7 +10,7 @@ before real accounts can connect (Phase 1).
 
 ## Local development
 
-Requirements: Node 22+, pnpm 10 (`corepack enable`).
+Requirements: Node 22+ (CI runs the latest LTS), pnpm 10 (`corepack enable`).
 
 ```bash
 pnpm install
@@ -68,7 +68,7 @@ If your machine already has a Chromium build, point Playwright at it with
    - Generate `SECRETS_ENC_KEY` and `SESSION_SECRET` with `openssl rand -base64 32`. Use **different values per environment**, and never rotate `SECRETS_ENC_KEY` without a re-encryption step, since it encrypts stored tokens.
    - Leave `THREADS_REDIRECT_URI` and `APP_URL` unset on Vercel: the production URL comes from Vercel (see [Domains and previews](#domains-and-preview-deployments)).
    - For previews, see the same section: `PREVIEW_ORIGINS`, their own database and secrets, or `DEMO_MODE=1` to keep them demo-only.
-   - Generate `CRON_SECRET` the same way. Vercel Cron sends it as a Bearer token to the two crons in `vercel.json`: `/api/cron/daily` (06:00 UTC: model prices, credit expiry, a refresh workflow per connected profile) and `/api/cron/publish` (every 5 minutes: the scheduled-post safety net).
+   - Generate `CRON_SECRET` the same way. Vercel Cron sends it as a Bearer token to the two crons in `vercel.json`: `/api/cron/daily` (06:00 UTC: model prices, the publish sweep, a refresh workflow per connected profile) and `/api/cron/publish` (every 5 minutes: the scheduled-post safety net).
    - The 5-minute cron needs a Vercel **Pro** plan; Hobby plans only allow daily crons and the deploy fails. On Hobby, delete that entry: the daily cron also runs the publish sweep, so missed posts are still rescued, just later.
    - Keep **Fluid compute** on (the default for new projects); Vercel Workflow needs it.
 6. The schema is applied on every deploy: `vercel.json` builds with `pnpm db:deploy && pnpm build`, and `db:deploy` runs the migrations in `drizzle/` against that deployment's database (the unpooled URL when Neon provides one). Keep migrations additive, since the previous deployment serves traffic until the new one is ready. `SKIP_MIGRATIONS=1` turns it off.
@@ -96,29 +96,50 @@ What's different on a preview: crons only run in production, so there's no daily
 
 ## 3. Stripe (test mode)
 
-Threaded uses hosted Checkout and the hosted billing portal, so there's no
-publishable key and no products to create: prices come from `lib/pricing.ts`
-(credit packs of $5/$20/$50, a $1 trial, a 1.5× default markup, a $5/month
-BYOK platform fee, and a 12-month credit expiry).
+Threaded is run from Quebec, so the Stripe account is **Canadian**, but prices are in **US dollars**: AI costs
+are billed to us in USD, and Stripe shows customers abroad, Canadians included, a converted price at checkout
+(Adaptive Pricing is on for the account; Checkout Sessions still report their amounts in USD). Threaded uses hosted Checkout
+and the hosted billing portal, so there's no publishable key and no products to create: prices come from
+`lib/pricing.ts` (credit packs of $5/$20/$50, a $1 trial, a 1.5× default markup and a $5/month BYOK platform
+fee). Credits never expire.
 
-1. Create a Stripe account and stay in **test mode**. Put the secret key in `STRIPE_SECRET_KEY`.
+1. Create the Stripe account with Canada as its country and work in a **sandbox** (test mode). Put the secret
+   key in `STRIPE_SECRET_KEY`.
 2. **Webhook:** add an endpoint for `https://<your-domain>/api/stripe/webhook` with exactly these events, and
    put its signing secret in `STRIPE_WEBHOOK_SECRET`:
    `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
    `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`,
    `invoice.paid`. Locally: `stripe listen --forward-to localhost:3000/api/stripe/webhook --events …`
    prints a secret to use instead.
-3. **Customer portal:** Settings → Billing → Customer portal. Save it once (test mode needs this before the
-   portal opens), allow updating payment methods, viewing invoices, and canceling subscriptions at the
-   end of the period.
-4. **Stripe Tax (optional):** activate it and add your registrations, then set `STRIPE_AUTOMATIC_TAX=1`.
-   Checkout then collects addresses and adds tax on top of the pack price; auto-recharge invoices do too.
+3. **Customer portal:** nothing to do. Stripe creates a default configuration the first time a portal opens,
+   and its defaults are what Threaded needs: update cards, see invoices, cancel the plan at the end of the
+   period, edit the billing address.
+4. **Sales tax (Stripe Tax).** Prices are tax-exclusive: tax is added on top, based on the customer's address,
+   which Checkout collects.
+   - In Tax settings, enter the head office address in Quebec.
+   - Add your registrations: **Canada, normal GST/HST** and **Quebec, QST**, each from its effective date (tax
+     charged before then isn't yours to keep). Stripe then charges GST + QST in Quebec and GST or HST in the
+     other provinces. Customers outside Canada pay no Canadian tax. Stripe watches the sales thresholds for BC,
+     Manitoba and Saskatchewan and for other countries; EU and UK VAT on digital services can apply from the
+     first sale. The sandbox already has both registrations.
+   - Pick the default product tax code with your accountant; Threaded's inline prices don't set one, so the
+     default applies. Candidates: `txcd_10103001` (SaaS, business use), `txcd_10103000` (SaaS, personal use),
+     `txcd_10105002` / `txcd_10105001` (AI as a service, cloud, business / personal use). Canadian tax is the
+     same under all four; they differ for US states.
+   - Add your GST and QST numbers to the account so they print on invoices; business customers need them to
+     claim input tax credits.
+   - Set `STRIPE_AUTOMATIC_TAX=1` (Production and Preview).
+5. **Payouts:** Stripe converts USD to CAD when it pays out. Add a USD bank account if you'd rather keep USD.
 
 Payments stay off (the billing page says so) until both Stripe variables are set.
 
+**Language:** customers whose browser prefers French get French receipts and invoices from Stripe (set on
+their Stripe customer at their first purchase), and Checkout follows the browser's language on its own.
+
 **Testing by hand:** card `4242 4242 4242 4242` pays. To see a failed auto-recharge, save
 `4000 0000 0000 0341` (it saves fine, then every charge is declined), and lower your balance under
-the threshold with a generation.
+the threshold with a generation. With tax on, Checkout asks for an address: a Quebec postal code such as
+`H2X 1Y4` shows GST and QST on top of the price.
 
 **How it fits together** (details in `docs/PLAN.md` §6): our ledger decides what a workspace can
 spend; Stripe only takes money. A paid Checkout Session or auto-recharge invoice adds a lot of
@@ -132,5 +153,11 @@ Create an account, verify your sending domain, and put the API key in `RESEND_AP
 ## 5. Before launch
 
 - [ ] Replace `SITE.contactEmail` in `lib/site.ts` with the real support address.
-- [ ] Have a lawyer review `/legal/terms` and `/legal/privacy`, then remove the draft banner in `components/marketing/legal-page.tsx`.
+- [ ] Have a Quebec lawyer review `/legal/terms` and `/legal/privacy`, then remove the draft banner in `components/marketing/legal-page.tsx`. Ask in particular about Quebec's Consumer Protection Act: its rules for online (distance) contracts (what to disclose before purchase, the confirmation afterwards) and for the renewing $5/month plan.
+- [ ] **French** (Charter of the French Language, as amended by Bill 96): French versions of the site, app, Terms, Privacy and emails, planned as the launch phase in `docs/PLAN.md` §13. Confirm the exact scope with the lawyer. Stripe receipts and Checkout already switch to French.
+- [ ] **Privacy (Quebec's Law 25):**
+  - Name the person in charge of protecting personal information, and publish their title and contact details on the site.
+  - Do a privacy impact assessment before personal information leaves Quebec. Vercel, Neon, Stripe, Meta and the AI providers all process it elsewhere.
+  - Keep a register of confidentiality incidents.
+- [ ] **Live Stripe:** the head office address, GST/HST + QST registrations with your numbers, the product tax code, and `STRIPE_AUTOMATIC_TAX=1` (§3).
 - [ ] Confirm which secret signs Meta's deauthorize and data-deletion callbacks (the one ⚠ left in `docs/PLAN.md` §2; everything else there was checked against Meta's docs).

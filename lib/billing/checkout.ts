@@ -3,11 +3,11 @@ import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { type AutoRechargeSettings, workspaces } from "@/lib/db/schema";
-import { BYOK_PLATFORM_FEE_USD, type CreditPack, packById } from "@/lib/pricing";
+import { BYOK_PLATFORM_FEE_USD, type CreditPack, CURRENCY, packById } from "@/lib/pricing";
 import { maybeStartAutoRecharge } from "./auto-recharge";
 import { automaticTax, ensureCustomer, stripe } from "./stripe";
 import { syncSubscription } from "./subscription";
-import { creditExpiry, grantCredits } from "./wallet";
+import { grantCredits } from "./wallet";
 
 // Hosted Checkout for everything a customer pays for: credit packs, the BYOK
 // plan, and saving a card for auto-recharge. Each session's metadata says what
@@ -30,8 +30,13 @@ function taxOptions() {
     : { automatic_tax: tax };
 }
 
-export async function createTopUpCheckout(input: { workspaceId: string; pack: CreditPack; origin: string }) {
-  const customer = await ensureCustomer(input.workspaceId);
+export async function createTopUpCheckout(input: {
+  workspaceId: string;
+  pack: CreditPack;
+  origin: string;
+  locales?: string[];
+}) {
+  const customer = await ensureCustomer(input.workspaceId, input.locales);
   const session = await stripe().checkout.sessions.create({
     mode: "payment",
     customer,
@@ -40,7 +45,7 @@ export async function createTopUpCheckout(input: { workspaceId: string; pack: Cr
       {
         quantity: 1,
         price_data: {
-          currency: "usd",
+          currency: CURRENCY,
           unit_amount: input.pack.usd * 100,
           tax_behavior: "exclusive",
           product_data: { name: `${input.pack.credits.toLocaleString("en-US")} Threaded credits` },
@@ -55,8 +60,8 @@ export async function createTopUpCheckout(input: { workspaceId: string; pack: Cr
 }
 
 /** The $5/month platform fee that unlocks bring-your-own-key. */
-export async function createByokCheckout(input: { workspaceId: string; origin: string }) {
-  const customer = await ensureCustomer(input.workspaceId);
+export async function createByokCheckout(input: { workspaceId: string; origin: string; locales?: string[] }) {
+  const customer = await ensureCustomer(input.workspaceId, input.locales);
   const metadata = { kind: "byok", workspaceId: input.workspaceId };
   const session = await stripe().checkout.sessions.create({
     mode: "subscription",
@@ -66,7 +71,7 @@ export async function createByokCheckout(input: { workspaceId: string; origin: s
       {
         quantity: 1,
         price_data: {
-          currency: "usd",
+          currency: CURRENCY,
           unit_amount: BYOK_PLATFORM_FEE_USD * 100,
           recurring: { interval: "month" },
           tax_behavior: "exclusive",
@@ -87,11 +92,12 @@ export async function createCardCheckout(input: {
   workspaceId: string;
   settings: Omit<AutoRechargeSettings, "enabled">;
   origin: string;
+  locales?: string[];
 }) {
-  const customer = await ensureCustomer(input.workspaceId);
+  const customer = await ensureCustomer(input.workspaceId, input.locales);
   const session = await stripe().checkout.sessions.create({
     mode: "setup",
-    currency: "usd",
+    currency: CURRENCY,
     customer,
     client_reference_id: input.workspaceId,
     metadata: {
@@ -100,6 +106,11 @@ export async function createCardCheckout(input: {
       thresholdCredits: String(input.settings.thresholdCredits),
       packId: input.settings.packId,
     },
+    // Auto-recharge invoices are taxed at the customer's address, so collect it with the card.
+    ...(automaticTax().enabled && {
+      billing_address_collection: "required" as const,
+      customer_update: { address: "auto" as const, name: "auto" as const },
+    }),
     ...returnUrls(input.origin),
   });
   return session.url as string;
@@ -152,10 +163,7 @@ async function fulfillTopUp(session: Stripe.Checkout.Session, workspaceId: strin
     return { kind: "ignored" };
   }
   await db().transaction(async (tx) => {
-    const granted = await grantCredits(
-      { workspaceId, amount: pack.credits, kind: "purchase", ref: session.id, expiresAt: creditExpiry(new Date()) },
-      tx,
-    );
+    const granted = await grantCredits({ workspaceId, amount: pack.credits, kind: "purchase", ref: session.id }, tx);
     // A successful top-up clears a failed auto-recharge notice.
     if (granted) await tx.update(workspaces).set({ billingNotice: null }).where(eq(workspaces.id, workspaceId));
   });

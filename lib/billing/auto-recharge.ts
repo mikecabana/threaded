@@ -3,9 +3,9 @@ import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 import { db, type Tx } from "@/lib/db";
 import { type AutoRechargeSettings, wallets, workspaces } from "@/lib/db/schema";
-import { packById } from "@/lib/pricing";
-import { automaticTax, isCardError, stripe } from "./stripe";
-import { creditExpiry, grantCredits } from "./wallet";
+import { CURRENCY, packById } from "@/lib/pricing";
+import { automaticTax, isCardError, needsTaxAddress, stripe } from "./stripe";
+import { grantCredits } from "./wallet";
 
 // Auto-recharge: when a charge leaves the balance under the workspace's
 // threshold, buy its chosen pack with the saved card. Off-session charges go
@@ -92,9 +92,19 @@ export async function runAutoRecharge(workspaceId: string, attemptAt: string): P
   }
   const customer = workspace.customerId;
 
-  const card = await stripe().customers.retrieve(customer);
+  const card = await stripe().customers.retrieve(customer, { expand: ["tax"] });
   if (card.deleted || !card.invoice_settings?.default_payment_method) {
     await failRecharge(workspaceId, attemptAt, "There's no saved card to charge.");
+    return "failed";
+  }
+  // Without an address Stripe can't finalize a taxed invoice, and retrying won't change that.
+  // Turning auto-recharge back on goes through Checkout, which asks for the address.
+  if (needsTaxAddress(card)) {
+    await failRecharge(
+      workspaceId,
+      attemptAt,
+      "We need your billing address to add sales tax. Turn it back on to add it.",
+    );
     return "failed";
   }
 
@@ -104,6 +114,7 @@ export async function runAutoRecharge(workspaceId: string, attemptAt: string): P
     invoice = await stripe().invoices.create(
       {
         customer,
+        currency: CURRENCY,
         collection_method: "charge_automatically",
         auto_advance: false,
         pending_invoice_items_behavior: "exclude",
@@ -118,7 +129,7 @@ export async function runAutoRecharge(workspaceId: string, attemptAt: string): P
         customer,
         invoice: invoice.id,
         amount: pack.usd * 100,
-        currency: "usd",
+        currency: CURRENCY,
         tax_behavior: "exclusive",
         description: `${pack.credits.toLocaleString("en-US")} Threaded credits`,
       },
@@ -157,10 +168,7 @@ export async function runAutoRecharge(workspaceId: string, attemptAt: string): P
 async function grantRecharge(invoice: Stripe.Invoice, workspaceId: string, tx?: Tx) {
   const pack = packById(invoice.metadata?.packId);
   if (!pack) return false;
-  return grantCredits(
-    { workspaceId, amount: pack.credits, kind: "purchase", ref: invoice.id, expiresAt: creditExpiry(new Date()) },
-    tx,
-  );
+  return grantCredits({ workspaceId, amount: pack.credits, kind: "purchase", ref: invoice.id }, tx);
 }
 
 /** invoice.paid webhook: credits a recharge whose run didn't get to (e.g. it crashed after paying). */

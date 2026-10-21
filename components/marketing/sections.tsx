@@ -7,7 +7,7 @@ import { TiltCard } from "@/components/motion/tilt-card";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { GOAL_META, GOALS } from "@/lib/goals";
-import { BYOK_PLATFORM_FEE_USD, CREDIT_EXPIRY_MONTHS, CREDIT_PACKS, creditsToUsd, TRIAL_CREDITS } from "@/lib/pricing";
+import { BYOK_PLATFORM_FEE_USD, CREDIT_PACKS, creditsToUsd, TRIAL_CREDITS } from "@/lib/pricing";
 import { DemoButton } from "./demo-button";
 
 function SectionHeading({ eyebrow, title, children }: { eyebrow: string; title: string; children?: ReactNode }) {
@@ -131,7 +131,7 @@ export function Pricing() {
               <Feature>Choose from our tested models, priced per use</Feature>
               <Feature>Top up with {packs} credit packs</Feature>
               <Feature>Profile analysis and insights included</Feature>
-              <Feature>Credits last {CREDIT_EXPIRY_MONTHS} months</Feature>
+              <Feature>Credits never expire</Feature>
             </ul>
             <DemoButton className="mt-8 w-full" size="lg">
               Try the demo

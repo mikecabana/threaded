@@ -4,8 +4,6 @@ import { db } from "@/lib/db";
 import { creditLedger, creditLots, wallets, workspaces } from "@/lib/db/schema";
 import { closeDatabase, resetDatabase } from "@/test/db";
 import {
-  creditExpiry,
-  expireCredits,
   getBalance,
   grantCredits,
   InsufficientCreditsError,
@@ -15,19 +13,18 @@ import {
 } from "./wallet";
 
 let workspaceId: string;
-const DAY = 86_400_000;
 
-/** Empties the wallet, then grants `balance` as one lot that never expires. */
+/** Empties the wallet, then grants `balance` as one lot. */
 async function setBalance(balance: number) {
   await db().delete(creditLots);
   await db().delete(creditLedger);
   await db().update(wallets).set({ balance: 0, reserved: 0 }).where(eq(wallets.workspaceId, workspaceId));
-  if (balance > 0) await grantCredits({ workspaceId, amount: balance, kind: "adjust", ref: "seed", expiresAt: null });
+  if (balance > 0) await grantCredits({ workspaceId, amount: balance, kind: "adjust", ref: "seed" });
 }
 
 async function lots() {
   return db()
-    .select({ amount: creditLots.amount, remaining: creditLots.remaining, expiresAt: creditLots.expiresAt })
+    .select({ amount: creditLots.amount, remaining: creditLots.remaining })
     .from(creditLots)
     .where(eq(creditLots.workspaceId, workspaceId))
     .orderBy(asc(creditLots.createdAt));
@@ -109,13 +106,7 @@ describe("wallet", () => {
 
 describe("credit lots", () => {
   it("grants once per (kind, ref)", async () => {
-    const grant = {
-      workspaceId,
-      amount: 500,
-      kind: "purchase" as const,
-      ref: "cs_test_1",
-      expiresAt: creditExpiry(new Date()),
-    };
+    const grant = { workspaceId, amount: 500, kind: "purchase" as const, ref: "cs_test_1" };
     expect(await grantCredits(grant)).toBe(true);
     expect(await grantCredits(grant)).toBe(false);
     expect(await getBalance(workspaceId)).toBe(600);
@@ -123,39 +114,14 @@ describe("credit lots", () => {
     await expectLotsMatchWallet();
   });
 
-  it("spends the soonest-expiring credits first", async () => {
-    const now = Date.now();
-    await grantCredits({
-      workspaceId,
-      amount: 50,
-      kind: "purchase",
-      ref: "late",
-      expiresAt: new Date(now + 300 * DAY),
-    });
-    await grantCredits({ workspaceId, amount: 30, kind: "purchase", ref: "soon", expiresAt: new Date(now + 10 * DAY) });
+  it("spends the oldest credits first", async () => {
+    await grantCredits({ workspaceId, amount: 50, kind: "purchase", ref: "older" });
+    await grantCredits({ workspaceId, amount: 30, kind: "purchase", ref: "newer" });
 
-    const hold = await reserveCredits(workspaceId, 60, "gen-lots");
-    await settleCredits(hold, 40);
-    // Seed (never expires) 100, late 50, soon 30: the 40 comes from "soon" (30), then "late" (10).
-    expect((await lots()).map((lot) => lot.remaining)).toEqual([100, 40, 0]);
-    await expectLotsMatchWallet();
-  });
-
-  it("expires lots past their date, but not while a generation is in flight", async () => {
-    const now = new Date();
-    await grantCredits({ workspaceId, amount: 25, kind: "purchase", ref: "old", expiresAt: new Date(+now - DAY) });
-    expect(await getBalance(workspaceId)).toBe(125);
-
-    const hold = await reserveCredits(workspaceId, 10, "gen-busy");
-    expect(await expireCredits(now)).toEqual({ workspaces: 0, credits: 0 });
-    await settleCredits(hold, 4);
-    // The charge drew on the expired lot first, so only 21 are left to expire.
-    expect(await expireCredits(now)).toEqual({ workspaces: 1, credits: 21 });
-    expect(await getBalance(workspaceId)).toBe(100);
-    expect(await expireCredits(now)).toEqual({ workspaces: 0, credits: 0 });
-
-    const expired = await db().select().from(creditLedger).where(eq(creditLedger.kind, "expire"));
-    expect(expired.map((row) => row.delta)).toEqual([-21]);
+    const hold = await reserveCredits(workspaceId, 150, "gen-lots");
+    await settleCredits(hold, 140);
+    // Seed 100, older 50, newer 30: the 140 empties the seed, then takes 40 of "older".
+    expect((await lots()).map((lot) => lot.remaining)).toEqual([0, 10, 30]);
     await expectLotsMatchWallet();
   });
 });

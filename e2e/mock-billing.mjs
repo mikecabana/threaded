@@ -7,6 +7,10 @@
 // Hosted Checkout is a plain HTML page at /pay/:id with buttons for each
 // outcome. Saving the "declining" card mimics Stripe's 4000 0000 0000 0341
 // test card: it saves fine, then every charge is declined.
+//
+// Like the real account it stands in for (a Canadian one), an invoice created
+// without a currency is in CAD and refuses items in another currency, and with
+// Stripe Tax on it can't be finalized until the customer has an address.
 import { createHmac, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
@@ -35,6 +39,10 @@ export function signPayload(payload, secret, timestamp = nowS()) {
   const signature = createHmac("sha256", secret).update(`${timestamp}.${payload}`).digest("hex");
   return `t=${timestamp},v1=${signature}`;
 }
+
+/** The address Checkout "collects" when it's asked to save one on the customer. */
+const TEST_ADDRESS = { line1: "1 Rue Test", city: "Montréal", state: "QC", postal_code: "H2X 1Y4", country: "CA" };
+const ACCOUNT_CURRENCY = "cad";
 
 const stripeError = (status, type, message, extra = {}) => ({ status, body: { error: { type, message, ...extra } } });
 const notFound = (what, id) => stripeError(404, "invalid_request_error", `No such ${what}: '${id}'`);
@@ -74,6 +82,15 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
     const expanded = expand.includes("invoice_settings.default_payment_method") && pm;
     return {
       ...customer,
+      ...(expand.includes("tax") && {
+        tax: {
+          automatic_tax: customer.address ? "supported" : "unrecognized_location",
+          ip_address: null,
+          location: customer.address
+            ? { country: customer.address.country, state: customer.address.state, source: "billing_address" }
+            : null,
+        },
+      }),
       invoice_settings: {
         ...customer.invoice_settings,
         default_payment_method: expanded ? (state.paymentMethods.get(pm) ?? null) : pm,
@@ -99,6 +116,7 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
     const session = state.sessions.get(id);
     if (session?.status !== "open") return session;
     session.status = "complete";
+    if (session.customer_update?.address === "auto") state.customers.get(session.customer).address = TEST_ADDRESS;
     if (session.mode === "payment") {
       session.payment_status = "paid";
       session.payment_intent = newId("pi");
@@ -147,6 +165,9 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
           id: newId("cus"),
           object: "customer",
           name: body.name ?? null,
+          address: null,
+          currency: null,
+          preferred_locales: body.preferred_locales ?? [],
           metadata: body.metadata ?? {},
           invoice_settings: { default_payment_method: null },
         };
@@ -194,6 +215,8 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
           client_reference_id: body.client_reference_id ?? null,
           metadata: body.metadata ?? {},
           subscription_data: body.subscription_data,
+          customer_update: body.customer_update ?? null,
+          billing_address_collection: body.billing_address_collection ?? null,
           line_items: body.line_items ?? [],
           amount_subtotal: subtotal,
           amount_total: subtotal,
@@ -255,11 +278,14 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
       "POST",
       /^\/v1\/invoices$/,
       (_, body) => {
-        if (!state.customers.has(body.customer)) return notFound("customer", body.customer);
+        const customer = state.customers.get(body.customer);
+        if (!customer) return notFound("customer", body.customer);
         const invoice = {
           id: newId("in"),
           object: "invoice",
           customer: body.customer,
+          currency: body.currency ?? customer.currency ?? ACCOUNT_CURRENCY,
+          automatic_tax: { enabled: body.automatic_tax?.enabled === "true" },
           status: "draft",
           metadata: body.metadata ?? {},
           description: body.description ?? null,
@@ -285,7 +311,20 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
       (_, body) => {
         const invoice = state.invoices.get(body.invoice);
         if (!invoice) return notFound("invoice", body.invoice);
-        const item = { id: newId("ii"), object: "invoiceitem", amount: Number(body.amount), invoice: invoice.id };
+        if (body.currency !== invoice.currency) {
+          return stripeError(
+            400,
+            "invalid_request_error",
+            `You cannot combine currencies on a single invoice. This invoice has invoice items currency ${body.currency} that conflicts with the invoice currency ${invoice.currency}.`,
+          );
+        }
+        const item = {
+          id: newId("ii"),
+          object: "invoiceitem",
+          amount: Number(body.amount),
+          currency: body.currency,
+          invoice: invoice.id,
+        };
         invoice.lines.push(item);
         invoice.subtotal += item.amount;
         return { body: item };
@@ -297,6 +336,13 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
       ([id]) => {
         const invoice = state.invoices.get(id);
         if (!invoice) return notFound("invoice", id);
+        if (invoice.automatic_tax.enabled && !state.customers.get(invoice.customer)?.address) {
+          return stripeError(
+            400,
+            "invalid_request_error",
+            "When `automatic_tax[enabled]=true`, enough customer location information must be provided to accurately determine tax rates for the customer.",
+          );
+        }
         if (invoice.status === "draft") invoice.status = "open";
         return { body: invoice };
       },

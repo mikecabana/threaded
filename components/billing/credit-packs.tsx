@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { buyCreditsAction } from "@/lib/actions/billing";
-import { CREDIT_EXPIRY_MONTHS, CREDIT_PACKS } from "@/lib/pricing";
+import { CREDIT_PACKS } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 import { SubmitButton } from "./submit-button";
 
@@ -19,9 +19,7 @@ export function CreditPacks({
       <h2 id="buy-credits" className="font-semibold text-lg">
         Buy credits
       </h2>
-      <p className="mt-0.5 text-muted text-sm">
-        A one-time payment, no subscription. Credits last {CREDIT_EXPIRY_MONTHS} months.
-      </p>
+      <p className="mt-0.5 text-muted text-sm">A one-time payment, no subscription. Credits never expire.</p>
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         {CREDIT_PACKS.map((pack, i) => (
           <form key={pack.id} action={buyCreditsAction}>

@@ -1,6 +1,5 @@
 import { createGateway } from "ai";
 import { syncCatalogFromGateway } from "@/lib/ai/catalog";
-import { expireCredits } from "@/lib/billing/wallet";
 import { safeEqual } from "@/lib/crypto/sign";
 import { db } from "@/lib/db";
 import { threadsTokens } from "@/lib/db/schema";
@@ -10,10 +9,9 @@ import { startSync } from "@/lib/sync/trigger";
 
 /**
  * Vercel Cron (vercel.json, 06:00 UTC): refreshes model prices from the AI
- * Gateway, expires credits past their date, sweeps the publishing queue, then
- * starts a sync for every connected profile. Each sync is its
- * own durable workflow run, so one slow or failing account doesn't hold up
- * the rest.
+ * Gateway, sweeps the publishing queue, then starts a sync for every connected
+ * profile. Each sync is its own durable workflow run, so one slow or failing
+ * account doesn't hold up the rest.
  */
 export async function GET(request: Request) {
   const expected = env.CRON_SECRET ? `Bearer ${env.CRON_SECRET}` : null;
@@ -29,10 +27,6 @@ export async function GET(request: Request) {
     });
   }
 
-  const expired = await expireCredits().catch((error) => {
-    console.error("Credit expiry failed", error);
-    return null;
-  });
   // The publish sweeper also runs every 5 minutes (/api/cron/publish); this covers plans with daily crons only.
   await sweepPublishing().catch((error) => console.error("Publish sweep failed", error));
 
@@ -45,5 +39,5 @@ export async function GET(request: Request) {
       console.error(`Could not start the daily sync for ${profileId}`, error);
     }
   }
-  return Response.json({ profiles: profiles.length, started, catalog, expired });
+  return Response.json({ profiles: profiles.length, started, catalog });
 }
