@@ -1,21 +1,25 @@
-import { LogOut } from "lucide-react";
+import { ChevronRight, LogOut } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
+import { Avatar } from "@/components/app/avatar";
+import { SyncNowButton } from "@/components/app/sync-now-button";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { exitDemoAction, startDemoAction } from "@/lib/actions/demo";
+import { signOutAction } from "@/lib/actions/session";
 import { DEMO_PERSONA_IDS, DEMO_PERSONAS } from "@/lib/demo/personas";
-import { requireViewer } from "@/lib/session/viewer";
+import { timeAgo } from "@/lib/format";
+import { type DemoViewer, requireViewer } from "@/lib/session/viewer";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Settings" };
 
 const UPCOMING = [
   { title: "Models", body: "Pick the AI model for each task, with its price per use." },
-  { title: "Billing", body: "Credits, top-ups, auto-recharge, or your own Vercel AI Gateway key." },
   { title: "Voice", body: "Emoji, casing, banned words and how spicy suggestions get." },
   { title: "Account & data", body: "Re-sync, disconnect Threads, or delete everything." },
 ];
@@ -36,8 +40,20 @@ export default function SettingsPage() {
       </Card>
 
       <Suspense fallback={<Skeleton className="h-44 rounded-2xl" />}>
-        <DemoAccountCard />
+        <AccountCard />
       </Suspense>
+
+      <Link href="/settings/billing" className="group block">
+        <Card className="flex items-center justify-between gap-4 p-5 transition-colors group-hover:border-border-strong">
+          <div>
+            <h2 className="font-medium">Billing</h2>
+            <p className="mt-1 text-muted text-sm">
+              Credits, top-ups, auto-recharge, or your own Vercel AI Gateway key.
+            </p>
+          </div>
+          <ChevronRight className="size-5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" />
+        </Card>
+      </Link>
 
       <div className="grid gap-3 sm:grid-cols-2">
         {UPCOMING.map((item) => (
@@ -54,9 +70,40 @@ export default function SettingsPage() {
   );
 }
 
-async function DemoAccountCard() {
+async function AccountCard() {
   const viewer = await requireViewer();
-  if (viewer.kind !== "demo") return null;
+  if (viewer.kind === "demo") return <DemoAccountCard viewer={viewer} />;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-fg">Threads account</CardTitle>
+        {!viewer.connected && <Badge variant="negative">Disconnected</Badge>}
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-center gap-4">
+        <Avatar name={viewer.profile.name} hue={viewer.profile.avatarHue} />
+        <div className="min-w-0">
+          <p className="truncate font-medium">{viewer.profile.name}</p>
+          <p className="truncate text-sm text-subtle">@{viewer.profile.username}</p>
+        </div>
+        <form action={signOutAction} className="ml-auto">
+          <Button type="submit" variant="ghost" size="sm">
+            <LogOut /> Sign out
+          </Button>
+        </form>
+      </CardContent>
+      <CardContent className="flex flex-wrap items-center justify-between gap-3 border-border border-t pt-4">
+        <p className="text-muted text-sm">
+          {viewer.lastSyncedAt
+            ? `Last synced ${timeAgo(viewer.lastSyncedAt.toISOString(), viewer.now)} ago. Threaded refreshes every morning.`
+            : "Your first sync hasn't finished yet."}
+        </p>
+        {viewer.connected && <SyncNowButton />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DemoAccountCard({ viewer }: { viewer: DemoViewer }) {
   return (
     <Card>
       <CardHeader>

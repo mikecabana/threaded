@@ -34,7 +34,7 @@ Everything below deploys to Vercel. Versions were current on npm in Oct 2026.
 | Motion | **Motion v14** (`motion/react`) | Layout and shared-element animations, gestures (drag-to-schedule, swipe deck), springs and scroll-linked effects. Load it with `LazyMotion` to keep the bundle small. |
 | AI | **AI SDK 7** (`ai`) + **Vercel AI Gateway** (`@ai-sdk/gateway`) | Models are plain strings. `createGateway({ apiKey })` makes BYOK a few lines of code. Also gives per-generation cost lookup, fallbacks and spend reports. See §5. |
 | Payments | **Stripe**: Checkout for credit top-ups, saved cards for auto-recharge, webhooks, Stripe Tax | Prepaid credits mean no surprise bills and no chasing failed payments. See §6. |
-| Database | **Neon Postgres** (Vercel Marketplace) + **Drizzle ORM** | Relational data, typed queries, and a transactional credit ledger. Neon branches can back each preview deployment. |
+| Database | **Neon Postgres** (Vercel Marketplace) + **Drizzle ORM** over node-postgres with `attachDatabasePool` | Relational data, typed queries, real transactions for the credit ledger, and the same driver against a local Postgres in tests. Neon branches can back each preview deployment. |
 | Cache / rate limit | **Upstash Redis** + `@upstash/ratelimit` (Marketplace) | Caches Threads API responses and the model catalog. Limits generations per user. Stores sync progress. |
 | Background jobs | **Vercel Workflow** (durable steps, `sleep` until a date) + **Vercel Cron** | Runs the initial sync, the daily refresh, and **scheduled publishing** (a workflow sleeps until the post time). A cron sweeper catches anything missed. (Inngest is a drop-in alternative.) |
 | Email | **Resend** | Alerts for failed scheduled posts, low balance and weekly digests. Stripe sends the receipts. |
@@ -77,7 +77,7 @@ Base URL: `https://graph.threads.net/v1.0`. Meta's docs site was blocked from my
 
 **Limits and gaps the design has to work around**
 - **The 500-character limit counts emojis by their UTF-8 bytes.** The composer's counter and the AI post-processor both use a `threadsLength()` helper that implements this rule, not `string.length`.
-- **No native scheduling.** We schedule it ourselves (§7).
+- **No native scheduling.** Checked again for 1e: the Threads publishing endpoints have no publish-time parameter (nothing like the Pages API's `scheduled_publish_time`), and Meta's docs leave timing to the app. A media container can't be parked as a draft either: it's meant to be published soon after creation, and an unpublished one expires ⚠. So we schedule it ourselves (§7). The workflow wakes shortly before the slot, re-checks `threads_publishing_limit`, creates the container, then publishes on time.
 - **No per-post follower attribution.** `followers_count` is a current total only. We **snapshot it daily** to build a growth history, and estimate which posts drove follows by correlating daily follower changes with that day's posts. The UI labels this as an *estimate*.
 - **No insights webhooks.** We poll with the daily cron, plus snapshots at +1h, +24h and +72h after we publish a post.
 - **Demographics** need at least 100 followers on creator and personal accounts ⚠. Hide that panel below the threshold.
@@ -289,17 +289,20 @@ Posts published through Threaded have a known `media_id`. For posts written else
 2. **Settle:** in one transaction, release the reservation, charge the actual amount and write the ledger rows.
 3. **Release:** on error, return the whole reservation.
 
+**Expiry:** credits arrive in **lots** (`credit_lots`, one per purchase or grant), each with its own expiry 12 months out. A settled charge draws on the soonest-expiring lot first, and the daily cron expires what's left of old lots (skipping a wallet while a generation is in flight). Invariant: the lots' remaining credits equal `balance + reserved`.
+
 **Buying credits:**
-- **Top-ups:** Stripe Checkout in one-time payment mode, with packs such as $5, $20 and $50. The `checkout.session.completed` webhook adds a `purchase` ledger row (idempotent on the event id). Stripe Tax handles VAT and sales tax.
-- **Auto-recharge (Phase 2):** the card is saved through Checkout `setup_future_usage`. When the balance drops below a threshold, an off-session PaymentIntent tops it up. If that fails, the user gets an email and an in-app banner.
+- **Top-ups:** hosted Stripe Checkout in one-time payment mode, packs of $5, $20 and $50 priced inline from `lib/pricing.ts`. The `checkout.session.completed` webhook **and** the return route (`/api/billing/return`) both fulfill the session: each re-reads it from Stripe and adds a `purchase` ledger row, idempotent on the session id. Stripe Tax is optional (`STRIPE_AUTOMATIC_TAX=1`).
+- **Auto-recharge:** "Add a card" is Checkout in setup mode; the card becomes the customer's default for invoices. When a charge leaves the balance under the threshold, a conditional UPDATE claims the workspace (so only one runs), and a Vercel Workflow run charges the card off-session through an invoice (create, add the pack, finalize, pay), so tax and receipts work like Checkout. Every Stripe call is keyed by the claim, so retries never charge twice. A decline turns auto-recharge off and shows an in-app banner (email comes with Resend). A 402 also starts a recharge.
 - **Trial:** about $1 of credits, granted once per **Threads account id**, which prevents farming new accounts for trials. That's enough for the onboarding analysis plus several Studio batches.
 
 ### BYOK
-- **Setup:** Settings → Billing → "Use my Vercel AI Gateway key". We validate it with `getCredits()` and show the user's Gateway balance.
-- **Storage:** encrypted with AES-256-GCM. Only the last 4 characters are ever displayed or logged.
-- **Errors:** an invalid key or an empty Gateway balance shows a clear inline message with a one-click switch back to credits.
+- **Setup:** Settings → Billing → "Use your own AI key". We validate it with `getCredits()` and show the user's Gateway balance.
+- **Pricing:** a **$5/month platform fee**, a Stripe subscription started through Checkout. The workspace runs on its key only while the plan is live (active, trialing or past due) **and** a key is saved. Subscription webhooks re-read the subscription from Stripe, so out-of-order events are harmless.
+- **Switching back** deletes the key and sets the plan to end with its period; adding a key before then resumes the same plan. When the plan ends for good, the key is deleted and an in-app notice explains the switch. Deleting the account cancels the plan immediately.
+- **Storage:** encrypted with AES-256-GCM, bound to the workspace. Only the last 4 characters are ever displayed or logged.
+- **Errors:** a rejected key or an empty Gateway balance shows a clear message in Studio with a one-click switch back to credits.
 - **Rate limits still apply,** to protect our infrastructure and the user's Threads API quota.
-- **Pricing for BYOK users is still open** (§14).
 
 ### Admin (`/admin`, role-gated)
 - Edit the catalog and markups
@@ -337,7 +340,7 @@ Posts published through Threaded have a known `media_id`. For posts written else
 ```
 -- tenancy
 users            id, threads_user_id (unique; login identity in MVP), email (asked in onboarding; Threads OAuth doesn't provide one), created_at
-workspaces       id, name, billing_mode (credits|byok), byok_key_enc, byok_key_last4, stripe_customer_id, auto_recharge jsonb, created_at
+workspaces       id, name, billing_mode (credits|byok), byok_key_enc, byok_key_last4, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, subscription_cancel_at_period_end, auto_recharge jsonb, auto_recharge_pending_at, billing_notice jsonb, created_at
 memberships      user_id, workspace_id, role (owner|member)
 threads_profiles id (threads user id), workspace_id, username, name, avatar_url, bio, is_verified, timezone, active_goal
 threads_tokens   profile_id, access_token_enc, expires_at, scopes[], last_refreshed_at
@@ -354,12 +357,13 @@ profile_dna      profile_id, version, data jsonb, model, generated_at
 -- AI
 model_catalog    model_id, label, provider, tier, tasks[], default_for[], markup, min_credits, input_price, output_price, enabled, synced_at
 user_settings    user_id, model_picks jsonb (per task), voice_prefs jsonb (emoji, casing, banned_words, spice_default)
-generations      id, profile_id, goal, model, prompt_version, steer jsonb, usage jsonb, gateway_generation_id, cost_usd, credits_charged, billing_mode, created_at
+generations      id, profile_id, goal, model, prompt_version, steer jsonb, usage jsonb, gateway_generation_id, cost_usd, credits_charged, billing_mode, status, dropped, error, created_at
 suggestions      id, generation_id, text, format, hook, rationale, goal_fit, best_slot, status (new|saved|dismissed|scheduled|posted), posted_media_id, perf_vs_baseline
 
 -- billing
 wallets          workspace_id, balance, reserved
-credit_ledger    id, workspace_id, delta, kind, ref, generation_id, stripe_event_id, created_at   unique(kind, ref)
+credit_ledger    id, workspace_id, delta, kind, ref, generation_id, expires_at, created_at   unique(kind, ref)
+credit_lots      id, workspace_id, ledger_id, amount, remaining, expires_at, created_at   ← spent soonest-expiring first
 
 -- publishing & jobs
 scheduled_posts  id, profile_id, suggestion_id, text, topic_tag, scheduled_for (utc), status (scheduled|publishing|published|failed|canceled), container_id, media_id, attempts, last_error, workflow_run_id
@@ -582,7 +586,8 @@ DATABASE_URL             # Neon (Marketplace injects)
 KV_REST_API_URL, KV_REST_API_TOKEN          # Upstash (Marketplace injects)
 AI_GATEWAY_API_KEY       # local only; production uses Vercel OIDC
 AI_DEFAULT_MODEL_*       # last-resort defaults if the catalog is empty
-STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
+STRIPE_AUTOMATIC_TAX     # 1 = Stripe Tax on top-ups, auto-recharge and the BYOK plan
 RESEND_API_KEY
 CRON_SECRET
 DEMO_MODE                # 1 on previews
@@ -597,8 +602,8 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | Phase | Scope | Exit criteria |
 |---|---|---|
 | **0: Setup** | Meta app (Threads use case, testers, callbacks); **submit App Review early for basic + insights + publish**; Vercel + Neon + Upstash + AI Gateway + Stripe (test) + Resend; scaffold, design tokens, motion primitives, demo fixtures; Terms + Privacy pages | Demo account renders the Home shell |
-| **1: MVP** | OAuth + workspaces; initial sync; deterministic stats; goal picker; Studio with streaming; **curated catalog + model picker**; **credits wallet** (trial, Checkout top-ups, reserve/settle); **BYOK**; **post now + schedule + Queue**; rate limits | A tester connects, buys credits (test mode), generates, and has a scheduled post publish on time |
-| **2: Intelligence + polish** | LLM classification + Profile DNA, The Read + DNA reveal choreography, Insights page, daily cron (snapshots, token refresh), scorecard, evals harness, **auto-recharge**, **admin margin dashboard**, **series via `reply_to_id`** | Daily loop runs unattended; margins visible per model |
+| **1: MVP** | OAuth + workspaces; initial sync; deterministic stats; goal picker; Studio with streaming; **curated catalog + model picker**; **credits wallet** (trial, Checkout top-ups, reserve/settle, auto-recharge, expiry); **BYOK** ($5/month plan); **post now + schedule + Queue**; rate limits | A tester connects, buys credits (test mode), generates, and has a scheduled post publish on time |
+| **2: Intelligence + polish** | LLM classification + Profile DNA, The Read + DNA reveal choreography, Insights page, daily cron (snapshots, token refresh), scorecard, evals harness, **admin margin dashboard**, **series via `reply_to_id`** | Daily loop runs unattended; margins visible per model |
 | **3: Grow** | Keyword-search trend radar, reply analysis, A/B variants, opt-in nightly "Today's plays", weekly digest email | |
 | **4: Agencies** | Multiple Threads profiles per workspace, team seats, email/Google login, optional subscription plans | |
 
@@ -637,6 +642,43 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Three demo personas with a seeded, always-current 60-day history
 - Analysis core: robust z-scores, goal scoring, outperformance, KPIs, best hour, Threads length rule
 - Drizzle schema for everything in §8, with the initial migration verified against Postgres 16
+
+## 17. Phase 1 progress
+
+**1a, accounts (done):**
+- Threads OAuth with a signed state cookie
+- Encrypted tokens (AES-256-GCM keyring, AAD-bound)
+- DB sessions storing only token hashes
+- Transactional account provisioning, with a trial granted once per Threads account
+- Meta uninstall and data-deletion callbacks, plus a deletion status page
+- The viewer is now either a demo or a real account
+
+**1b, sync (done):**
+- `initialSync` and `refreshSync` run as Vercel Workflow runs. Steps take only ids, so tokens and post text never enter the event log, and auth and rate-limit errors map to fatal or delayed retries.
+- The first sync starts at sign-in, and Home shows live progress.
+- A daily cron runs refreshes, and Settings has a throttled "Sync now".
+- Follower counts are snapshotted, never backdated.
+
+**1c, AI generation (done):**
+- A model catalog in the database, seeded with Claude Haiku/Sonnet/Opus 5.5. A nightly sync takes live prices from `gateway.getAvailableModels()` and disables models the Gateway drops. Markups are never overwritten.
+- Users pick a model per task; fallbacks stay within the same price tier. Every call sets `disallowPromptTraining`, matching the privacy policy.
+- The prompt is built from the author's own data: voice stats, their five best and three weakest posts for the goal, recent posts to avoid, best hours, and only insights the numbers support (prompt `generate.v1`).
+- Generations stream structured output into Studio. Post-processing enforces the Threads length rule and drops near-duplicates of past posts (character-trigram similarity ≥ 0.6).
+- Billing reserves the worst case, then charges the Gateway's reported cost × markup, and **only if at least one idea comes back**. Failures, cancellations and fully-dropped batches are refunded. The wallet is race-safe (tested with concurrent reserves and a settle racing a release).
+- Rate limit: 10 generations per 10 minutes per profile, counted in Postgres. Upstash isn't needed yet.
+- Studio: tone, format, count, model with a per-use estimate, ideas that write themselves in, save/dismiss, and saved ideas. Home's "Today's plays" shows real accounts' best recent ideas. The demo streams sample ideas for free.
+
+**1d, billing (done):**
+- Settings → Billing: balance with expiring-soon warning, credit packs, auto-recharge, own key, and an activity list. The header pill opens it; Studio's out-of-credits message links to it.
+- Stripe via hosted Checkout and the billing portal only, priced inline from `lib/pricing.ts`, so there's nothing to set up in the dashboard but the webhook and portal. Fulfillment re-reads every object from Stripe and runs from both the webhook and the return route; ledger refs make it idempotent.
+- Credits arrive in lots that expire 12 months after purchase, spent soonest-expiring first; the daily cron expires the rest. The migration backfills existing balances as one lot.
+- Auto-recharge saves a card with setup-mode Checkout, then a workflow run charges it off-session through an invoice when a charge (or a 402) leaves the balance under the threshold. One claim per workspace, Stripe idempotency keys per claim, and a decline turns it off with an in-app banner.
+- BYOK: keys are checked with `getCredits()`, stored encrypted and bound to the workspace; the $5/month plan is a Checkout subscription mirrored from webhooks. Switching back deletes the key and ends the plan with its period; a lapsed plan falls back to credits with a notice; Meta's data-deletion callback cancels the plan.
+- Studio shows actionable errors for a rejected key or an empty Gateway balance, with a one-click switch back to credits.
+- Tested against `e2e/mock-billing.mjs`, a stateful mock of the Stripe API, hosted Checkout, signed webhooks and the Gateway credits endpoint: integration tests for top-ups, webhooks, auto-recharge (paid and declined), lots and expiry, and the BYOK plan lifecycle; end-to-end tests that save a card and watch the recharge workflow top up, buy a pack, switch to a key and back, and show and dismiss a billing notice.
+- Not yet: emails for failed recharges and lapsed plans (needs Resend; planned with 1e's failure emails), the admin margin view (Phase 2), the "all Gateway models" toggle for BYOK users.
+
+**Next:** 1e publishing (composer, post now, scheduling, Queue).
 
 **Waiting on you** (see `docs/SETUP.md`):
 - Meta app and App Review submission

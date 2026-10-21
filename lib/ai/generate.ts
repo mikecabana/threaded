@@ -1,0 +1,261 @@
+import "server-only";
+import { randomUUID } from "node:crypto";
+import { createTextStreamResponse, Output, streamText, toTextStream } from "ai";
+import { and, count, eq, gte } from "drizzle-orm";
+import { maybeStartAutoRecharge } from "@/lib/billing/auto-recharge";
+import {
+  type Hold,
+  InsufficientCreditsError,
+  releaseCredits,
+  reserveCredits,
+  settleCredits,
+} from "@/lib/billing/wallet";
+import { loadProfileDataset } from "@/lib/data/dataset";
+import { db } from "@/lib/db";
+import { generations, suggestions, threadsProfiles, workspaces } from "@/lib/db/schema";
+import type { AccountIdentity } from "@/lib/session/identity";
+import { buildContext } from "./context";
+import { chargeCredits, costUsd, estimateTokens, maxCredits } from "./cost";
+import { type ByokFailure, byokFailure } from "./errors";
+import { isAiConfigured, type ResolvedModel, resolveModel } from "./models";
+import { postProcess } from "./postprocess";
+import { buildInstructions, buildPrompt, PROMPT_VERSION } from "./prompt";
+import { type GenerateRequest, type SuggestionBatch, suggestionBatchSchema } from "./schemas";
+
+export const RATE_LIMIT = { windowMs: 10 * 60_000, max: 10 };
+const OUTPUT_TOKENS_BASE = 300;
+const OUTPUT_TOKENS_PER_IDEA = 350;
+
+const json = (status: number, body: Record<string, unknown>) =>
+  Response.json(body, { status, headers: { "cache-control": "no-store" } });
+
+type Usage = { inputTokens?: number; outputTokens?: number } | undefined;
+
+type Outcome =
+  | { kind: "ok"; output: SuggestionBatch | undefined; usage: Usage; generationId: string | undefined }
+  | { kind: "failed"; error?: ByokFailure | null };
+
+/** What the call cost in USD: the Gateway's figure when available, else tokens × catalog price. */
+async function actualCostUsd(resolved: ResolvedModel, gatewayGenerationId: string | undefined, usage: Usage) {
+  if (resolved.gateway && gatewayGenerationId) {
+    try {
+      return (await resolved.gateway.getGenerationInfo({ id: gatewayGenerationId })).totalCost;
+    } catch (error) {
+      console.warn("Gateway cost lookup failed; using token pricing.", error);
+    }
+  }
+  return costUsd(resolved.entry, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0);
+}
+
+/**
+ * Runs one Studio generation and returns the streaming response. The response
+ * streams the model's JSON as it's written; it closes only after the batch has
+ * been post-processed, stored and billed, so the client can fetch the final
+ * suggestions (with ids) as soon as the stream ends.
+ *
+ * Billing: the worst-case cost is reserved up front, and the actual cost is
+ * charged only if at least one idea survives. Failures and cancellations are
+ * refunded in full.
+ */
+export async function startGeneration(input: {
+  identity: AccountIdentity;
+  request: GenerateRequest;
+  signal?: AbortSignal;
+  now?: Date;
+}): Promise<Response> {
+  const { identity, request } = input;
+  const now = input.now ?? new Date();
+
+  const [row] = await db()
+    .select({ workspace: workspaces, profile: threadsProfiles })
+    .from(threadsProfiles)
+    .innerJoin(workspaces, eq(workspaces.id, threadsProfiles.workspaceId))
+    .where(eq(threadsProfiles.id, identity.profileId));
+  if (!row) return json(404, { error: "profile_not_found" });
+
+  const [{ recent }] = await db()
+    .select({ recent: count() })
+    .from(generations)
+    .where(
+      and(
+        eq(generations.profileId, identity.profileId),
+        gte(generations.createdAt, new Date(now.getTime() - RATE_LIMIT.windowMs)),
+      ),
+    );
+  if (recent >= RATE_LIMIT.max) return json(429, { error: "rate_limited" });
+
+  const { workspace, profile } = row;
+  const ownKey = workspace.billingMode === "byok" && workspace.byokKeyEnc !== null;
+  if (!ownKey && !isAiConfigured()) return json(503, { error: "ai_unavailable" });
+  const resolved = await resolveModel({ task: "generate", workspace, requestedModelId: request.modelId });
+  const threadsProfile = {
+    id: profile.id,
+    username: profile.username,
+    name: profile.name ?? profile.username,
+    biography: profile.biography ?? "",
+    profilePictureUrl: profile.profilePictureUrl,
+    isVerified: profile.isVerified,
+  };
+  const dataset = await loadProfileDataset(threadsProfile, now);
+  const context = buildContext({
+    goal: request.goal,
+    profile: threadsProfile,
+    posts: dataset.posts,
+    timeZone: profile.timezone,
+    now,
+  });
+  const instructions = buildInstructions(request);
+  const prompt = buildPrompt(request, context);
+  const maxOutputTokens = OUTPUT_TOKENS_BASE + OUTPUT_TOKENS_PER_IDEA * request.count;
+
+  const generationId = randomUUID();
+  await db().insert(generations).values({
+    id: generationId,
+    profileId: profile.id,
+    userId: identity.userId,
+    goal: request.goal,
+    model: resolved.entry.modelId,
+    promptVersion: PROMPT_VERSION,
+    steer: request,
+    billingMode: resolved.billing,
+  });
+
+  let hold: Hold | null = null;
+  if (resolved.billing === "credits") {
+    try {
+      const needed = maxCredits(resolved.entry, estimateTokens(instructions + prompt), maxOutputTokens);
+      hold = await reserveCredits(workspace.id, needed, generationId);
+    } catch (error) {
+      await db().update(generations).set({ status: "failed" }).where(eq(generations.id, generationId));
+      if (error instanceof InsufficientCreditsError) {
+        // With auto-recharge on, a top-up starts now so the next try works.
+        const recharging = await maybeStartAutoRecharge(workspace.id);
+        return json(402, { error: "insufficient_credits", needed: error.needed, balance: error.balance, recharging });
+      }
+      throw error;
+    }
+  }
+
+  const pastPosts = dataset.posts.map((p) => p.text);
+  let settled = false;
+  let markDone!: () => void;
+  const done = new Promise<void>((resolve) => {
+    markDone = resolve;
+  });
+
+  async function finish(outcome: Outcome) {
+    if (settled) return;
+    settled = true;
+    try {
+      const processed =
+        outcome.kind === "ok" && outcome.output
+          ? postProcess(outcome.output.suggestions, pastPosts, request.count)
+          : null;
+      if (!processed || processed.kept.length === 0) {
+        await db()
+          .update(generations)
+          .set({
+            status: processed ? "done" : "failed",
+            dropped: processed?.dropped.length ?? 0,
+            error: outcome.kind === "failed" ? (outcome.error ?? null) : null,
+          })
+          .where(eq(generations.id, generationId));
+        if (hold) await releaseCredits(hold);
+        return;
+      }
+      const ok = outcome as Extract<Outcome, { kind: "ok" }>;
+      const cost = await actualCostUsd(resolved, ok.generationId, ok.usage);
+      const charged = hold ? chargeCredits(resolved.entry, cost, hold.amount) : 0;
+      await db()
+        .insert(suggestions)
+        .values(
+          processed.kept.map((s) => ({
+            generationId,
+            text: s.text,
+            format: s.format,
+            hook: s.hook,
+            rationale: s.rationale,
+            goalFit: s.goalFit,
+            bestSlot: s.bestSlot,
+          })),
+        );
+      await db()
+        .update(generations)
+        .set({
+          status: "done",
+          dropped: processed.dropped.length,
+          usage: ok.usage ?? null,
+          gatewayGenerationId: ok.generationId ?? null,
+          costUsd: cost.toFixed(6),
+          creditsCharged: charged,
+        })
+        .where(eq(generations.id, generationId));
+      if (hold) {
+        await settleCredits(hold, charged);
+        await maybeStartAutoRecharge(workspace.id);
+      }
+    } catch (error) {
+      console.error(`Finishing generation ${generationId} failed`, error);
+      await db()
+        .update(generations)
+        .set({ status: "failed" })
+        .where(eq(generations.id, generationId))
+        .catch(() => {});
+      if (hold) await releaseCredits(hold).catch(() => {});
+    } finally {
+      markDone();
+    }
+  }
+
+  const result = streamText({
+    model: resolved.model,
+    instructions,
+    prompt,
+    output: Output.object({ schema: suggestionBatchSchema }),
+    maxOutputTokens,
+    providerOptions: resolved.providerOptions,
+    abortSignal: input.signal,
+    onEnd: async (event) => {
+      const gateway = event.providerMetadata?.gateway as { generationId?: string } | undefined;
+      await finish({
+        kind: "ok",
+        output: event.output as SuggestionBatch | undefined,
+        usage: event.totalUsage as Usage,
+        generationId: gateway?.generationId,
+      });
+    },
+    onError: async ({ error }) => {
+      console.error(`Generation ${generationId} failed`, error);
+      await finish({ kind: "failed", error: resolved.billing === "byok" ? byokFailure(error) : null });
+    },
+    onAbort: async () => {
+      await finish({ kind: "failed" });
+    },
+  });
+
+  const text = toTextStream({ stream: result.stream });
+  const body = new ReadableStream<string>({
+    async start(controller) {
+      const reader = text.getReader();
+      try {
+        for (;;) {
+          const { done: finished, value } = await reader.read();
+          if (finished) break;
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        await finish({ kind: "failed" });
+        controller.error(error);
+        return;
+      }
+      // Hold the response open until the batch is stored and billed.
+      await done;
+      controller.close();
+    },
+  });
+
+  return createTextStreamResponse({
+    stream: body,
+    headers: { "x-generation-id": generationId, "cache-control": "no-store" },
+  });
+}

@@ -14,7 +14,7 @@ test.describe("demo flow", () => {
     await expect(page).toHaveURL("/home");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Maya");
     await expect(page.getByText("Demo account", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Key metrics").locator("> div")).toHaveCount(4);
+    await expect(page.getByRole("main").getByLabel("Key metrics").locator("> div")).toHaveCount(4);
     await expect(page.getByRole("heading", { name: "Today's plays" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy" })).toHaveCount(3);
   });
@@ -27,12 +27,12 @@ test.describe("demo flow", () => {
 
     await page.getByRole("radio", { name: "Views" }).check({ force: true });
     await expect(page.locator("html")).toHaveAttribute("data-goal", "views");
-    await expect(page.getByLabel("Key metrics").getByText("Views (7d)").first()).toBeVisible();
+    await expect(page.getByRole("main").getByLabel("Key metrics").getByText("Views (7d)").first()).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 }).locator("..")).toContainText("more views");
 
     // Cards that changed with the goal must animate in, not stay at their hidden start state.
     // (toBeVisible() counts opacity: 0 as visible, so check the computed opacity.)
-    const tiles = page.getByLabel("Key metrics").locator("> div");
+    const tiles = page.getByRole("main").getByLabel("Key metrics").locator("> div");
     const plays = page.getByRole("region", { name: "Today's plays" }).locator("> div").nth(1).locator("> div");
     for (let i = 0; i < 4; i++) await expect(tiles.nth(i)).toHaveCSS("opacity", "1");
     for (let i = 0; i < 3; i++) await expect(plays.nth(i)).toHaveCSS("opacity", "1");
@@ -57,7 +57,7 @@ test.describe("demo flow", () => {
     await expect(page).toHaveURL("/");
   });
 
-  test("coming-soon sections render inside the shell", async ({ page }) => {
+  test("every section renders inside the shell", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "Try a demo account" }).first().click();
     await expect(page).toHaveURL("/home");
@@ -66,6 +66,7 @@ test.describe("demo flow", () => {
       ["/queue", "Queue"],
       ["/insights", "Insights"],
       ["/settings", "Settings"],
+      ["/settings/billing", "Billing"],
     ]) {
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();

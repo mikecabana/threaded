@@ -20,6 +20,7 @@ export function PostPreview({
   insights,
   className,
   clamp,
+  trailing,
   children,
 }: {
   author: PostAuthor;
@@ -30,6 +31,8 @@ export function PostPreview({
   className?: string;
   /** Limit to N lines (2–4). */
   clamp?: 2 | 3 | 4;
+  /** Inline content after the text, e.g. a streaming caret. */
+  trailing?: ReactNode;
   children?: ReactNode;
 }) {
   return (
@@ -51,6 +54,7 @@ export function PostPreview({
         >
           {/* Blank lines waste clamped space, so collapse them in short previews. */}
           {clamp ? text.replace(/\n{2,}/g, "\n") : text}
+          {trailing}
         </p>
         {insights && (
           <dl className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-subtle text-xs">

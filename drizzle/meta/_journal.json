@@ -8,6 +8,27 @@
       "when": 1792526392014,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792527793880,
+      "tag": "0001_deletion_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792532253692,
+      "tag": "0002_generation_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792536503609,
+      "tag": "0003_billing",
+      "breakpoints": true
     }
   ]
 }

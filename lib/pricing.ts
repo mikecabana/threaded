@@ -16,6 +16,15 @@ export const CREDIT_PACKS = [
   { id: "pack_50", usd: 50, credits: 5000 },
 ] as const;
 
+export type CreditPack = (typeof CREDIT_PACKS)[number];
+
+export function packById(id: string | null | undefined): CreditPack | undefined {
+  return CREDIT_PACKS.find((pack) => pack.id === id);
+}
+
+/** Auto-recharge tops up when the balance drops below one of these. */
+export const RECHARGE_THRESHOLDS = [50, 100, 200, 500] as const;
+
 /** Monthly platform fee for workspaces that bring their own AI Gateway key. */
 export const BYOK_PLATFORM_FEE_USD = 5;
 

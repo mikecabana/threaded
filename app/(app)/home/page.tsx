@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { FirstSync, NoPlaysYet } from "@/components/home/empty-states";
 import { KpiTile } from "@/components/home/kpi-tile";
 import { PlayCard } from "@/components/home/play-card";
 import { BestTimeCard, TopPostsCard, UpNextCard } from "@/components/home/side-cards";
@@ -8,8 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { bestTimeToPost, buildKpis, topPosts } from "@/lib/analysis/summary";
 import { zonedParts } from "@/lib/analysis/time";
-import { GOAL_META } from "@/lib/goals";
+import { listSuggestions } from "@/lib/data/suggestions";
+import { GOAL_META, type Goal } from "@/lib/goals";
 import { requireViewer } from "@/lib/session/viewer";
+import { toSyncStatus } from "@/lib/sync/status";
+import { latestSyncRun } from "@/lib/sync/sync";
 
 export const metadata: Metadata = { title: "Home" };
 
@@ -21,6 +25,14 @@ export default function HomePage() {
   );
 }
 
+/** The best recent ideas for the goal: saved ones first, then by goal fit. */
+async function accountPlays(profileId: string, goal: Goal) {
+  const recent = await listSuggestions(profileId, { statuses: ["saved", "new"], goal, sinceDays: 7, limit: 20 });
+  return recent
+    .sort((a, b) => Number(b.status === "saved") - Number(a.status === "saved") || b.goalFit - a.goalFit)
+    .slice(0, 3);
+}
+
 function greeting(hour: number): string {
   if (hour < 5) return "Up late";
   if (hour < 12) return "Good morning";
@@ -30,14 +42,21 @@ function greeting(hour: number): string {
 
 async function HomeContent() {
   const viewer = await requireViewer();
-  const { persona, data, goal, now, timezone } = viewer;
-  const author = { ...persona.profile, avatarHue: persona.avatarHue };
+  const { profile, data, goal, now, timezone } = viewer;
+  const author = profile;
+  const firstName = profile.name.split(" ")[0];
+  if (data.posts.length === 0) {
+    const run = viewer.kind === "account" ? await latestSyncRun(profile.id) : null;
+    return <FirstSync firstName={firstName} sync={toSyncStatus(run)} />;
+  }
+
   const kpis = buildKpis(goal, data.posts, data.days, now);
   const best = bestTimeToPost(goal, data.posts, timezone, now);
   const top = topPosts(goal, data.posts, now);
-  const firstName = persona.profile.name.split(" ")[0];
+  const plays = viewer.kind === "demo" ? viewer.persona.suggestions[goal] : await accountPlays(profile.id, goal);
+  const upNext = viewer.kind === "demo" ? viewer.persona.upNext : null;
   // Remount the staggered groups when what they show changes, so new items animate in.
-  const revealKey = `${persona.id}:${goal}`;
+  const revealKey = `${profile.id}:${goal}`;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -67,22 +86,28 @@ async function HomeContent() {
             </h2>
             {viewer.kind === "demo" && <Badge>Sample</Badge>}
           </div>
-          <Stagger key={`plays:${revealKey}`} className="grid gap-4" delay={0.15}>
-            {persona.suggestions[goal].map((play) => (
-              <StaggerItem key={play.text}>
-                <PlayCard author={author} play={play} />
-              </StaggerItem>
-            ))}
-          </Stagger>
+          {plays.length > 0 ? (
+            <Stagger key={`plays:${revealKey}`} className="grid gap-4" delay={0.15}>
+              {plays.map((play) => (
+                <StaggerItem key={play.text}>
+                  <PlayCard author={author} play={play} />
+                </StaggerItem>
+              ))}
+            </Stagger>
+          ) : (
+            <NoPlaysYet goal={goal} />
+          )}
         </section>
 
         <Stagger key={`side:${revealKey}`} className="flex flex-col gap-4" delay={0.25}>
           <StaggerItem>
             <BestTimeCard best={best} goal={goal} now={now} />
           </StaggerItem>
-          <StaggerItem>
-            <UpNextCard author={author} post={persona.upNext} />
-          </StaggerItem>
+          {upNext && (
+            <StaggerItem>
+              <UpNextCard author={author} post={upNext} />
+            </StaggerItem>
+          )}
           <StaggerItem>
             <TopPostsCard author={author} posts={top} goal={goal} now={now} />
           </StaggerItem>
