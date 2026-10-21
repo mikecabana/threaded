@@ -5,12 +5,13 @@ import { safeEqual } from "@/lib/crypto/sign";
 import { db } from "@/lib/db";
 import { threadsTokens } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { sweepPublishing } from "@/lib/publishing/publish";
 import { startSync } from "@/lib/sync/trigger";
 
 /**
  * Vercel Cron (vercel.json, 06:00 UTC): refreshes model prices from the AI
- * Gateway, expires credits past their date, then starts a sync for every
- * connected profile. Each sync is its
+ * Gateway, expires credits past their date, sweeps the publishing queue, then
+ * starts a sync for every connected profile. Each sync is its
  * own durable workflow run, so one slow or failing account doesn't hold up
  * the rest.
  */
@@ -32,6 +33,8 @@ export async function GET(request: Request) {
     console.error("Credit expiry failed", error);
     return null;
   });
+  // The publish sweeper also runs every 5 minutes (/api/cron/publish); this covers plans with daily crons only.
+  await sweepPublishing().catch((error) => console.error("Publish sweep failed", error));
 
   const profiles = await db().select({ profileId: threadsTokens.profileId }).from(threadsTokens);
   let started = 0;

@@ -5,10 +5,10 @@ your audience rewards and writes post ideas in your voice, aimed at **more
 followers**, **more views** or **more engagement**. You can post or schedule
 them without leaving the app.
 
-**Status:** Phase 1, milestones 1a–1d done: Threads sign-in and sync, AI post
-ideas in Studio, and billing (credit packs, auto-recharge, or your own AI
-Gateway key). Publishing and scheduling (1e) are next. Three demo accounts work
-with no setup. See [`docs/PLAN.md`](docs/PLAN.md).
+**Status:** Phase 1 is feature-complete: Threads sign-in and sync, AI post
+ideas in Studio, billing (credit packs, auto-recharge, or your own AI Gateway
+key), and posting or scheduling straight to Threads from a Queue. Three demo
+accounts work with no setup. See [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Quick start
 

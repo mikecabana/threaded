@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowUpRight, Bookmark, BookmarkCheck, Clock, X } from "lucide-react";
+import { ArrowUpRight, Bookmark, BookmarkCheck, CalendarClock, Check, Clock, Send, X } from "lucide-react";
 import { m } from "motion/react";
+import Link from "next/link";
 import { CopyButton } from "@/components/app/copy-button";
 import { GoalFitRing } from "@/components/goal/goal-fit-ring";
 import { revealSpring } from "@/components/motion/springs";
@@ -34,15 +35,21 @@ export function IdeaCard({
   idea,
   streaming,
   saved,
+  queued,
   onToggleSave,
   onDismiss,
+  onCompose,
 }: {
   author: PostAuthor;
   idea: IdeaView;
   streaming: boolean;
   saved?: boolean;
+  /** Set once the idea is in the queue (or already posted). */
+  queued?: "scheduled" | "posted";
   onToggleSave?: () => void;
   onDismiss?: () => void;
+  /** Opens the composer; without it the card offers "Open in Threads" instead. */
+  onCompose?: (mode: "schedule" | "now") => void;
 }) {
   const text = idea.text ?? "";
   const length = threadsLength(text);
@@ -121,13 +128,33 @@ export function IdeaCard({
             transition={revealSpring}
           >
             <CopyButton text={text} />
-            <Button asChild variant="outline" size="sm">
-              <a href={threadsIntentUrl(text)} target="_blank" rel="noopener noreferrer">
-                Open in Threads
-                <ArrowUpRight />
-              </a>
-            </Button>
-            {onToggleSave && (
+            {!onCompose && (
+              <Button asChild variant="outline" size="sm">
+                <a href={threadsIntentUrl(text)} target="_blank" rel="noopener noreferrer">
+                  Open in Threads
+                  <ArrowUpRight />
+                </a>
+              </Button>
+            )}
+            {queued ? (
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/queue">
+                  <Check /> {queued === "posted" ? "Posted" : "In your queue"}
+                </Link>
+              </Button>
+            ) : (
+              onCompose && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => onCompose("schedule")}>
+                    <CalendarClock /> Schedule
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => onCompose("now")}>
+                    <Send /> Post now
+                  </Button>
+                </>
+              )
+            )}
+            {onToggleSave && !queued && (
               <Button variant={saved ? "secondary" : "outline"} size="sm" onClick={onToggleSave} aria-pressed={saved}>
                 {saved ? <BookmarkCheck /> : <Bookmark />}
                 {saved ? "Saved" : "Save"}

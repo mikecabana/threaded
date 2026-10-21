@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { shown } from "./helpers";
 
 test("demo Studio streams sample ideas for free", async ({ page }) => {
   await page.goto("/");
@@ -7,7 +8,7 @@ test("demo Studio streams sample ideas for free", async ({ page }) => {
   await page.goto("/studio");
 
   await expect(page.getByRole("heading", { level: 1, name: "Studio" })).toBeVisible();
-  await expect(page.getByText("Writing for")).toBeVisible();
+  await expect(shown(page.getByText("Writing for"))).toBeVisible();
   await page.getByRole("button", { name: /Generate/ }).click();
 
   const ideas = page

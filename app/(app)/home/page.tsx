@@ -1,17 +1,22 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { composerConfig } from "@/components/composer/config";
+import { ComposerProvider } from "@/components/composer/provider";
 import { FirstSync, NoPlaysYet } from "@/components/home/empty-states";
 import { KpiTile } from "@/components/home/kpi-tile";
 import { PlayCard } from "@/components/home/play-card";
-import { BestTimeCard, TopPostsCard, UpNextCard } from "@/components/home/side-cards";
+import { BestTimeCard, demoSlotLabel, TopPostsCard, UpNextCard } from "@/components/home/side-cards";
 import { Reveal, Stagger, StaggerItem } from "@/components/motion/reveal";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { bestTimeToPost, buildKpis, topPosts } from "@/lib/analysis/summary";
 import { zonedParts } from "@/lib/analysis/time";
 import { listSuggestions } from "@/lib/data/suggestions";
+import type { DemoSuggestion } from "@/lib/demo/personas";
 import { GOAL_META, type Goal } from "@/lib/goals";
-import { requireViewer } from "@/lib/session/viewer";
+import { nextScheduledPost } from "@/lib/publishing/posts";
+import { slotLabel } from "@/lib/publishing/slots";
+import { requireViewer, type Viewer } from "@/lib/session/viewer";
 import { toSyncStatus } from "@/lib/sync/status";
 import { latestSyncRun } from "@/lib/sync/sync";
 
@@ -53,12 +58,16 @@ async function HomeContent() {
   const kpis = buildKpis(goal, data.posts, data.days, now);
   const best = bestTimeToPost(goal, data.posts, timezone, now);
   const top = topPosts(goal, data.posts, now);
-  const plays = viewer.kind === "demo" ? viewer.persona.suggestions[goal] : await accountPlays(profile.id, goal);
-  const upNext = viewer.kind === "demo" ? viewer.persona.upNext : null;
+  // Account ideas carry an id, so they can be scheduled; the demo's samples can't.
+  const plays: { play: DemoSuggestion; id?: string }[] =
+    viewer.kind === "demo"
+      ? viewer.persona.suggestions[goal].map((play) => ({ play }))
+      : (await accountPlays(profile.id, goal)).map((play) => ({ play, id: play.id }));
+  const upNext = await upNextFor(viewer);
   // Remount the staggered groups when what they show changes, so new items animate in.
   const revealKey = `${profile.id}:${goal}`;
 
-  return (
+  const content = (
     <div className="mx-auto max-w-6xl">
       <Reveal className="mb-6">
         <h1 className="font-semibold text-2xl tracking-tight sm:text-3xl">
@@ -88,9 +97,9 @@ async function HomeContent() {
           </div>
           {plays.length > 0 ? (
             <Stagger key={`plays:${revealKey}`} className="grid gap-4" delay={0.15}>
-              {plays.map((play) => (
+              {plays.map(({ play, id }) => (
                 <StaggerItem key={play.text}>
-                  <PlayCard author={author} play={play} />
+                  <PlayCard author={author} play={play} suggestionId={id} />
                 </StaggerItem>
               ))}
             </Stagger>
@@ -105,7 +114,7 @@ async function HomeContent() {
           </StaggerItem>
           {upNext && (
             <StaggerItem>
-              <UpNextCard author={author} post={upNext} />
+              <UpNextCard author={author} post={upNext} now={now} />
             </StaggerItem>
           )}
           <StaggerItem>
@@ -115,6 +124,23 @@ async function HomeContent() {
       </div>
     </div>
   );
+  const composer = viewer.kind === "account" ? composerConfig(viewer) : null;
+  return composer ? <ComposerProvider config={composer}>{content}</ComposerProvider> : content;
+}
+
+/** The next post going out: the account's soonest scheduled post, or the demo's sample. */
+async function upNextFor(viewer: Viewer) {
+  if (viewer.kind === "demo") {
+    const { upNext } = viewer.persona;
+    return { text: upNext.text, label: demoSlotLabel(upNext) };
+  }
+  const next = await nextScheduledPost(viewer.profile.id, viewer.now);
+  if (!next) return null;
+  return {
+    text: next.text,
+    label: slotLabel(next.scheduledFor, viewer.timezone, viewer.now),
+    startsAt: next.scheduledFor.toISOString(),
+  };
 }
 
 function HomeSkeleton() {

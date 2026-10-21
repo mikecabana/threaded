@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { shown } from "./helpers";
 
 test.describe("demo flow", () => {
   test("app routes need a session", async ({ page }) => {
@@ -13,7 +14,7 @@ test.describe("demo flow", () => {
 
     await expect(page).toHaveURL("/home");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Maya");
-    await expect(page.getByText("Demo account", { exact: true })).toBeVisible();
+    await expect(shown(page.getByText("Demo account", { exact: true }))).toBeVisible();
     await expect(page.getByRole("main").getByLabel("Key metrics").locator("> div")).toHaveCount(4);
     await expect(page.getByRole("heading", { name: "Today's plays" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy" })).toHaveCount(3);

@@ -409,14 +409,28 @@ export const scheduledPosts = pgTable(
     replyToScheduledId: uuid("reply_to_scheduled_id"),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
     status: scheduledStatusEnum("status").notNull().default("scheduled"),
+    /**
+     * Bumped on every edit, reschedule, cancel or retry. Each publish run
+     * carries the version it was started for and stops if it no longer matches,
+     * so a superseded run that wakes up later never posts.
+     */
+    version: integer("version").notNull().default(0),
     containerId: text("container_id"),
     mediaId: text("media_id"),
+    permalink: text("permalink"),
     attempts: integer("attempts").notNull().default(0),
+    /** Shown to the user, so written for them. */
     lastError: text("last_error"),
     workflowRunId: text("workflow_run_id"),
+    /** When a run claimed the post for publishing (status "publishing"). */
+    publishingAt: timestamp("publishing_at", { withTimezone: true }),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("scheduled_posts_due_idx").on(t.status, t.scheduledFor)],
+  (t) => [
+    index("scheduled_posts_due_idx").on(t.status, t.scheduledFor),
+    index("scheduled_posts_profile_idx").on(t.profileId, t.scheduledFor),
+  ],
 );
 
 /** Meta data-deletion callbacks; the code is shown on the public status page. */

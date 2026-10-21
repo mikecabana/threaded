@@ -58,6 +58,8 @@ const insightsSchema = z.object({ data: z.array(metricSchema) });
 
 const idSchema = z.object({ id: z.string() });
 
+const mediaSchema = z.object({ id: z.string(), permalink: z.string().nullish(), timestamp: z.string().nullish() });
+
 const containerStatusSchema = z.object({
   id: z.string(),
   status: z.enum(["IN_PROGRESS", "FINISHED", "PUBLISHED", "ERROR", "EXPIRED"]),
@@ -259,6 +261,12 @@ export function createThreadsClient({
     async getContainerStatus(containerId: string): Promise<ContainerStatus> {
       const s = await call("GET", `/${containerId}`, { fields: "id,status,error_message" }, containerStatusSchema);
       return { id: s.id, status: s.status, errorMessage: s.error_message ?? null };
+    },
+
+    /** A published post's link and time. */
+    async getPost(mediaId: string): Promise<{ id: string; permalink: string | null; timestamp: string | null }> {
+      const p = await call("GET", `/${mediaId}`, { fields: "id,permalink,timestamp" }, mediaSchema);
+      return { id: p.id, permalink: p.permalink ?? null, timestamp: p.timestamp ?? null };
     },
 
     /** Step 2 of publishing. Returns the published media id. */
