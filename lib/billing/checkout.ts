@@ -7,7 +7,7 @@ import { BYOK_PLATFORM_FEE_USD, type CreditPack, CURRENCY, packById } from "@/li
 import { maybeStartAutoRecharge } from "./auto-recharge";
 import { automaticTax, ensureCustomer, stripe } from "./stripe";
 import { syncSubscription } from "./subscription";
-import { creditExpiry, grantCredits } from "./wallet";
+import { grantCredits } from "./wallet";
 
 // Hosted Checkout for everything a customer pays for: credit packs, the BYOK
 // plan, and saving a card for auto-recharge. Each session's metadata says what
@@ -163,10 +163,7 @@ async function fulfillTopUp(session: Stripe.Checkout.Session, workspaceId: strin
     return { kind: "ignored" };
   }
   await db().transaction(async (tx) => {
-    const granted = await grantCredits(
-      { workspaceId, amount: pack.credits, kind: "purchase", ref: session.id, expiresAt: creditExpiry(new Date()) },
-      tx,
-    );
+    const granted = await grantCredits({ workspaceId, amount: pack.credits, kind: "purchase", ref: session.id }, tx);
     // A successful top-up clears a failed auto-recharge notice.
     if (granted) await tx.update(workspaces).set({ billingNotice: null }).where(eq(workspaces.id, workspaceId));
   });

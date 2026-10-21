@@ -5,7 +5,7 @@ import { db, type Tx } from "@/lib/db";
 import { type AutoRechargeSettings, wallets, workspaces } from "@/lib/db/schema";
 import { CURRENCY, packById } from "@/lib/pricing";
 import { automaticTax, isCardError, needsTaxAddress, stripe } from "./stripe";
-import { creditExpiry, grantCredits } from "./wallet";
+import { grantCredits } from "./wallet";
 
 // Auto-recharge: when a charge leaves the balance under the workspace's
 // threshold, buy its chosen pack with the saved card. Off-session charges go
@@ -168,10 +168,7 @@ export async function runAutoRecharge(workspaceId: string, attemptAt: string): P
 async function grantRecharge(invoice: Stripe.Invoice, workspaceId: string, tx?: Tx) {
   const pack = packById(invoice.metadata?.packId);
   if (!pack) return false;
-  return grantCredits(
-    { workspaceId, amount: pack.credits, kind: "purchase", ref: invoice.id, expiresAt: creditExpiry(new Date()) },
-    tx,
-  );
+  return grantCredits({ workspaceId, amount: pack.credits, kind: "purchase", ref: invoice.id }, tx);
 }
 
 /** invoice.paid webhook: credits a recharge whose run didn't get to (e.g. it crashed after paying). */

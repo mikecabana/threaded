@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/marketing/legal-page";
-import { BYOK_PLATFORM_FEE_USD, CREDIT_EXPIRY_MONTHS, TRIAL_CREDITS } from "@/lib/pricing";
+import { BYOK_PLATFORM_FEE_USD, TRIAL_CREDITS } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 
 export const metadata: Metadata = { title: "Terms of Service" };
@@ -45,9 +45,7 @@ export default function TermsPage() {
             AI features are paid per use with prepaid credits. The price of each action is shown before you run it.
           </li>
           <li>New accounts receive {TRIAL_CREDITS} free trial credits, once per Threads account.</li>
-          <li>
-            Purchased credits expire {CREDIT_EXPIRY_MONTHS} months after purchase. Trial credits may expire sooner.
-          </li>
+          <li>Credits, purchased or free, never expire.</li>
           <li>
             Credits aren't refundable or exchangeable for cash, except where the law requires otherwise. If a generation
             fails on our side, its credits are returned automatically.

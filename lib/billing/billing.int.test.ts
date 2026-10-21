@@ -77,8 +77,6 @@ describe("credit top-ups", () => {
 
     const [lot] = await db().select().from(creditLots).where(eq(creditLots.workspaceId, workspaceId));
     expect(lot).toMatchObject({ amount: 500, remaining: 500 });
-    const months = ((lot.expiresAt as Date).getTime() - Date.now()) / (30.4 * 86_400_000);
-    expect(Math.round(months)).toBe(12);
   });
 
   it("asks Stripe for French receipts when the browser prefers French", async () => {

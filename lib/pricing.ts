@@ -35,9 +35,6 @@ export const RECHARGE_THRESHOLDS = [50, 100, 200, 500] as const;
 /** Monthly platform fee for workspaces that bring their own AI Gateway key. */
 export const BYOK_PLATFORM_FEE_USD = 5;
 
-/** Purchased credits expire this many months after purchase. */
-export const CREDIT_EXPIRY_MONTHS = 12;
-
 export function creditsToUsd(credits: number): number {
   return Math.round(credits * CREDIT_USD * 100) / 100;
 }

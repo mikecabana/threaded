@@ -340,7 +340,7 @@ test("the daily cron refreshes connected profiles", async ({ request }) => {
   expect((await request.get("/api/cron/daily", { headers: { authorization: "Bearer nope" } })).status()).toBe(401);
 
   const response = await request.get("/api/cron/daily", { headers: { authorization: "Bearer test-cron-secret" } });
-  expect(await response.json()).toMatchObject({ profiles: 1, started: 1, expired: { workspaces: 0, credits: 0 } });
+  expect(await response.json()).toMatchObject({ profiles: 1, started: 1 });
 
   // The refresh runs as its own workflow; wait for it to land.
   const pool = new Pool({ connectionString: databaseUrl });

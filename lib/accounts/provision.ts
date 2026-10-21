@@ -1,6 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
-import { creditExpiry, grantCredits } from "@/lib/billing/wallet";
+import { grantCredits } from "@/lib/billing/wallet";
 import { encryptSecret } from "@/lib/crypto/secrets";
 import { sha256 } from "@/lib/crypto/sign";
 import { db, type Tx } from "@/lib/db";
@@ -138,7 +138,6 @@ async function grantTrialOnce(tx: Tx, workspaceId: string, threadsUserId: string
       amount: TRIAL_CREDITS,
       kind: "trial",
       ref: `trial:${sha256(threadsUserId)}`,
-      expiresAt: creditExpiry(new Date()),
     },
     tx,
   );

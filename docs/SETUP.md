@@ -68,7 +68,7 @@ If your machine already has a Chromium build, point Playwright at it with
    - Generate `SECRETS_ENC_KEY` and `SESSION_SECRET` with `openssl rand -base64 32`. Use **different values per environment**, and never rotate `SECRETS_ENC_KEY` without a re-encryption step, since it encrypts stored tokens.
    - Leave `THREADS_REDIRECT_URI` and `APP_URL` unset on Vercel: the production URL comes from Vercel (see [Domains and previews](#domains-and-preview-deployments)).
    - For previews, see the same section: `PREVIEW_ORIGINS`, their own database and secrets, or `DEMO_MODE=1` to keep them demo-only.
-   - Generate `CRON_SECRET` the same way. Vercel Cron sends it as a Bearer token to the two crons in `vercel.json`: `/api/cron/daily` (06:00 UTC: model prices, credit expiry, a refresh workflow per connected profile) and `/api/cron/publish` (every 5 minutes: the scheduled-post safety net).
+   - Generate `CRON_SECRET` the same way. Vercel Cron sends it as a Bearer token to the two crons in `vercel.json`: `/api/cron/daily` (06:00 UTC: model prices, the publish sweep, a refresh workflow per connected profile) and `/api/cron/publish` (every 5 minutes: the scheduled-post safety net).
    - The 5-minute cron needs a Vercel **Pro** plan; Hobby plans only allow daily crons and the deploy fails. On Hobby, delete that entry: the daily cron also runs the publish sweep, so missed posts are still rescued, just later.
    - Keep **Fluid compute** on (the default for new projects); Vercel Workflow needs it.
 6. The schema is applied on every deploy: `vercel.json` builds with `pnpm db:deploy && pnpm build`, and `db:deploy` runs the migrations in `drizzle/` against that deployment's database (the unpooled URL when Neon provides one). Keep migrations additive, since the previous deployment serves traffic until the new one is ready. `SKIP_MIGRATIONS=1` turns it off.
@@ -100,8 +100,8 @@ Threaded is run from Quebec, so the Stripe account is **Canadian**, but prices a
 are billed to us in USD, and Stripe shows customers abroad, Canadians included, a converted price at checkout
 (Adaptive Pricing is on for the account; Checkout Sessions still report their amounts in USD). Threaded uses hosted Checkout
 and the hosted billing portal, so there's no publishable key and no products to create: prices come from
-`lib/pricing.ts` (credit packs of $5/$20/$50, a $1 trial, a 1.5× default markup, a $5/month BYOK platform fee,
-and a 12-month credit expiry).
+`lib/pricing.ts` (credit packs of $5/$20/$50, a $1 trial, a 1.5× default markup and a $5/month BYOK platform
+fee). Credits never expire.
 
 1. Create the Stripe account with Canada as its country and work in a **sandbox** (test mode). Put the secret
    key in `STRIPE_SECRET_KEY`.
@@ -153,9 +153,7 @@ Create an account, verify your sending domain, and put the API key in `RESEND_AP
 ## 5. Before launch
 
 - [ ] Replace `SITE.contactEmail` in `lib/site.ts` with the real support address.
-- [ ] Have a Quebec lawyer review `/legal/terms` and `/legal/privacy`, then remove the draft banner in `components/marketing/legal-page.tsx`. Ask in particular about:
-  - **Credit expiry.** Quebec's Consumer Protection Act restricts expiry dates on prepaid cards and certificates. Do purchased credits count? If they do, change `CREDIT_EXPIRY_MONTHS` in `lib/pricing.ts`.
-  - **Online contracts and the $5/month plan:** the Act's rules for distance contracts (what to disclose before purchase, the confirmation afterwards) and for renewing plans.
+- [ ] Have a Quebec lawyer review `/legal/terms` and `/legal/privacy`, then remove the draft banner in `components/marketing/legal-page.tsx`. Ask in particular about Quebec's Consumer Protection Act: its rules for online (distance) contracts (what to disclose before purchase, the confirmation afterwards) and for the renewing $5/month plan.
 - [ ] **French** (Charter of the French Language, as amended by Bill 96): French versions of the site, app, Terms, Privacy and emails, planned as the launch phase in `docs/PLAN.md` §13. Confirm the exact scope with the lawyer. Stripe receipts and Checkout already switch to French.
 - [ ] **Privacy (Quebec's Law 25):**
   - Name the person in charge of protecting personal information, and publish their title and contact details on the site.

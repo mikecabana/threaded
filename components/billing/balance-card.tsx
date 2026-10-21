@@ -1,4 +1,4 @@
-import { Coins, Repeat, TriangleAlert } from "lucide-react";
+import { Coins, Repeat } from "lucide-react";
 import { CountUp } from "@/components/motion/count-up";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -9,17 +9,13 @@ export function BalanceCard({
   credits,
   mode,
   batchCredits,
-  expiring,
   autoRecharge,
-  formatDate,
 }: {
   credits: number;
   mode: "credits" | "byok";
   /** Typical credits for a batch of three ideas on the default model. */
   batchCredits: number;
-  expiring: { credits: number; at: Date } | null;
   autoRecharge: AutoRechargeSettings | null;
-  formatDate: (date: Date) => string;
 }) {
   const batches = Math.floor(credits / Math.max(1, batchCredits));
   const pack = autoRecharge?.enabled ? packById(autoRecharge.packId) : undefined;
@@ -57,15 +53,6 @@ export function BalanceCard({
           )}
         </div>
       </div>
-      {expiring && (
-        <p className="relative mt-5 flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2 text-sm">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
-          <span>
-            {expiring.credits.toLocaleString("en-US")} credits expire on {formatDate(expiring.at)}. Threaded always
-            spends the soonest-expiring credits first.
-          </span>
-        </p>
-      )}
     </Card>
   );
 }

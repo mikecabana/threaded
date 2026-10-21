@@ -15,7 +15,6 @@ import { TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS, typicalCredits } from "@/l
 import { DEFAULT_AUTO_RECHARGE } from "@/lib/billing/auto-recharge";
 import { isStripeConfigured, savedCard } from "@/lib/billing/stripe";
 import { billingActivity, billingOverview } from "@/lib/data/billing";
-import { CREDIT_EXPIRY_MONTHS } from "@/lib/pricing";
 import { type AccountViewer, requireViewer, type Viewer } from "@/lib/session/viewer";
 
 export const metadata: Metadata = { title: "Billing" };
@@ -57,14 +56,7 @@ async function BillingContent({ searchParams }: { searchParams: PageProps<"/sett
   if (viewer.kind === "demo") {
     return (
       <>
-        <BalanceCard
-          credits={viewer.credits}
-          mode="credits"
-          batchCredits={perBatch}
-          expiring={null}
-          autoRecharge={null}
-          formatDate={formatDate}
-        />
+        <BalanceCard credits={viewer.credits} mode="credits" batchCredits={perBatch} autoRecharge={null} />
         <CreditPacks
           batchCredits={perBatch}
           unavailable="This is a demo account. Connect your Threads account to buy credits; new accounts start with 100 free."
@@ -89,7 +81,7 @@ async function AccountBilling({
   const stripeReady = isStripeConfigured();
   const unavailable = stripeReady ? undefined : "Payments aren't set up on this deployment yet.";
   const [overview, activity] = await Promise.all([
-    billingOverview(viewer.workspaceId, viewer.now),
+    billingOverview(viewer.workspaceId),
     billingActivity(viewer.workspaceId),
   ]);
   const card = stripeReady
@@ -107,9 +99,7 @@ async function AccountBilling({
         credits={overview.balance}
         mode={overview.mode}
         batchCredits={perBatch}
-        expiring={overview.expiring}
         autoRecharge={overview.autoRecharge}
-        formatDate={formatDate}
       />
       <CreditPacks
         batchCredits={perBatch}
@@ -130,8 +120,7 @@ async function AccountBilling({
       <ActivityList items={activity} formatDate={formatDate} />
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-subtle">
         <p>
-          Credits expire {CREDIT_EXPIRY_MONTHS} months after purchase and aren't refundable except where the law
-          requires.{" "}
+          Credits never expire, and aren't refundable except where the law requires.{" "}
           <Link href="/legal/terms" className="underline underline-offset-2">
             Terms
           </Link>

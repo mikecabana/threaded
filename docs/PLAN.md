@@ -17,7 +17,7 @@ Implementation and UI/UX plan. Working name: **Threaded** (after the repo).
 | Who picks AI models? | **Each user**, from a curated list priced per use. Users can also **BYOK** (their own Vercel AI Gateway key) and pay Vercel directly. |
 | Do BYOK users pay us? | **Yes: a $5/month platform fee** covering sync, analytics and scheduling. |
 | Markup, packs, trial | **1.5× default markup** (per model in the catalog), packs of **$5 / $20 / $50**, **$1 trial** (100 credits) once per Threads account. |
-| Expiry and refunds | Purchased credits **expire 12 months** after purchase. **Not refundable** except where the law requires; failed generations are refunded automatically. (A Quebec lawyer checks the expiry before launch; see SETUP.md §5.) |
+| Expiry and refunds | Credits, purchased or free, **never expire**. **Not refundable** except where the law requires; failed generations are refunded automatically. |
 | Where is the business, and which currency? | **Quebec, Canada**, with a Canadian Stripe account. Prices stay in **USD** (AI costs are in USD); Stripe shows customers abroad a converted price at checkout. |
 | Sales tax? | **Stripe Tax**: GST/HST for Canada plus QST for Quebec, tax-exclusive prices. |
 | French? | Required for Quebec customers (Bill 96). **Before public launch** as its own phase (§13). Stripe already sends French receipts to French-speaking customers. |
@@ -295,7 +295,7 @@ Posts published through Threaded have a known `media_id`. For posts written else
 2. **Settle:** in one transaction, release the reservation, charge the actual amount and write the ledger rows.
 3. **Release:** on error, return the whole reservation.
 
-**Expiry:** credits arrive in **lots** (`credit_lots`, one per purchase or grant), each with its own expiry 12 months out. A settled charge draws on the soonest-expiring lot first, and the daily cron expires what's left of old lots (skipping a wallet while a generation is in flight). Invariant: the lots' remaining credits equal `balance + reserved`.
+**No expiry:** credits never expire. They still arrive in **lots** (`credit_lots`, one per purchase or grant), which record what's left of each purchase, for refunds and for accounting (unspent credits are owed to the customer). A settled charge draws on the oldest lot first. Invariant: the lots' remaining credits equal `balance + reserved`.
 
 **Buying credits:**
 - **Top-ups:** hosted Stripe Checkout in one-time payment mode, packs of $5, $20 and $50 priced inline from `lib/pricing.ts`. The `checkout.session.completed` webhook **and** the return route (`/api/billing/return`) both fulfill the session: each re-reads it from Stripe and adds a `purchase` ledger row, idempotent on the session id.
@@ -371,8 +371,8 @@ suggestions      id, generation_id, text, format, hook, rationale, goal_fit, bes
 
 -- billing
 wallets          workspace_id, balance, reserved
-credit_ledger    id, workspace_id, delta, kind, ref, generation_id, expires_at, created_at   unique(kind, ref)
-credit_lots      id, workspace_id, ledger_id, amount, remaining, expires_at, created_at   ← spent soonest-expiring first
+credit_ledger    id, workspace_id, delta, kind, ref, generation_id, created_at   unique(kind, ref)
+credit_lots      id, workspace_id, ledger_id, amount, remaining, created_at   ← spent oldest first; never expire
 
 -- publishing & jobs
 scheduled_posts  id, profile_id, suggestion_id, text, topic_tag, scheduled_for (utc), status (scheduled|publishing|published|failed|canceled), version, container_id, media_id, permalink, attempts, last_error, workflow_run_id, publishing_at, published_at
@@ -614,7 +614,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | Phase | Scope | Exit criteria |
 |---|---|---|
 | **0: Setup** | Meta app (Threads use case, testers, callbacks); **submit App Review early for basic + insights + publish**; Vercel + Neon + Upstash + AI Gateway + Stripe (test) + Resend; scaffold, design tokens, motion primitives, demo fixtures; Terms + Privacy pages | Demo account renders the Home shell |
-| **1: MVP** | OAuth + workspaces; initial sync; deterministic stats; goal picker; Studio with streaming; **curated catalog + model picker**; **credits wallet** (trial, Checkout top-ups, reserve/settle, auto-recharge, expiry); **BYOK** ($5/month plan); **post now + schedule + Queue**; rate limits | A tester connects, buys credits (test mode), generates, and has a scheduled post publish on time |
+| **1: MVP** | OAuth + workspaces; initial sync; deterministic stats; goal picker; Studio with streaming; **curated catalog + model picker**; **credits wallet** (trial, Checkout top-ups, reserve/settle, auto-recharge); **BYOK** ($5/month plan); **post now + schedule + Queue**; rate limits | A tester connects, buys credits (test mode), generates, and has a scheduled post publish on time |
 | **2: Intelligence + polish** | LLM classification + Profile DNA, The Read + DNA reveal choreography, Insights page, daily cron (snapshots, token refresh), scorecard, evals harness, **admin margin dashboard**, **series via `reply_to_id`** | Daily loop runs unattended; margins visible per model |
 | **Launch: Quebec readiness** | **French** (Bill 96): site, app, Terms, Privacy and emails, with `fr-CA` as a first-class locale and AI output in the user's language; the Law 25 privacy items; live Stripe Tax; the lawyer's changes (SETUP.md §5) | Public sign-ups open, and everything a Quebec customer sees exists in French |
 | **3: Grow** | Keyword-search trend radar, reply analysis, A/B variants, opt-in nightly "Today's plays", weekly digest email | |
@@ -636,7 +636,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | Small or new accounts | Cold-start mode: playbook-led suggestions plus a low-confidence chip. Personal stats unlock at 10 or more posts. |
 | Token expiry / private profiles | Daily refresh. Grants on private profiles can't be extended past 90 days, so prompt a reconnect 7 days before. Scheduled posts pre-flight the token and alert early if it's invalid. |
 | Threads API changes | One typed client module, response validation with Zod, and fixtures in contract tests |
-| Quebec rules: French, privacy (Law 25), consumer protection | French before public launch (§13). Law 25 checklist and a lawyer's review of credit expiry and the plan's terms (SETUP.md §5). |
+| Quebec rules: French, privacy (Law 25), consumer protection | French before public launch (§13). Law 25 checklist and a lawyer's review of the Terms and the plan (SETUP.md §5). Credits never expire. |
 
 ---
 
@@ -683,13 +683,13 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Studio: tone, format, count, model with a per-use estimate, ideas that write themselves in, save/dismiss, and saved ideas. Home's "Today's plays" shows real accounts' best recent ideas. The demo streams sample ideas for free.
 
 **1d, billing (done):**
-- Settings → Billing: balance with expiring-soon warning, credit packs, auto-recharge, own key, and an activity list. The header pill opens it; Studio's out-of-credits message links to it.
+- Settings → Billing: balance, credit packs, auto-recharge, own key, and an activity list. The header pill opens it; Studio's out-of-credits message links to it.
 - Stripe via hosted Checkout and the billing portal only, priced inline from `lib/pricing.ts`, so there's nothing to set up in the dashboard but the webhook and portal. Fulfillment re-reads every object from Stripe and runs from both the webhook and the return route; ledger refs make it idempotent.
-- Credits arrive in lots that expire 12 months after purchase, spent soonest-expiring first; the daily cron expires the rest. The migration backfills existing balances as one lot.
+- Credits arrive in lots, one per purchase or grant, spent oldest first. The migration backfills existing balances as one lot. (They first expired after 12 months; that was dropped: credits never expire.)
 - Auto-recharge saves a card with setup-mode Checkout, then a workflow run charges it off-session through an invoice when a charge (or a 402) leaves the balance under the threshold. One claim per workspace, Stripe idempotency keys per claim, and a decline turns it off with an in-app banner.
 - BYOK: keys are checked with `getCredits()`, stored encrypted and bound to the workspace; the $5/month plan is a Checkout subscription mirrored from webhooks. Switching back deletes the key and ends the plan with its period; a lapsed plan falls back to credits with a notice; Meta's data-deletion callback cancels the plan.
 - Studio shows actionable errors for a rejected key or an empty Gateway balance, with a one-click switch back to credits.
-- Tested against `e2e/mock-billing.mjs`, a stateful mock of the Stripe API, hosted Checkout, signed webhooks and the Gateway credits endpoint: integration tests for top-ups, webhooks, auto-recharge (paid and declined), lots and expiry, and the BYOK plan lifecycle; end-to-end tests that save a card and watch the recharge workflow top up, buy a pack, switch to a key and back, and show and dismiss a billing notice.
+- Tested against `e2e/mock-billing.mjs`, a stateful mock of the Stripe API, hosted Checkout, signed webhooks and the Gateway credits endpoint: integration tests for top-ups, webhooks, auto-recharge (paid and declined), lots, and the BYOK plan lifecycle; end-to-end tests that save a card and watch the recharge workflow top up, buy a pack, switch to a key and back, and show and dismiss a billing notice.
 - Not yet: emails for failed recharges and lapsed plans (needs Resend; planned with 1e's failure emails), the admin margin view (Phase 2), the "all Gateway models" toggle for BYOK users.
 
 **1e, publishing (done):**

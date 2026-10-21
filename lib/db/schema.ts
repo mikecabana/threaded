@@ -53,6 +53,7 @@ export const ledgerKindEnum = pgEnum("ledger_kind", [
   "release",
   "refund",
   "adjust",
+  // Unused: credits no longer expire. Postgres can't drop an enum value.
   "expire",
 ]);
 export const syncKindEnum = pgEnum("sync_kind", ["initial", "daily", "manual"]);
@@ -360,8 +361,6 @@ export const creditLedger = pgTable(
     /** Idempotency reference: Stripe event id, generation id, etc. */
     ref: text("ref").notNull(),
     generationId: uuid("generation_id").references(() => generations.id, { onDelete: "set null" }),
-    /** For purchases: when these credits expire. */
-    expiresAt: timestamp("expires_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -371,8 +370,9 @@ export const creditLedger = pgTable(
 );
 
 /**
- * Credits that can still be spent, per purchase or grant, so each batch can
- * expire on its own date. Spending draws from the soonest-expiring lot first.
+ * Credits that can still be spent, per purchase or grant: what's left of each
+ * purchase, for refunds and accounting. Credits never expire; spending draws
+ * from the oldest lot first.
  * Invariant: sum(remaining) = wallet balance + reserved.
  */
 export const creditLots = pgTable(
@@ -386,11 +386,9 @@ export const creditLots = pgTable(
     ledgerId: uuid("ledger_id").references(() => creditLedger.id, { onDelete: "set null" }),
     amount: bigint("amount", { mode: "number" }).notNull(),
     remaining: bigint("remaining", { mode: "number" }).notNull(),
-    /** Null never expires. */
-    expiresAt: timestamp("expires_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("credit_lots_workspace_idx").on(t.workspaceId, t.expiresAt)],
+  (t) => [index("credit_lots_workspace_idx").on(t.workspaceId, t.createdAt)],
 );
 
 // ── Publishing & jobs ────────────────────────────────────────────────────────
