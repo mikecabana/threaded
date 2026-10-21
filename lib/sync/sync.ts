@@ -216,6 +216,7 @@ export async function syncAccountDays(
   const latest = followersOn;
   let written = 0;
   await guard(profileId, async () => {
+    const followersCount = days.includes(latest) ? await client.getFollowersCount() : null;
     for (const day of days) {
       const since = Date.parse(`${day}T00:00:00Z`);
       const insights = await client.getAccountInsights({ since: since / 1000, until: (since + DAY_MS) / 1000 });
@@ -227,7 +228,7 @@ export async function syncAccountDays(
         quotes: insights.quotes,
         clicks: insights.clicks,
       };
-      const followers = day === latest ? { followersCount: insights.followersCount } : {};
+      const followers = day === latest && followersCount !== null ? { followersCount } : {};
       await db()
         .insert(accountDaily)
         .values({ profileId, date: day, ...values, ...followers })

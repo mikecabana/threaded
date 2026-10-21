@@ -48,9 +48,9 @@ If your machine already has a Chromium build, point Playwright at it with
    (`threads_read_replies` and `threads_keyword_search` come later.)
 3. Under the use case's settings, set:
    - **Redirect callback URLs:** `https://<production-host>/api/auth/threads/callback`, plus one fixed dev URL if you sign in locally (an ngrok or cloudflared tunnel). `<production-host>` is your project's `vercel.app` URL until you add a domain (see [Domains and previews](#domains-and-preview-deployments)). Preview deployments don't need entries of their own: they sign in through this one.
-   - **Uninstall callback URL:** `https://<production-host>/api/threads/uninstall`
-   - **Delete callback URL:** `https://<production-host>/api/threads/delete`
-4. Copy the Threads app ID and secret into `THREADS_APP_ID` and `THREADS_APP_SECRET`.
+   - **Deauthorize callback URL:** `https://<production-host>/api/threads/uninstall`
+   - **Data Deletion Requests URL:** `https://<production-host>/api/threads/delete`
+4. Copy the **Threads** app ID and secret (from the Threads use case's settings, not the app's main ID and secret on the Basic settings page) into `THREADS_APP_ID` and `THREADS_APP_SECRET`. Threads tokens and user ids are scoped to that pair.
 5. **Testers:** under App roles, add your own Threads account (and any teammates) as Threads testers. Each tester accepts the invite in the Threads app (Settings → Account → Website permissions → Invites). Until App Review approves the permissions, only testers can connect.
 6. **App Review:** submit all three permissions. You'll need:
    - Privacy policy URL: `https://<your-domain>/legal/privacy` (have it reviewed first; see below)
@@ -83,7 +83,7 @@ Nothing in the code names a domain. Threaded works out its URLs per deployment:
 
 **Testing on vercel.app now.** Register the three Meta URLs and the Stripe webhook (`https://<production-host>/api/stripe/webhook`) with your `vercel.app` host. Nothing else to set.
 
-**When you buy a domain.** Add it under Settings → Domains. From the next deployment the production URL is the new domain. Then add the new redirect URL in Meta (keep the old one until the switch is done), update the uninstall and delete callbacks, and move the Stripe webhook. No code or variable changes. Also set the old `vercel.app` domain to redirect to the new one (Settings → Domains → Edit), since sign-in only runs on the production URL and previews.
+**When you buy a domain.** Add it under Settings → Domains. From the next deployment the production URL is the new domain. Then add the new redirect URL in Meta (keep the old one until the switch is done), update the deauthorize and data-deletion callbacks, and move the Stripe webhook. No code or variable changes. Also set the old `vercel.app` domain to redirect to the new one (Settings → Domains → Edit), since sign-in only runs on the production URL and previews.
 
 **Demoing on preview deployments.** Demo accounts work on every preview with no setup. For real Threads accounts on previews:
 
@@ -133,4 +133,4 @@ Create an account, verify your sending domain, and put the API key in `RESEND_AP
 
 - [ ] Replace `SITE.contactEmail` in `lib/site.ts` with the real support address.
 - [ ] Have a lawyer review `/legal/terms` and `/legal/privacy`, then remove the draft banner in `components/marketing/legal-page.tsx`.
-- [ ] Confirm the ⚠ items in `docs/PLAN.md` §2 against Meta's live docs (field lists, the token-refresh age rule, the text auto-publish flag, the emoji length rule, and the intent URL in `lib/threads/intent.ts`).
+- [ ] Confirm which secret signs Meta's deauthorize and data-deletion callbacks (the one ⚠ left in `docs/PLAN.md` §2; everything else there was checked against Meta's docs).

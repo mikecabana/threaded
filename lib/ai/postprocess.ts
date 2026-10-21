@@ -1,10 +1,10 @@
-import { THREADS_MAX_LENGTH, threadsLength } from "@/lib/threads/length";
+import { THREADS_MAX_LENGTH, THREADS_MAX_LINKS, threadsLength, threadsLinkCount } from "@/lib/threads/length";
 import type { Suggestion } from "./schemas";
 
 // Model output is a draft: enforce what the schema can't (length, ranges) and
 // drop ideas that repeat the author's own posts or each other.
 
-export type DropReason = "too_long" | "duplicate" | "empty";
+export type DropReason = "too_long" | "too_many_links" | "duplicate" | "empty";
 
 export interface ProcessedBatch {
   kept: Suggestion[];
@@ -51,6 +51,8 @@ export function postProcess(suggestions: Suggestion[], pastPosts: string[], limi
       dropped.push({ text, reason: "empty" });
     } else if (threadsLength(text) > THREADS_MAX_LENGTH) {
       dropped.push({ text, reason: "too_long" });
+    } else if (threadsLinkCount(text) > THREADS_MAX_LINKS) {
+      dropped.push({ text, reason: "too_many_links" });
     } else if (
       [...pastPosts, ...kept.map((k) => k.text)].some((other) => similarity(text, other) >= DUPLICATE_THRESHOLD)
     ) {

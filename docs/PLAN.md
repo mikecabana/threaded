@@ -48,42 +48,45 @@ Everything below deploys to Vercel. Versions were current on npm in Oct 2026.
 
 ## 2. Threads API: what we can and can't get
 
-Base URL: `https://graph.threads.net/v1.0`. Meta's docs site was blocked from my environment, so I checked the details below through Meta's blog and developer guides. Items marked ⚠ need confirming against the live docs in Phase 0.
+Base URL: `https://graph.threads.net/v1.0` (still the current version per Meta's changelog; `graph.threads.com` also works since June 2025). Everything below was checked against Meta's developer docs on Oct 21, 2026, through Meta's developer-tools MCP. The one item still marked ⚠ isn't covered by the Threads docs.
 
 **Scopes requested at launch:** `threads_basic`, `threads_manage_insights`, `threads_content_publish`.
-**Added later:** `threads_read_replies` (reply analysis), `threads_keyword_search` (trend radar). Without the search scope, search only covers the user's own posts.
+**Added later:** `threads_read_replies` and `threads_manage_replies` (reply analysis), `threads_keyword_search` (trend radar). The app's use case also offers `threads_delete`, `threads_manage_mentions`, `threads_location_tagging`, `threads_share_to_instagram` and **Threads Trending Topics**, a candidate data source for the Phase 3 trend radar.
 
 **Read endpoints**
 
 | Purpose | Call |
 |---|---|
-| Authorize | `https://threads.net/oauth/authorize?client_id&redirect_uri&scope&response_type=code&state` |
-| Exchange code for short-lived token (1h) | `POST /oauth/access_token` |
+| Authorize | `https://threads.net/oauth/authorize?client_id&redirect_uri&scope&response_type=code&state` (still `threads.net`) |
+| Exchange code for short-lived token (1h; code single-use, 1h) | `POST /oauth/access_token`. Strip the `#_` Meta appends to the code. Its `user_id` is a JSON number too big for JavaScript, so we take the id from `/me` instead. |
 | Exchange for long-lived token (60 days) | `GET /access_token?grant_type=th_exchange_token` |
-| Refresh token (resets 60 days; token must be ≥24h old ⚠) | `GET /refresh_access_token?grant_type=th_refresh_token` |
+| Refresh token (60 days from refresh) | `GET /refresh_access_token?grant_type=th_refresh_token`. Only when the token is **at least 24 hours old** and unexpired. |
 | Profile | `GET /me?fields=id,username,name,threads_profile_picture_url,threads_biography,is_verified` |
-| Posts (paginated, `since`/`until`) | `GET /me/threads?fields=id,text,timestamp,media_type,permalink,is_quote_post,topic_tag…` ⚠ field list |
-| Post metrics | `GET /{media-id}/insights?metric=views,likes,replies,reposts,quotes,shares` |
-| Account metrics | `GET /me/threads_insights?metric=views,likes,replies,reposts,quotes,clicks,followers_count,follower_demographics` (`views` is a daily time series; the rest are totals. Data goes back to about Apr 2024 ⚠) |
+| Posts | `GET /me/threads?fields=id,text,timestamp,media_type,permalink,is_quote_post,topic_tag` with `since`/`until` and `limit` (max 100). Pages by the `after` cursor (the docs only promise cursors; we follow `paging.next` when present). |
+| Post metrics | `GET /{media-id}/insights?metric=views,likes,replies,reposts,quotes,shares` (`views` and `shares` are labelled "in development"; reposts of others return nothing) |
+| Account metrics | `GET /me/threads_insights?metric=views,likes,replies,reposts,quotes,clicks` with `since`/`until`: `views` is a daily series, `clicks` comes per link (`link_total_values`), the rest are totals. No data before **Apr 13, 2024** (we clamp). `followers_count` takes no date range, so it's a separate call. `follower_demographics` needs one `breakdown` (country, city, age or gender) and 100+ followers. |
 
 **Publish endpoints**
 
 | Purpose | Call |
 |---|---|
-| Create container | `POST /me/threads?media_type=TEXT&text=…` → container `id`. Use `reply_to_id` to chain posts into a series ⚠. |
-| Check container status | `GET /{container-id}?fields=status,error_message` ⚠. Meta suggests waiting about 30s before publishing, mainly for media. |
-| Publish | `POST /me/threads_publish?creation_id={container-id}` → media `id`. There's also a text-only auto-publish flag that skips this step ⚠ (parameter name unconfirmed). |
-| Publishing quota | `GET /me/threads_publishing_limit`: 250 posts per rolling 24h. Checked before every publish. |
+| Create container | `POST /me/threads?media_type=TEXT&text=…`, optional `topic_tag` (1–50 characters, no `.` or `&`, one per post) and `reply_to_id` for series. |
+| Check container status | `GET /{container-id}?fields=status,error_message`: `IN_PROGRESS`, `FINISHED`, `PUBLISHED`, `ERROR`, or `EXPIRED` (**unpublished containers expire after 24 hours**). Meta suggests waiting about 30s before publishing and checking at most once a minute for five minutes; the publish workflow follows that. |
+| Publish | `POST /me/threads_publish?creation_id={container-id}` → media `id`. `auto_publish_text=true` on the create call would skip this step for text posts; we keep two steps because the docs don't say what the create call returns then. |
+| Publishing quota | `GET /me/threads_publishing_limit`: 250 posts per rolling 24h (carousels count once). Replies (1,000), deletes (100) and location searches (500) have their own quotas. Checked before every publish. |
+| Web intent (no-API fallback) | `https://www.threads.com/intent/post?text=…` (the host is now `threads.com`) |
 
 **Limits and gaps the design has to work around**
-- **The 500-character limit counts emojis by their UTF-8 bytes.** The composer's counter and the AI post-processor both use a `threadsLength()` helper that implements this rule, not `string.length`.
-- **No native scheduling.** Checked again for 1e: the Threads publishing endpoints have no publish-time parameter (nothing like the Pages API's `scheduled_publish_time`), and Meta's docs leave timing to the app. A media container can't be parked as a draft either: it's meant to be published soon after creation, and an unpublished one expires ⚠. So we schedule it ourselves (§7). The workflow wakes shortly before the slot, re-checks `threads_publishing_limit`, creates the container, then publishes on time.
+- **The 500-character limit counts emojis by their UTF-8 bytes** ("Emojis are counted as the number of UTF-8 bytes"). The composer's counter and the AI post-processor both use `threadsLength()`, not `string.length`.
+- **At most five links per post.** Since Dec 22, 2025, posts with more than five distinct URLs fail at container creation. The composer refuses them and the AI post-processor drops them.
+- **No native scheduling.** The publishing endpoints have no publish-time parameter, and a container can't be parked as a draft: it expires after 24 hours unpublished. Meta's only advice is that apps which schedule should enforce the publishing limit themselves. So we schedule it ourselves (§7): the workflow wakes at the slot, re-checks `threads_publishing_limit`, creates the container, then publishes.
 - **No per-post follower attribution.** `followers_count` is a current total only. We **snapshot it daily** to build a growth history, and estimate which posts drove follows by correlating daily follower changes with that day's posts. The UI labels this as an *estimate*.
 - **No insights webhooks.** We poll with the daily cron, plus snapshots at +1h, +24h and +72h after we publish a post.
-- **Demographics** need at least 100 followers on creator and personal accounts ⚠. Hide that panel below the threshold.
-- **Call budget** is 4800 × impressions per 24h (impressions floored at 10), which is plenty.
-- **App Review:** until Meta approves the insights and publish scopes, only **Threads testers** added in the Meta app dashboard can connect. **Submit in Phase 0** with a screencast that shows the user explicitly confirming every post.
-- **Required by Meta:** an *uninstall* callback and a *data-deletion* callback URL. Both receive a `signed_request` that we verify with HMAC-SHA256 and the app secret.
+- **Permission grants last 90 days.** Refreshing the token extends them for public profiles only; private profiles must grant again every 90 days. (Phase 2: prompt a reconnect before it lapses.)
+- **Call budget** is 4800 × impressions per 24h per app and user (impressions floored at 10), plus a CPU-time budget. Plenty for us.
+- **Permalinks** may come back on `threads.com` or `threads.net`, and are omitted for posts flagged for copyright. Never parse the host.
+- **App Review:** until Meta approves the insights and publish scopes, only **Threads testers** can connect (they accept the invite under Settings → Account → Website permissions). Submit with a screencast that shows the user explicitly confirming every post.
+- **Required by Meta:** a *Deauthorize callback URL* and a *Data Deletion Requests URL*. Both receive a `signed_request` that we verify with HMAC-SHA256; the deletion callback answers `{ url, confirmation_code }`. ⚠ Meta's general app docs describe this, but the Threads docs don't say which of a Threads app's two secrets signs it. We use the Threads app secret; confirm with the first real callback.
 
 ---
 
@@ -690,7 +693,7 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Tests: integration tests drive every step against a fake Graph API (scheduling rules, publish once, container polling and errors, quota, revoked tokens, edits superseding runs, cancel, retry, the sweeper); end-to-end tests schedule, edit and cancel a saved idea, post now through the mock Meta server, show a failed post until it's removed, and rescue an overdue post with the sweeper.
 - Not yet: drag-and-drop onto a week calendar (the slot chips cover it for now), failure emails (needs Resend and the user's email), series via `reply_to_id` (Phase 2).
 
-**Phase 1 is feature-complete.** Remaining before testers: the external setup below, then a pass against the real services (⚠ items in §2).
+**Phase 1 is feature-complete.** Remaining before testers: the external setup below, then a pass against the real services (Meta's docs are checked; see §2).
 
 **Waiting on you** (see `docs/SETUP.md`):
 - Meta app and App Review submission

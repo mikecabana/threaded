@@ -120,6 +120,9 @@ export function installFakeThreads(options: FakeThreadsOptions) {
         paging: next ? { next } : {},
       });
     }
+    if (path === "/me/threads_insights" && url.searchParams.get("metric") === "followers_count") {
+      return json({ data: [{ name: "followers_count", total_value: { value: options.followers ?? 2400 } }] });
+    }
     if (path === "/me/threads_insights") {
       const since = Number(url.searchParams.get("since")) * 1000;
       return json({
@@ -132,8 +135,7 @@ export function installFakeThreads(options: FakeThreadsOptions) {
           { name: "replies", total_value: { value: 2 } },
           { name: "reposts", total_value: { value: 1 } },
           { name: "quotes", total_value: { value: 0 } },
-          { name: "clicks", total_value: { value: 3 } },
-          { name: "followers_count", total_value: { value: options.followers ?? 2400 } },
+          { name: "clicks", link_total_values: [{ value: 3, link_url: "https://example.com" }] },
         ],
       });
     }

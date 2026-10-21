@@ -3,7 +3,7 @@ import { authorizeUrl, tokenHost } from "./endpoints";
 import { ThreadsApiError } from "./errors";
 
 // Threads OAuth: authorize → short-lived token (1h) → long-lived token (60d),
-// refreshed before it expires. ⚠ Endpoints per Meta's docs as of Oct 2026.
+// refreshed before it expires. Endpoints checked against Meta's docs (Oct 2026).
 
 /** Requested at sign-in. Read replies and keyword search come in a later phase. */
 export const THREADS_SCOPES = ["threads_basic", "threads_manage_insights", "threads_content_publish"] as const;
@@ -28,7 +28,9 @@ export function cleanAuthCode(code: string): string {
   return code.replace(/#_$/, "");
 }
 
-const shortTokenSchema = z.object({ access_token: z.string(), user_id: z.union([z.string(), z.number()]) });
+// The response's user_id is a JSON number too large for JavaScript to hold
+// exactly, so it isn't read: the profile id comes from GET /me as a string.
+const shortTokenSchema = z.object({ access_token: z.string() });
 const longTokenSchema = z.object({
   access_token: z.string(),
   token_type: z.string().optional(),
@@ -57,7 +59,7 @@ async function readToken<T extends z.ZodType>(response: Response, schema: T, ste
 export async function exchangeCode(
   input: { appId: string; appSecret: string; redirectUri: string; code: string },
   fetchImpl: typeof fetch = fetch,
-): Promise<{ accessToken: string; userId: string }> {
+): Promise<{ accessToken: string }> {
   const response = await fetchImpl(`${tokenHost()}/oauth/access_token`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -71,7 +73,7 @@ export async function exchangeCode(
     cache: "no-store",
   });
   const token = await readToken(response, shortTokenSchema, "code exchange");
-  return { accessToken: token.access_token, userId: String(token.user_id) };
+  return { accessToken: token.access_token };
 }
 
 export async function exchangeForLongLived(
@@ -87,7 +89,7 @@ export async function exchangeForLongLived(
   return { accessToken: token.access_token, expiresAt: new Date(now.getTime() + token.expires_in * 1000) };
 }
 
-/** Extends a long-lived token by another 60 days. It must be at least 24 hours old (⚠). */
+/** Extends a long-lived token by another 60 days. It must be at least 24 hours old and unexpired. */
 export async function refreshLongLived(
   accessToken: string,
   fetchImpl: typeof fetch = fetch,

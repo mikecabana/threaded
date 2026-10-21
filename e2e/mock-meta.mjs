@@ -148,6 +148,9 @@ const server = createServer(async (req, res) => {
       data: Object.entries(post.insights).map(([name, value]) => ({ name, values: [{ value }] })),
     });
   }
+  if (url.pathname === "/v1.0/me/threads_insights" && url.searchParams.get("metric") === "followers_count") {
+    return json(res, 200, { data: [{ name: "followers_count", total_value: { value: 1234 } }] });
+  }
   if (url.pathname === "/v1.0/me/threads_insights") {
     const since = Number(url.searchParams.get("since")) * 1000;
     const day = Math.floor((Date.now() - since) / DAY_MS);
@@ -161,8 +164,7 @@ const server = createServer(async (req, res) => {
         { name: "replies", total_value: { value: 4 + (day % 3) } },
         { name: "reposts", total_value: { value: 2 } },
         { name: "quotes", total_value: { value: 1 } },
-        { name: "clicks", total_value: { value: 5 } },
-        { name: "followers_count", total_value: { value: 1234 } },
+        { name: "clicks", link_total_values: [{ value: 5, link_url: "https://example.com" }] },
       ],
     });
   }

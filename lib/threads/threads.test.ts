@@ -74,32 +74,64 @@ describe("Threads client", () => {
     expect(insights).toEqual({ views: 120, likes: 9, replies: 2, reposts: 0, quotes: 0, shares: 0 });
   });
 
-  it("splits account insights into daily views and totals", async () => {
-    const { fetch } = mockFetch({
-      "/v1.0/me/threads_insights": {
-        data: [
-          {
-            name: "views",
-            values: [
-              { value: 10, end_time: "2026-10-01T07:00:00+0000" },
-              { value: 20, end_time: "2026-10-02T07:00:00+0000" },
-            ],
-          },
-          { name: "followers_count", total_value: { value: 2400 } },
-          { name: "likes", total_value: { value: 31 } },
-        ],
-      },
+  it("splits account insights into daily views and totals, and reads clicks per link", async () => {
+    const { fetch, calls } = mockFetch({
+      "/v1.0/me/threads_insights": (url: URL) =>
+        url.searchParams.get("metric") === "followers_count"
+          ? { data: [{ name: "followers_count", total_value: { value: 2400 } }] }
+          : {
+              data: [
+                {
+                  name: "views",
+                  values: [
+                    { value: 10, end_time: "2026-10-01T07:00:00+0000" },
+                    { value: 20, end_time: "2026-10-02T07:00:00+0000" },
+                  ],
+                },
+                { name: "likes", total_value: { value: 31 } },
+                {
+                  name: "clicks",
+                  link_total_values: [
+                    { value: 4, link_url: "https://a.test" },
+                    { value: 3, link_url: "https://b.test" },
+                  ],
+                },
+              ],
+            },
     });
-    const insights = await createThreadsClient({ accessToken: "tok", fetch }).getAccountInsights({
-      since: 1,
-      until: 2,
-    });
+    const client = createThreadsClient({ accessToken: "tok", fetch });
+    const insights = await client.getAccountInsights({ since: 1, until: 2 });
     expect(insights.dailyViews).toEqual([
       { date: "2026-10-01", views: 10 },
       { date: "2026-10-02", views: 20 },
     ]);
-    expect(insights.followersCount).toBe(2400);
     expect(insights.likes).toBe(31);
+    expect(insights.clicks).toBe(7);
+    // Threads keeps account insights from Apr 13, 2024; earlier ranges are clamped.
+    expect(calls[0].searchParams.get("since")).toBe("1712991600");
+    expect(calls[0].searchParams.get("metric")).not.toContain("followers_count");
+
+    // The follower count takes no date range, so it's its own call.
+    expect(await client.getFollowersCount()).toBe(2400);
+    expect(calls[1].searchParams.get("since")).toBeNull();
+  });
+
+  it("pages with the after cursor when there's no next link", async () => {
+    const post = (id: string) => ({ id, text: id, timestamp: "2026-10-01T10:00:00+0000", media_type: "TEXT_POST" });
+    const { fetch, calls } = mockFetch({
+      "/v1.0/me/threads": (url: URL) =>
+        url.searchParams.get("after") === "C1"
+          ? { data: [post("b")], paging: { cursors: { before: "C1" } } }
+          : { data: [post("a")], paging: { cursors: { before: "C0", after: "C1" } } },
+    });
+    const pages = [];
+    for await (const batch of createThreadsClient({ accessToken: "tok", fetch }).listPosts({ since: 100 })) {
+      pages.push(batch);
+    }
+    expect(pages.flat().map((p) => p.id)).toEqual(["a", "b"]);
+    // The cursor request repeats the original query.
+    expect(calls[1].searchParams.get("since")).toBe("100");
+    expect(calls[1].searchParams.get("fields")).toContain("topic_tag");
   });
 
   it("raises typed errors for Graph error envelopes", async () => {
@@ -156,7 +188,8 @@ describe("OAuth", () => {
       { appId: "a", appSecret: "s", redirectUri: "https://x.test/cb", code: "c#_" },
       fetch,
     );
-    expect(short).toEqual({ accessToken: "short", userId: "42" });
+    // user_id is a JSON number too large for JavaScript, so it's not read.
+    expect(short).toEqual({ accessToken: "short" });
     const now = new Date("2026-10-20T00:00:00Z");
     const long = await exchangeForLongLived({ appSecret: "s", shortLivedToken: short.accessToken }, fetch, now);
     expect(long.accessToken).toBe("long");
