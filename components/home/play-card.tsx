@@ -1,5 +1,6 @@
-import { ArrowUpRight, Clock } from "lucide-react";
+import { ArrowUpRight, CalendarClock, Clock } from "lucide-react";
 import { CopyButton } from "@/components/app/copy-button";
+import { ComposeButton } from "@/components/composer/provider";
 import { GoalFitRing } from "@/components/goal/goal-fit-ring";
 import { type PostAuthor, PostPreview } from "@/components/threads/post-preview";
 import { Badge } from "@/components/ui/badge";
@@ -10,8 +11,19 @@ import { hourLabel, weekdayName } from "@/lib/analysis/time";
 import type { DemoSuggestion } from "@/lib/demo/personas";
 import { threadsIntentUrl } from "@/lib/threads/intent";
 
-/** A ready-to-post suggestion: Threads-style preview, goal fit, the why, and actions. */
-export function PlayCard({ author, play }: { author: PostAuthor; play: DemoSuggestion }) {
+/**
+ * A ready-to-post suggestion: Threads-style preview, goal fit, the why, and
+ * actions. Account ideas (with an id) can be scheduled where posting is set up.
+ */
+export function PlayCard({
+  author,
+  play,
+  suggestionId,
+}: {
+  author: PostAuthor;
+  play: DemoSuggestion;
+  suggestionId?: string;
+}) {
   return (
     <Card className="p-5">
       <PostPreview
@@ -35,6 +47,11 @@ export function PlayCard({ author, play }: { author: PostAuthor; play: DemoSugge
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <CopyButton text={play.text} />
+        {suggestionId && (
+          <ComposeButton draft={{ text: play.text, suggestionId, ideaSlot: play.bestSlot }}>
+            <CalendarClock /> Schedule
+          </ComposeButton>
+        )}
         <Button asChild variant="outline" size="sm">
           <a href={threadsIntentUrl(play.text)} target="_blank" rel="noopener noreferrer">
             Open in Threads

@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowUpRight, BookmarkX } from "lucide-react";
+import { ArrowUpRight, BookmarkX, CalendarClock } from "lucide-react";
 import { AnimatePresence, m } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CopyButton } from "@/components/app/copy-button";
+import { ComposeButton, useComposer } from "@/components/composer/provider";
 import { type PostAuthor, PostPreview } from "@/components/threads/post-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,9 +16,10 @@ import type { StoredSuggestion } from "@/lib/data/suggestions";
 import { GOAL_META } from "@/lib/goals";
 import { threadsIntentUrl } from "@/lib/threads/intent";
 
-/** Ideas the user saved, ready to post (scheduling arrives with the Queue). */
+/** Ideas the user saved, ready to schedule or post. */
 export function SavedIdeas({ author, ideas }: { author: PostAuthor; ideas: StoredSuggestion[] }) {
   const router = useRouter();
+  const composer = useComposer();
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const visible = ideas.filter((idea) => !removed.has(idea.id));
   if (ideas.length === 0) return null;
@@ -41,12 +43,26 @@ export function SavedIdeas({ author, ideas }: { author: PostAuthor; ideas: Store
                 <p className="mt-3 text-subtle text-xs">For {GOAL_META[idea.goal].label.toLowerCase()}</p>
                 <div className="mt-auto flex flex-wrap gap-2 pt-3">
                   <CopyButton text={idea.text} />
-                  <Button asChild variant="outline" size="sm">
-                    <a href={threadsIntentUrl(idea.text)} target="_blank" rel="noopener noreferrer">
-                      Open in Threads
-                      <ArrowUpRight />
-                    </a>
-                  </Button>
+                  {composer ? (
+                    <ComposeButton
+                      draft={{
+                        text: idea.text,
+                        suggestionId: idea.id,
+                        ideaSlot: idea.bestSlot,
+                        // Queued ideas leave the saved list.
+                        onQueued: () => setRemoved((r) => new Set(r).add(idea.id)),
+                      }}
+                    >
+                      <CalendarClock /> Schedule
+                    </ComposeButton>
+                  ) : (
+                    <Button asChild variant="outline" size="sm">
+                      <a href={threadsIntentUrl(idea.text)} target="_blank" rel="noopener noreferrer">
+                        Open in Threads
+                        <ArrowUpRight />
+                      </a>
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"

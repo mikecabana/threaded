@@ -20,6 +20,7 @@ export async function TopBar() {
       {viewer.kind === "demo" && <DemoBanner current={viewer.persona.id} />}
       {viewer.kind === "account" && !viewer.connected && <ReconnectBanner />}
       {viewer.kind === "account" && viewer.billingNotice && <BillingNoticeBanner notice={viewer.billingNotice} />}
+      {viewer.kind === "account" && viewer.failedPosts > 0 && <FailedPostsBanner count={viewer.failedPosts} />}
       <div className="flex h-16 items-center gap-3 px-4 md:px-8">
         <Link href="/home" className="md:hidden" aria-label="Home">
           <LogoMark className="size-7" />
@@ -53,6 +54,18 @@ function ReconnectBanner() {
       <a href="/api/auth/threads/start" className="ml-auto shrink-0 font-medium underline underline-offset-2">
         Reconnect
       </a>
+    </div>
+  );
+}
+
+function FailedPostsBanner({ count }: { count: number }) {
+  return (
+    <div className="flex items-center gap-2 border-negative/30 border-b bg-negative/10 px-4 py-2 text-fg text-xs md:px-8">
+      <TriangleAlert className="size-3.5 shrink-0 text-negative" aria-hidden />
+      <span>{count === 1 ? "A scheduled post didn't go out." : `${count} scheduled posts didn't go out.`}</span>
+      <Link href="/queue" className="ml-auto shrink-0 font-medium underline underline-offset-2">
+        Open Queue
+      </Link>
     </div>
   );
 }

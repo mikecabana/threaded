@@ -40,24 +40,36 @@ export function BestTimeCard({ best, goal, now }: { best: BestTime | null; goal:
 export function UpNextCard({
   author,
   post,
+  now,
 }: {
   author: PostAuthor;
-  post: { text: string; weekday: number; hour: number };
+  /** `startsAt` adds a live countdown (real scheduled posts). */
+  post: { text: string; label: string; startsAt?: string };
+  now: Date;
 }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Up next</CardTitle>
         <Badge variant="outline">
-          <CalendarClock /> {weekdayName(post.weekday)} {hourLabel(post.hour)}
+          <CalendarClock /> {post.label}
         </Badge>
       </CardHeader>
       <CardContent className="pt-4">
         <PostPreview author={author} text={post.text} clamp={4} />
+        {post.startsAt && (
+          <p className="mt-3 text-subtle text-xs">
+            Posts <Countdown to={post.startsAt} serverNow={now.toISOString()} />, even if you're offline.
+          </p>
+        )}
       </CardContent>
     </Card>
   );
 }
+
+/** Demo personas describe their next post by weekday and hour. */
+export const demoSlotLabel = (slot: { weekday: number; hour: number }) =>
+  `${weekdayName(slot.weekday)} ${hourLabel(slot.hour)}`;
 
 export function TopPostsCard({
   author,

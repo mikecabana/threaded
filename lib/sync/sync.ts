@@ -103,7 +103,8 @@ export async function syncProfile(profileId: string): Promise<void> {
     .where(eq(threadsProfiles.id, profileId));
 }
 
-function postRow(profileId: string, post: ThreadsPost) {
+/** A Threads post as a `posts` row. */
+export function postRow(profileId: string, post: ThreadsPost) {
   return {
     id: post.id,
     profileId,

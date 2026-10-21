@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { composerConfig } from "@/components/composer/config";
+import { ComposerProvider } from "@/components/composer/provider";
 import { Reveal } from "@/components/motion/reveal";
 import { SavedIdeas } from "@/components/studio/saved-ideas";
 import { Studio, type StudioModel } from "@/components/studio/studio";
@@ -49,7 +51,8 @@ async function StudioContent() {
     ? await listSuggestions(account.profile.id, { statuses: ["saved"], sinceDays: 90, limit: 20 })
     : [];
 
-  return (
+  const composer = account ? composerConfig(account) : null;
+  const content = (
     <>
       <Studio
         // A goal switch starts a fresh session in Studio.
@@ -64,6 +67,7 @@ async function StudioContent() {
       <SavedIdeas author={viewer.profile} ideas={saved} />
     </>
   );
+  return composer ? <ComposerProvider config={composer}>{content}</ComposerProvider> : content;
 }
 
 function StudioSkeleton() {

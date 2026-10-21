@@ -1,6 +1,7 @@
 // A tiny stand-in for Meta's Threads OAuth and Graph endpoints, used by the
 // end-to-end tests (THREADS_GRAPH_URL / THREADS_AUTHORIZE_URL point here).
-// It approves every sign-in as the same fake account.
+// It approves every sign-in as the same fake account, and publishes posts:
+// a post whose text contains "#fail" gets a container Threads can't prepare.
 import { createServer } from "node:http";
 
 const port = Number(process.env.MOCK_META_PORT ?? 3999);
@@ -51,6 +52,10 @@ function mockPosts(now = Date.now()) {
   });
 }
 
+/** Posts published through the mock, newest last; they show up in the post list too. */
+const published = [];
+const containers = new Map();
+
 function json(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
@@ -91,9 +96,45 @@ const server = createServer(async (req, res) => {
   if (url.pathname.startsWith("/v1.0/") && token !== "long-token") {
     return json(res, 401, { error: { message: "bad token", type: "OAuthException", code: 190 } });
   }
+  if (url.pathname === "/v1.0/me/threads" && req.method === "POST") {
+    const id = `mock-container-${containers.size + 1}`;
+    containers.set(id, { text: url.searchParams.get("text") ?? "", topicTag: url.searchParams.get("topic_tag") });
+    return json(res, 200, { id });
+  }
+  if (url.pathname === "/v1.0/me/threads_publish" && req.method === "POST") {
+    const container = containers.get(url.searchParams.get("creation_id"));
+    if (!container) return json(res, 400, { error: { message: "Invalid creation_id", code: 100 } });
+    const id = `mock-media-${published.length + 1}`;
+    published.push({
+      id,
+      text: container.text,
+      timestamp: new Date().toISOString(),
+      media_type: "TEXT_POST",
+      permalink: `https://www.threads.net/@mock.user/post/${id.toUpperCase()}`,
+      insights: { views: 0, likes: 0, replies: 0, reposts: 0, quotes: 0, shares: 0 },
+    });
+    return json(res, 200, { id });
+  }
+  if (url.pathname === "/v1.0/me/threads_publishing_limit") {
+    return json(res, 200, {
+      data: [{ quota_usage: published.length, config: { quota_total: 250, quota_duration: 86400 } }],
+    });
+  }
+  const container = containers.get(url.pathname.slice("/v1.0/".length));
+  if (container) {
+    const failing = container.text.includes("#fail");
+    return json(res, 200, {
+      id: url.pathname.slice("/v1.0/".length),
+      status: failing ? "ERROR" : "FINISHED",
+      error_message: failing ? "The post couldn't be processed" : null,
+    });
+  }
+  const media = published.find((p) => url.pathname === `/v1.0/${p.id}`);
+  if (media) return json(res, 200, { id: media.id, permalink: media.permalink, timestamp: media.timestamp });
+
   if (url.pathname === "/v1.0/me/threads") {
     const since = Number(url.searchParams.get("since") ?? 0) * 1000;
-    const posts = mockPosts().filter((p) => Date.parse(p.timestamp) >= since);
+    const posts = [...published, ...mockPosts()].filter((p) => Date.parse(p.timestamp) >= since);
     return json(res, 200, {
       data: posts.map(({ insights, ...post }) => post),
       paging: {},
@@ -101,7 +142,7 @@ const server = createServer(async (req, res) => {
   }
   const insights = url.pathname.match(/^\/v1\.0\/([^/]+)\/insights$/);
   if (insights) {
-    const post = mockPosts().find((p) => p.id === insights[1]);
+    const post = [...published, ...mockPosts()].find((p) => p.id === insights[1]);
     if (!post) return json(res, 400, { error: { message: "Unsupported get request", code: 100 } });
     return json(res, 200, {
       data: Object.entries(post.insights).map(([name, value]) => ({ name, values: [{ value }] })),

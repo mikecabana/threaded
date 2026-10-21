@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+import { shown } from "./helpers";
 
 // A real account end to end: Threads sign-in against e2e/mock-meta.mjs,
 // payments against e2e/mock-billing.mjs, and a real Postgres. Needs
@@ -33,23 +34,23 @@ test("signs in with Threads, syncs history, and signs out", async ({ page }) => 
   await expect(page).toHaveURL("/home");
   // New accounts start with the free trial.
   await expect(page.getByRole("link", { name: /credits/ })).toContainText("100");
-  await expect(page.getByText("Demo account")).toHaveCount(0);
+  await expect(shown(page.getByText("Demo account"))).toHaveCount(0);
 
   // The first sync runs as a durable workflow; Home switches from progress to
   // real metrics on its own when it finishes.
   await expect(page.getByRole("main").getByLabel("Key metrics")).toBeVisible({ timeout: 45_000 });
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Mock");
   await expect(page.getByRole("main").getByLabel("Key metrics").getByText("Engagement rate")).toBeVisible();
-  await expect(page.getByText("What's working for engagement")).toBeVisible();
+  await expect(shown(page.getByText("What's working for engagement"))).toBeVisible();
   // Accounts don't get the demo's sample plays.
-  await expect(page.getByText("No ideas yet.")).toBeVisible();
+  await expect(shown(page.getByText("No ideas yet."))).toBeVisible();
 
   await page.goto("/settings");
-  await expect(page.getByText("@mock.user")).toBeVisible();
-  await expect(page.getByText(/Last synced .* ago/)).toBeVisible();
+  await expect(shown(page.getByText("@mock.user"))).toBeVisible();
+  await expect(shown(page.getByText(/Last synced .* ago/))).toBeVisible();
   // A second sync right away is throttled.
   await page.getByRole("button", { name: "Sync now" }).click();
-  await expect(page.getByText("Synced a few minutes ago")).toBeVisible();
+  await expect(shown(page.getByText("Synced a few minutes ago"))).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL("/");
 
@@ -76,7 +77,7 @@ test("generates ideas in Studio, charges credits, and surfaces saved ideas on Ho
   await expect(page.getByRole("heading", { name: /Saved ideas/ })).toBeVisible();
 
   await page.goto("/home");
-  await expect(page.getByText("No ideas yet.")).toHaveCount(0);
+  await expect(shown(page.getByText("No ideas yet."))).toHaveCount(0);
   await expect(
     page.getByRole("region", { name: "Today's plays" }).getByRole("button", { name: "Copy" }),
   ).not.toHaveCount(0);
@@ -100,15 +101,15 @@ test("auto-recharge saves a card, then tops up as soon as the balance is low", a
   await expect(page).toHaveURL(/localhost:3998\/pay\//);
   await page.getByRole("button", { name: "Save card", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/billing\?checkout=card&status=fulfilled/);
-  await expect(page.getByText("Card saved. Auto-recharge is on.")).toBeVisible();
-  await expect(page.getByText("Charges Visa •••• 4242")).toBeVisible();
+  await expect(shown(page.getByText("Card saved. Auto-recharge is on."))).toBeVisible();
+  await expect(shown(page.getByText("Charges Visa •••• 4242"))).toBeVisible();
 
   // The recharge runs as a workflow: 2,000 credits for $20 on the saved card.
   await expect(async () => {
     await page.reload();
     await expect(balance(page, 2098)).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 30_000 });
-  await expect(page.getByLabel("Credit activity")).toContainText("Auto-recharge");
+  await expect(shown(page.getByLabel("Credit activity"))).toContainText("Auto-recharge");
 });
 
 test("buys a credit pack through Stripe Checkout", async ({ page }) => {
@@ -118,47 +119,47 @@ test("buys a credit pack through Stripe Checkout", async ({ page }) => {
   // Backing out of Checkout changes nothing.
   await page.getByRole("button", { name: "Buy 500 credits for $5" }).click();
   await page.getByRole("link", { name: "Cancel" }).click();
-  await expect(page.getByText("Checkout canceled. You weren't charged.")).toBeVisible();
+  await expect(shown(page.getByText("Checkout canceled. You weren't charged."))).toBeVisible();
   await expect(balance(page, 2098)).toBeVisible();
 
   await page.getByRole("button", { name: "Buy 500 credits for $5" }).click();
   await expect(page).toHaveURL(/localhost:3998\/pay\//);
   await page.getByRole("button", { name: "Pay $5.00" }).click();
-  await expect(page.getByText("Payment received. Your credits are ready to use.")).toBeVisible();
+  await expect(shown(page.getByText("Payment received. Your credits are ready to use."))).toBeVisible();
   await expect(balance(page, 2598)).toBeVisible();
-  await expect(page.getByLabel("Credit activity")).toContainText("Bought credits");
+  await expect(shown(page.getByLabel("Credit activity"))).toContainText("Bought credits");
 });
 
 test("switches to the user's own AI key and back", async ({ page }) => {
   await signIn(page);
   await page.goto("/settings/billing");
-  const key = page.getByLabel("Vercel AI Gateway key");
+  const key = shown(page.getByLabel("Vercel AI Gateway key"));
 
   await key.fill("vck_bad_key_0000000000");
   await page.getByRole("button", { name: /Check key and continue/ }).click();
-  await expect(page.getByText("The AI Gateway didn't accept that key.")).toBeVisible();
+  await expect(shown(page.getByText("The AI Gateway didn't accept that key."))).toBeVisible();
 
   await key.fill("vck_e2e_good_key_wxyz");
   await page.getByRole("button", { name: /Check key and continue/ }).click();
   await expect(page).toHaveURL(/localhost:3998\/pay\//);
   await page.getByRole("button", { name: "Subscribe $5.00" }).click();
-  await expect(page.getByText("Your plan is active and Threaded now runs on your own key.")).toBeVisible();
+  await expect(shown(page.getByText("Your plan is active and Threaded now runs on your own key."))).toBeVisible();
   await expect(page.getByRole("link", { name: "Your key" })).toBeVisible();
-  await expect(page.getByText("•••• wxyz")).toBeVisible();
-  await expect(page.getByText("$12.50")).toBeVisible();
+  await expect(shown(page.getByText("•••• wxyz"))).toBeVisible();
+  await expect(shown(page.getByText("$12.50"))).toBeVisible();
 
   // Studio runs on the key and charges no credits.
   await page.goto("/studio");
   await expect(page.getByRole("button", { name: /Generate/ })).toContainText("Your key");
   await page.getByRole("button", { name: /Generate/ }).click();
-  await expect(page.getByLabel("Ideas", { exact: true }).getByRole("button", { name: "Copy" })).toHaveCount(3, {
+  await expect(shown(page.getByLabel("Ideas", { exact: true })).getByRole("button", { name: "Copy" })).toHaveCount(3, {
     timeout: 20_000,
   });
 
   await page.goto("/settings/billing");
   await page.getByRole("button", { name: "Switch back to credits" }).click();
   await expect(balance(page, 2598)).toBeVisible();
-  await expect(page.getByText(/Your plan ends on/)).toBeVisible();
+  await expect(shown(page.getByText(/Your plan ends on/))).toBeVisible();
 });
 
 test("shows a billing problem across the app until it's dismissed", async ({ page }) => {
@@ -171,9 +172,140 @@ test("shows a billing problem across the app until it's dismissed", async ({ pag
     await pool.end();
   }
   await signIn(page);
-  await expect(page.getByText("Auto-recharge couldn't charge your card.")).toBeVisible();
+  await expect(shown(page.getByText("Auto-recharge couldn't charge your card."))).toBeVisible();
   await page.getByRole("button", { name: "Dismiss" }).click();
-  await expect(page.getByText("Auto-recharge couldn't charge your card.")).toHaveCount(0);
+  await expect(shown(page.getByText("Auto-recharge couldn't charge your card."))).toHaveCount(0);
+});
+
+/** A date-time input value for `days` from now in Toronto (the test account's timezone). */
+function torontoInput(days: number, time: string) {
+  const date = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(Date.now() + days * 86_400_000));
+  return `${date}T${time}`;
+}
+
+test("schedules a saved idea, edits it, and takes it back out of the queue", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/queue");
+  await expect(page.getByRole("heading", { level: 1, name: "Queue" })).toBeVisible();
+  await expect(shown(page.getByText("Nothing scheduled"))).toBeVisible();
+
+  // The idea saved in the Studio test is ready to schedule.
+  const saved = page.getByRole("region", { name: "Saved ideas" });
+  await saved.getByRole("button", { name: "Schedule" }).first().click();
+  const composer = page.getByRole("dialog", { name: "New post" });
+  await expect(composer).toBeVisible();
+  await composer.getByText("Pick a time").click();
+  await composer.getByLabel("Date and time").fill(torontoInput(1, "09:30"));
+  await composer.getByRole("button", { name: "Schedule for Tomorrow 9:30 AM" }).click();
+  await expect(composer.getByText("Scheduled for Tomorrow 9:30 AM")).toBeVisible();
+  await composer.getByRole("button", { name: "Done" }).click();
+  await expect(composer).toHaveCount(0);
+
+  const scheduled = page.getByRole("region", { name: "Scheduled" });
+  await expect(scheduled).toContainText("Tomorrow");
+  await expect(scheduled).toContainText("9:30 AM");
+  await expect(page.getByRole("region", { name: "Saved ideas" })).toHaveCount(0);
+
+  // Home counts down to it.
+  await page.goto("/home");
+  await expect(shown(page.getByText("Up next"))).toBeVisible();
+  await expect(shown(page.getByText(/Posts in \d+[dh] \d+[hm], even if you.re offline/))).toBeVisible();
+
+  // Edit the text; the time stays.
+  await page.goto("/queue");
+  await scheduled.getByRole("button", { name: "Edit" }).click();
+  const editor = page.getByRole("dialog", { name: "Edit scheduled post" });
+  await editor.getByLabel("Post text").fill("Edited before it went out. What tool would you never give up?");
+  await editor.getByRole("button", { name: "Save changes" }).click();
+  await expect(editor.getByText("Scheduled for Tomorrow 9:30 AM")).toBeVisible();
+  await editor.getByRole("button", { name: "Done" }).click();
+  await expect(scheduled).toContainText("Edited before it went out.");
+
+  // Cancelling asks first, then the idea goes back to the saved list.
+  await scheduled.getByRole("button", { name: "Cancel" }).click();
+  await scheduled.getByRole("button", { name: "Yes, cancel it" }).click();
+  await expect(shown(page.getByText("Nothing scheduled"))).toBeVisible();
+  await expect(page.getByRole("region", { name: "Saved ideas" })).toBeVisible();
+});
+
+test("posts now after an explicit confirmation", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/queue");
+  await page.getByRole("button", { name: "New post" }).click();
+  const composer = page.getByRole("dialog", { name: "New post" });
+  await composer.getByLabel("Post text").fill("Shipping the queue today. What would you schedule first?");
+  await composer.getByLabel("Topic tag").fill("BuildInPublic");
+  await composer
+    .locator("label")
+    .filter({ hasText: /^Post now$/ })
+    .click();
+  await composer.getByRole("button", { name: "Post now" }).click();
+  // Nothing goes out until the user confirms.
+  await expect(composer.getByText("Post this to Threads now?")).toBeVisible();
+  await composer.getByRole("button", { name: "Yes, post it" }).click();
+
+  await expect(composer.getByText("Posted to @mock.user")).toBeVisible({ timeout: 30_000 });
+  await expect(composer.getByRole("link", { name: /View on Threads/ })).toHaveAttribute("href", /MOCK-MEDIA-1/);
+  await composer.getByRole("button", { name: "Done" }).click();
+
+  await page.reload();
+  const posted = page.getByRole("region", { name: "Posted with Threaded" });
+  await expect(posted).toContainText("Shipping the queue today.");
+  await expect(posted.getByRole("link", { name: /View on Threads/ })).toBeVisible();
+});
+
+test("a post Threads can't take shows up as failed until it's dealt with", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/queue");
+  await page.getByRole("button", { name: "New post" }).click();
+  const composer = page.getByRole("dialog", { name: "New post" });
+  await composer.getByLabel("Post text").fill("This one breaks the mock #fail");
+  await composer
+    .locator("label")
+    .filter({ hasText: /^Post now$/ })
+    .click();
+  await composer.getByRole("button", { name: "Post now" }).click();
+  await composer.getByRole("button", { name: "Yes, post it" }).click();
+  await expect(composer.getByText("That didn't go out")).toBeVisible({ timeout: 30_000 });
+  await expect(composer.getByText("Threads couldn't prepare the post: The post couldn't be processed")).toBeVisible();
+  await composer.getByRole("button", { name: "Done" }).click();
+
+  await page.reload();
+  await expect(shown(page.getByText("A scheduled post didn't go out."))).toBeVisible();
+  const failed = page.getByRole("region", { name: "Needs attention" });
+  await expect(failed).toContainText("This one breaks the mock");
+  await failed.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByRole("region", { name: "Needs attention" })).toHaveCount(0);
+  await expect(shown(page.getByText("A scheduled post didn't go out."))).toHaveCount(0);
+});
+
+test("the publish sweeper rescues a post whose run was lost", async ({ request }) => {
+  expect((await request.get("/api/cron/publish")).status()).toBe(401);
+  const pool = new Pool({ connectionString: databaseUrl });
+  try {
+    // A post that should have gone out ten minutes ago, with no run behind it.
+    const { rows } = await pool.query(
+      `insert into scheduled_posts (profile_id, text, scheduled_for)
+       values ('9001', 'Rescued by the sweeper.', now() - interval '10 minutes') returning id`,
+    );
+    const response = await request.get("/api/cron/publish", {
+      headers: { authorization: "Bearer test-cron-secret" },
+    });
+    expect(await response.json()).toMatchObject({ restarted: 1, stuck: 0 });
+    await expect
+      .poll(
+        async () => (await pool.query("select status from scheduled_posts where id = $1", [rows[0].id])).rows[0].status,
+        { timeout: 30_000 },
+      )
+      .toBe("published");
+  } finally {
+    await pool.end();
+  }
 });
 
 test("the daily cron refreshes connected profiles", async ({ request }) => {
@@ -219,6 +351,6 @@ test("handles Meta's data-deletion callback", async ({ page, request }) => {
   expect(confirmation_code).toBeTruthy();
 
   await page.goto(new URL(url).pathname + new URL(url).search);
-  await expect(page.getByText("Your data has been deleted.")).toBeVisible();
-  await expect(page.getByText(confirmation_code)).toBeVisible();
+  await expect(shown(page.getByText("Your data has been deleted."))).toBeVisible();
+  await expect(shown(page.getByText(confirmation_code))).toBeVisible();
 });

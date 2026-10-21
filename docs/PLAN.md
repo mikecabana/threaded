@@ -318,18 +318,19 @@ Posts published through Threaded have a known `media_id`. For posts written else
 - **Post now:** a confirmation step, then publish immediately.
 - **Schedule:** pick a time from best-slot chips ("Tue 7pm · your #1 slot") or a custom time in the profile's timezone.
 
-**`publish-post` workflow** (Vercel Workflow, one run per `scheduled_posts` row):
-1. `sleep` until `scheduled_for`.
-2. Re-read the row. Stop if it was canceled. If it was moved later, sleep again.
-3. Pre-flight: the token is valid (refresh if needed), quota remains (`threads_publishing_limit`), and the text still fits.
-4. Create the container, poll its status until it's ready, then publish. Save the `media_id`.
-5. Link the post to its suggestion. Schedule metric snapshots at +1h, +24h and +72h for the scorecard.
-6. On failure, retry with backoff up to 3 times. After that, mark it `failed` and send an email plus an in-app notice with "Retry" and "Edit" buttons.
+**`publishPost` workflow** (Vercel Workflow, one run per *version* of a `scheduled_posts` row; `workflows/publish.ts`):
+1. `sleep` until `scheduled_for`. Every edit, reschedule, cancel or retry bumps the row's `version` and starts a fresh run; a run whose version no longer matches stops when it wakes, so moving a post earlier or later just works.
+2. Claim the row (`scheduled` → `publishing`, conditional on the version), so only one run can publish it.
+3. Pre-flight: the token is valid (refreshed if due), the text still fits, and quota remains (`threads_publishing_limit`).
+4. Create the container (stored as `container_id`), poll its status every 5s for up to a minute, then publish (stored as `media_id`, checked before publishing again).
+5. Record it: `published_at`, permalink, a `posts` row marked `via_threaded`, and the idea marked `posted`. Snapshots at +1h, +24h and +72h feed the scorecard.
+6. Failures the user can act on (reconnect, quota, a container Threads rejects) end the attempt with a message written for them; transient errors retry per step (rate limits wait 10 minutes). The post is then `failed`, with Retry, Edit and Remove in the Queue and a banner across the app. Email alerts come with Resend.
 
 **Safety nets:**
-- A cron **sweeper** runs every 5 minutes and re-runs any `scheduled` rows that are overdue with no active workflow.
-- Every step is idempotent: a container is created at most once per row (`container_id` is stored), and publish checks `media_id` before retrying.
-- Nothing is ever posted without an explicit user action. There's no autopilot.
+- A cron **sweeper** (`/api/cron/publish`, every 5 minutes, and also from the daily cron) gives a new run to any `scheduled` row more than 5 minutes overdue.
+- A row stuck in `publishing` for 30 minutes without a `media_id` might or might not have gone out, so rather than risk posting twice it's marked `failed` with a note to check Threads before retrying.
+- A row that has a `media_id` is always recorded as published, even if a later step failed.
+- Nothing is ever posted without an explicit user action: "Post now" has a confirmation step, and there's no autopilot.
 
 **Series (Phase 2):** a multi-part suggestion publishes as a chain, each part using `reply_to_id` to reply to the previous one.
 
@@ -366,7 +367,7 @@ credit_ledger    id, workspace_id, delta, kind, ref, generation_id, expires_at, 
 credit_lots      id, workspace_id, ledger_id, amount, remaining, expires_at, created_at   ← spent soonest-expiring first
 
 -- publishing & jobs
-scheduled_posts  id, profile_id, suggestion_id, text, topic_tag, scheduled_for (utc), status (scheduled|publishing|published|failed|canceled), container_id, media_id, attempts, last_error, workflow_run_id
+scheduled_posts  id, profile_id, suggestion_id, text, topic_tag, scheduled_for (utc), status (scheduled|publishing|published|failed|canceled), version, container_id, media_id, permalink, attempts, last_error, workflow_run_id, publishing_at, published_at
 sync_runs        id, profile_id, kind, status, step, stats jsonb, error, started_at, finished_at
 ```
 
@@ -678,7 +679,15 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Tested against `e2e/mock-billing.mjs`, a stateful mock of the Stripe API, hosted Checkout, signed webhooks and the Gateway credits endpoint: integration tests for top-ups, webhooks, auto-recharge (paid and declined), lots and expiry, and the BYOK plan lifecycle; end-to-end tests that save a card and watch the recharge workflow top up, buy a pack, switch to a key and back, and show and dismiss a billing notice.
 - Not yet: emails for failed recharges and lapsed plans (needs Resend; planned with 1e's failure emails), the admin margin view (Phase 2), the "all Gateway models" toggle for BYOK users.
 
-**Next:** 1e publishing (composer, post now, scheduling, Queue).
+**1e, publishing (done):**
+- A composer (dialog on desktop, bottom sheet on phones) with a live Threads preview, a length ring that counts emoji the Threads way, and an optional topic tag. **Schedule** offers the idea's own slot and the author's best hours as chips ("Today 7 PM · your best hour"), or any time in the profile's timezone; **Post now** asks for confirmation first.
+- It opens from Studio's idea cards, saved ideas, Home's plays and the Queue. "Post now" follows the run until the post is live and links to it.
+- Queue: a week strip, the scheduled timeline grouped by day (edit, post now, cancel), "Needs attention" for failures (retry, edit, remove), saved ideas ready to schedule, and recently posted with their latest numbers. Home's "Up next" counts down to the next post. The demo shows a sample queue.
+- Durable `publishPost` runs with versioning, a single-publisher claim, idempotent container and publish steps, user-facing failure messages, and the sweeper (§7).
+- Tests: integration tests drive every step against a fake Graph API (scheduling rules, publish once, container polling and errors, quota, revoked tokens, edits superseding runs, cancel, retry, the sweeper); end-to-end tests schedule, edit and cancel a saved idea, post now through the mock Meta server, show a failed post until it's removed, and rescue an overdue post with the sweeper.
+- Not yet: drag-and-drop onto a week calendar (the slot chips cover it for now), failure emails (needs Resend and the user's email), series via `reply_to_id` (Phase 2).
+
+**Phase 1 is feature-complete.** Remaining before testers: the external setup below, then a pass against the real services (⚠ items in §2).
 
 **Waiting on you** (see `docs/SETUP.md`):
 - Meta app and App Review submission

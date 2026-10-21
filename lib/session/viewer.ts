@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import { loadProfileDataset, type ProfileDataset } from "@/lib/data/dataset";
+import { failedPostCount } from "@/lib/data/queue";
 import { db } from "@/lib/db";
 import { type BillingNotice, memberships, threadsProfiles, threadsTokens, wallets, workspaces } from "@/lib/db/schema";
 import { generateDemoDataset } from "@/lib/demo/generate";
@@ -44,6 +45,8 @@ export interface AccountViewer extends ViewerBase {
   billingMode: "credits" | "byok";
   /** A billing problem to show across the app (e.g. a declined auto-recharge). */
   billingNotice: BillingNotice | null;
+  /** Scheduled posts that didn't go out and are waiting on the user. */
+  failedPosts: number;
   /** False after the user revokes access in Threads; they need to reconnect. */
   connected: boolean;
   lastSyncedAt: Date | null;
@@ -129,6 +132,7 @@ async function loadAccountViewer(sessionToken: string, now: Date): Promise<Accou
     workspaceId: row.workspaceId,
     billingMode: row.billingMode,
     billingNotice: row.billingNotice,
+    failedPosts: await failedPostCount(profile.id),
     connected: row.tokenExpiresAt !== null && row.tokenExpiresAt > now,
     lastSyncedAt: profile.lastSyncedAt,
     profile: { ...threadsProfile, avatarHue: hueFor(profile.username) },

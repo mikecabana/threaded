@@ -19,6 +19,19 @@ export interface FakeThreadsOptions {
   /** Path substrings that answer with an OAuth error. */
   authFailures?: string[];
   pageSize?: number;
+  /** Publishing behaviour (see the publishing routes below). */
+  publishing?: {
+    quotaUsed?: number;
+    /** Statuses the container reports, in order; the last one repeats. Defaults to FINISHED. */
+    containerStatuses?: string[];
+  };
+}
+
+export interface FakePublished {
+  containerId: string;
+  mediaId: string;
+  text: string;
+  topicTag: string | null;
 }
 
 function json(body: unknown, status = 200) {
@@ -28,9 +41,12 @@ function json(body: unknown, status = 200) {
 export function installFakeThreads(options: FakeThreadsOptions) {
   const calls: URL[] = [];
   const pageSize = options.pageSize ?? 2;
+  const containers = new Map<string, { text: string; topicTag: string | null; checks: number }>();
+  const published: FakePublished[] = [];
 
-  const handler = async (input: string | URL | Request) => {
+  const handler = async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input.toString());
+    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
     calls.push(url);
     if (options.authFailures?.some((p) => url.pathname.includes(p))) {
       return json({ error: { message: "Error validating access token", type: "OAuthException", code: 190 } }, 400);
@@ -41,6 +57,50 @@ export function installFakeThreads(options: FakeThreadsOptions) {
       return json({ access_token: "refreshed-token", token_type: "bearer", expires_in: 5_184_000 });
     }
     if (path === "/me") return json({ id: "1789", username: "maya.builds", name: "Maya Chen", is_verified: false });
+
+    // Publishing: containers, their status, publish, and the 24h quota.
+    if (path === "/me/threads" && method === "POST") {
+      const id = `container-${containers.size + 1}`;
+      containers.set(id, {
+        text: url.searchParams.get("text") ?? "",
+        topicTag: url.searchParams.get("topic_tag"),
+        checks: 0,
+      });
+      return json({ id });
+    }
+    if (path === "/me/threads_publish" && method === "POST") {
+      const containerId = url.searchParams.get("creation_id") ?? "";
+      const container = containers.get(containerId);
+      if (!container) return json({ error: { message: "Invalid creation_id", code: 100 } }, 400);
+      if (published.some((p) => p.containerId === containerId)) {
+        return json({ error: { message: "Container already published", code: 100 } }, 400);
+      }
+      const mediaId = `media-${published.length + 1}`;
+      published.push({ containerId, mediaId, text: container.text, topicTag: container.topicTag });
+      return json({ id: mediaId });
+    }
+    if (path === "/me/threads_publishing_limit") {
+      return json({
+        data: [
+          { quota_usage: options.publishing?.quotaUsed ?? 0, config: { quota_total: 250, quota_duration: 86400 } },
+        ],
+      });
+    }
+    const container = containers.get(path.slice(1));
+    if (container) {
+      const statuses = options.publishing?.containerStatuses ?? ["FINISHED"];
+      const status = statuses[Math.min(container.checks++, statuses.length - 1)];
+      return json({ id: path.slice(1), status, error_message: status === "ERROR" ? "Media upload failed" : null });
+    }
+    const media = published.find((p) => `/${p.mediaId}` === path);
+    if (media) {
+      return json({
+        id: media.mediaId,
+        permalink: `https://www.threads.net/@maya.builds/post/${media.mediaId}`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     if (path === "/me/threads") {
       const since = Number(url.searchParams.get("since") ?? 0) * 1000;
       const offset = Number(url.searchParams.get("after") ?? 0);
@@ -97,5 +157,5 @@ export function installFakeThreads(options: FakeThreadsOptions) {
   };
 
   vi.stubGlobal("fetch", vi.fn(handler));
-  return { calls, restore: () => vi.unstubAllGlobals() };
+  return { calls, published, restore: () => vi.unstubAllGlobals() };
 }

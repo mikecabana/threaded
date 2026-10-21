@@ -7,6 +7,7 @@ function label(target: number, now: number): string {
   if (minutes <= 0) return "now";
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
+  if (h >= 24) return `in ${Math.floor(h / 24)}d ${h % 24}h`;
   return h > 0 ? `in ${h}h ${m}m` : `in ${m}m`;
 }
 

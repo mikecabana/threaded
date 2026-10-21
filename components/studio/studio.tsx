@@ -6,6 +6,7 @@ import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { useComposer } from "@/components/composer/provider";
 import type { PostAuthor } from "@/components/threads/post-preview";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -53,6 +54,9 @@ class GenerateError extends Error {
   }
 }
 
+const completeSlot = (slot: IdeaView["bestSlot"]) =>
+  slot?.weekday !== undefined && slot.hour !== undefined ? { weekday: slot.weekday, hour: slot.hour } : null;
+
 const normalize = (text: string) => text.trim().replace(/\n{3,}/g, "\n\n");
 
 export function Studio({
@@ -71,6 +75,7 @@ export function Studio({
   initialModelId: string;
 }) {
   const router = useRouter();
+  const composer = useComposer();
   const [topic, setTopic] = useState("");
   const [spice, setSpice] = useState<SpiceLevel>("bold");
   const [format, setFormat] = useState<GenerateRequest["format"]>("any");
@@ -184,6 +189,17 @@ export function Studio({
   async function changeModel(next: string) {
     setModelId(next);
     if (!demo) await setModelPickAction("generate", next);
+  }
+
+  /** Records a status the server already applied (scheduled or posted) on the card. */
+  function markLocally(index: number, status: string) {
+    setFinal((f) => {
+      const entry = f?.byIndex.get(index);
+      if (!f || !entry) return f;
+      const byIndex = new Map(f.byIndex);
+      byIndex.set(index, { ...entry, status });
+      return { ...f, byIndex };
+    });
   }
 
   async function setStatus(index: number, status: "saved" | "new" | "dismissed") {
@@ -357,10 +373,24 @@ export function Studio({
                   idea={settled?.idea ?? idea}
                   streaming={!settled}
                   saved={settled?.status === "saved"}
+                  queued={settled?.status === "scheduled" || settled?.status === "posted" ? settled.status : undefined}
                   onToggleSave={
                     settled ? () => setStatus(index, settled.status === "saved" ? "new" : "saved") : undefined
                   }
                   onDismiss={settled ? () => setStatus(index, "dismissed") : undefined}
+                  onCompose={
+                    composer && settled?.id
+                      ? (mode) =>
+                          composer.open({
+                            text: settled.idea.text ?? "",
+                            suggestionId: settled.id,
+                            ideaSlot: completeSlot(settled.idea.bestSlot),
+                            mode,
+                            // "Post now" may still fail, so the card says it's queued either way.
+                            onQueued: () => markLocally(index, "scheduled"),
+                          })
+                      : undefined
+                  }
                 />
               );
             })}
