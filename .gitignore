@@ -48,4 +48,5 @@ next-env.d.ts
 # workflow (generated routes + local world data)
 /app/.well-known/workflow/
 .workflow-data/
+.workflow-data-preview/
 /.swc

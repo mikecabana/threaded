@@ -10,7 +10,12 @@ const optional = z.string().min(1).optional();
 const schema = z.object({
   THREADS_APP_ID: optional,
   THREADS_APP_SECRET: optional,
+  /** Override for the Threads callback; by default it's derived from the production URL (lib/deployment.ts). */
   THREADS_REDIRECT_URI: z.url().optional(),
+  /** Override for the production URL; on Vercel it comes from VERCEL_PROJECT_PRODUCTION_URL. */
+  APP_URL: z.url().optional(),
+  /** Preview deployments that may use Threads sign-in, e.g. "https://threaded-*-acme.vercel.app". */
+  PREVIEW_ORIGINS: optional,
   /** 32 bytes, base64. Encrypts Threads tokens and BYOK keys. */
   SECRETS_ENC_KEY: optional,
   SESSION_SECRET: optional,
