@@ -5,6 +5,7 @@ import { creditsForCost } from "@/lib/pricing";
 import { type CatalogEntry, DEFAULT_CATALOG, pickModel, sameTierFallbacks } from "./catalog";
 import { buildContext, insightsFor, voiceStats } from "./context";
 import { chargeCredits, costUsd, maxCredits } from "./cost";
+import { byokFailure, gatewayStatus } from "./errors";
 import { MOCK_SUGGESTIONS } from "./mock-model";
 import { DUPLICATE_THRESHOLD, postProcess, similarity } from "./postprocess";
 import { buildInstructions, buildPrompt } from "./prompt";
@@ -131,5 +132,24 @@ describe("schemas", () => {
     expect(suggestionBatchSchema.parse({ suggestions: MOCK_SUGGESTIONS }).suggestions).toHaveLength(5);
     expect(generateRequestSchema.parse({ goal: "views" })).toMatchObject({ spice: "bold", format: "any", count: 3 });
     expect(() => generateRequestSchema.parse({ goal: "views", count: 9 })).toThrow();
+  });
+});
+
+describe("own-key errors", () => {
+  const withStatus = (statusCode: number) => Object.assign(new Error("Gateway request failed"), { statusCode });
+
+  it("finds the Gateway status inside wrapped errors", () => {
+    expect(gatewayStatus(withStatus(401))).toBe(401);
+    expect(gatewayStatus({ lastError: { cause: withStatus(402) } })).toBe(402);
+    expect(gatewayStatus({ errors: [new Error("x"), withStatus(403)] })).toBe(403);
+    expect(gatewayStatus(new Error("no status"))).toBeNull();
+  });
+
+  it("maps failures the user can fix", () => {
+    expect(byokFailure(withStatus(401))).toBe("byok_key_invalid");
+    expect(byokFailure(withStatus(403))).toBe("byok_key_invalid");
+    expect(byokFailure(withStatus(402))).toBe("byok_no_balance");
+    expect(byokFailure(new Error("Insufficient funds on this team"))).toBe("byok_no_balance");
+    expect(byokFailure(withStatus(500))).toBeNull();
   });
 });

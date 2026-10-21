@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { createTextStreamResponse, Output, streamText, toTextStream } from "ai";
 import { and, count, eq, gte } from "drizzle-orm";
+import { maybeStartAutoRecharge } from "@/lib/billing/auto-recharge";
 import {
   type Hold,
   InsufficientCreditsError,
@@ -15,7 +16,8 @@ import { generations, suggestions, threadsProfiles, workspaces } from "@/lib/db/
 import type { AccountIdentity } from "@/lib/session/identity";
 import { buildContext } from "./context";
 import { chargeCredits, costUsd, estimateTokens, maxCredits } from "./cost";
-import { type ResolvedModel, resolveModel } from "./models";
+import { type ByokFailure, byokFailure } from "./errors";
+import { isAiConfigured, type ResolvedModel, resolveModel } from "./models";
 import { postProcess } from "./postprocess";
 import { buildInstructions, buildPrompt, PROMPT_VERSION } from "./prompt";
 import { type GenerateRequest, type SuggestionBatch, suggestionBatchSchema } from "./schemas";
@@ -31,7 +33,7 @@ type Usage = { inputTokens?: number; outputTokens?: number } | undefined;
 
 type Outcome =
   | { kind: "ok"; output: SuggestionBatch | undefined; usage: Usage; generationId: string | undefined }
-  | { kind: "failed" };
+  | { kind: "failed"; error?: ByokFailure | null };
 
 /** What the call cost in USD: the Gateway's figure when available, else tokens × catalog price. */
 async function actualCostUsd(resolved: ResolvedModel, gatewayGenerationId: string | undefined, usage: Usage) {
@@ -83,6 +85,8 @@ export async function startGeneration(input: {
   if (recent >= RATE_LIMIT.max) return json(429, { error: "rate_limited" });
 
   const { workspace, profile } = row;
+  const ownKey = workspace.billingMode === "byok" && workspace.byokKeyEnc !== null;
+  if (!ownKey && !isAiConfigured()) return json(503, { error: "ai_unavailable" });
   const resolved = await resolveModel({ task: "generate", workspace, requestedModelId: request.modelId });
   const threadsProfile = {
     id: profile.id,
@@ -124,7 +128,9 @@ export async function startGeneration(input: {
     } catch (error) {
       await db().update(generations).set({ status: "failed" }).where(eq(generations.id, generationId));
       if (error instanceof InsufficientCreditsError) {
-        return json(402, { error: "insufficient_credits", needed: error.needed, balance: error.balance });
+        // With auto-recharge on, a top-up starts now so the next try works.
+        const recharging = await maybeStartAutoRecharge(workspace.id);
+        return json(402, { error: "insufficient_credits", needed: error.needed, balance: error.balance, recharging });
       }
       throw error;
     }
@@ -148,7 +154,11 @@ export async function startGeneration(input: {
       if (!processed || processed.kept.length === 0) {
         await db()
           .update(generations)
-          .set({ status: processed ? "done" : "failed", dropped: processed?.dropped.length ?? 0 })
+          .set({
+            status: processed ? "done" : "failed",
+            dropped: processed?.dropped.length ?? 0,
+            error: outcome.kind === "failed" ? (outcome.error ?? null) : null,
+          })
           .where(eq(generations.id, generationId));
         if (hold) await releaseCredits(hold);
         return;
@@ -180,7 +190,10 @@ export async function startGeneration(input: {
           creditsCharged: charged,
         })
         .where(eq(generations.id, generationId));
-      if (hold) await settleCredits(hold, charged);
+      if (hold) {
+        await settleCredits(hold, charged);
+        await maybeStartAutoRecharge(workspace.id);
+      }
     } catch (error) {
       console.error(`Finishing generation ${generationId} failed`, error);
       await db()
@@ -213,7 +226,7 @@ export async function startGeneration(input: {
     },
     onError: async ({ error }) => {
       console.error(`Generation ${generationId} failed`, error);
-      await finish({ kind: "failed" });
+      await finish({ kind: "failed", error: resolved.billing === "byok" ? byokFailure(error) : null });
     },
     onAbort: async () => {
       await finish({ kind: "failed" });

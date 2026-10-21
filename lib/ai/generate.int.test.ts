@@ -1,13 +1,15 @@
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { provisionThreadsAccount } from "@/lib/accounts/provision";
+import { encryptSecret } from "@/lib/crypto/secrets";
 import { db } from "@/lib/db";
-import { creditLedger, generations, posts, suggestions, wallets } from "@/lib/db/schema";
+import { creditLedger, generations, posts, suggestions, wallets, workspaces } from "@/lib/db/schema";
 import { TRIAL_CREDITS } from "@/lib/pricing";
 import type { AccountIdentity } from "@/lib/session/identity";
 import { closeDatabase, resetDatabase } from "@/test/db";
 import { RATE_LIMIT, startGeneration } from "./generate";
 import { MOCK_SUGGESTIONS } from "./mock-model";
+import { byokContext } from "./models";
 import { generateRequestSchema } from "./schemas";
 
 let identity: AccountIdentity;
@@ -140,6 +142,33 @@ describe("startGeneration", () => {
       .from(creditLedger)
       .where(eq(creditLedger.ref, generationId as string));
     expect(ledger.map((r) => r.kind).sort()).toEqual(["release", "reserve"]);
+  });
+
+  it("runs on the workspace's own key without touching credits", async () => {
+    await db()
+      .update(workspaces)
+      .set({ billingMode: "byok", byokKeyEnc: encryptSecret("vck_test", byokContext(identity.workspaceId)) })
+      .where(eq(workspaces.id, identity.workspaceId));
+    try {
+      const { response, generationId } = await run();
+      expect(response.status).toBe(200);
+      const [generation] = await db()
+        .select()
+        .from(generations)
+        .where(eq(generations.id, generationId as string));
+      expect(generation).toMatchObject({ status: "done", billingMode: "byok", creditsCharged: 0 });
+      expect(await wallet()).toMatchObject({ balance: TRIAL_CREDITS, reserved: 0 });
+      const ledger = await db()
+        .select()
+        .from(creditLedger)
+        .where(eq(creditLedger.ref, generationId as string));
+      expect(ledger).toHaveLength(0);
+    } finally {
+      await db()
+        .update(workspaces)
+        .set({ billingMode: "credits", byokKeyEnc: null })
+        .where(eq(workspaces.id, identity.workspaceId));
+    }
   });
 
   it("rate-limits bursts", async () => {

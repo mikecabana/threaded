@@ -3,12 +3,14 @@
 import { useObject } from "@ai-sdk/react";
 import { LoaderCircle, Sparkles, Square, TriangleAlert } from "lucide-react";
 import { AnimatePresence, m } from "motion/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import type { PostAuthor } from "@/components/threads/post-preview";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Segmented } from "@/components/ui/segmented";
+import { switchToCreditsAction } from "@/lib/actions/billing";
 import { setModelPickAction, setSuggestionStatusAction } from "@/lib/actions/studio";
 import { type GenerateRequest, SPICE_LEVELS, type SpiceLevel, suggestionBatchSchema } from "@/lib/ai/schemas";
 import { FORMAT_LABELS, POST_FORMATS } from "@/lib/analysis/formats";
@@ -34,7 +36,10 @@ interface Final {
 }
 
 const ERRORS: Record<string, string> = {
-  insufficient_credits: "You don't have enough credits for this batch. Top-ups are coming soon.",
+  insufficient_credits: "You don't have enough credits for this batch.",
+  insufficient_credits_recharging: "You're low on credits. Auto-recharge is topping you up now; try again in a moment.",
+  byok_key_invalid: "Your AI Gateway key was rejected, so nothing ran. Replace it, or switch back to credits.",
+  byok_no_balance: "Your AI Gateway account is out of funds. Add funds in Vercel, or switch back to credits.",
   rate_limited: "That's a lot of ideas in a short time. Give it a few minutes, then try again.",
   ai_unavailable: "AI generation isn't set up on this deployment yet.",
   not_signed_in: "Your session ended. Sign in again to keep generating.",
@@ -99,6 +104,7 @@ export function Studio({
           status: string;
           dropped: number;
           creditsCharged: number;
+          error: string | null;
           suggestions: StoredSuggestion[];
         };
         if (result.status !== "running") {
@@ -113,7 +119,7 @@ export function Studio({
           });
           setFinal({ byIndex, dropped: result.dropped, charged: result.creditsCharged });
           setPhase(result.status === "done" ? "done" : "error");
-          if (result.status !== "done") setErrorCode("failed");
+          if (result.status !== "done") setErrorCode(result.error ?? "failed");
           // Refresh the header balance and Home's plays.
           router.refresh();
           return;
@@ -135,8 +141,8 @@ export function Studio({
         demo: response.headers.get("x-threaded-demo") === "1",
       };
       if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new GenerateError(body.error ?? "failed");
+        const body = (await response.json().catch(() => ({}))) as { error?: string; recharging?: boolean };
+        throw new GenerateError(body.recharging ? `${body.error}_recharging` : (body.error ?? "failed"));
       }
       return response;
     },
@@ -324,7 +330,10 @@ export function Studio({
         {phase === "error" && (
           <Card className="mb-4 flex items-start gap-3 border-negative/30 bg-negative/5 p-4 text-sm">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-negative" aria-hidden />
-            <p>{ERRORS[errorCode ?? ""] ?? "Something went wrong and you haven't been charged. Please try again."}</p>
+            <div className="space-y-3">
+              <p>{ERRORS[errorCode ?? ""] ?? "Something went wrong and you haven't been charged. Please try again."}</p>
+              <ErrorActions code={errorCode} onSwitched={() => router.refresh()} />
+            </div>
           </Card>
         )}
 
@@ -367,6 +376,37 @@ export function Studio({
       </section>
     </div>
   );
+}
+
+/** The fix for an error the user can act on: buy credits, or leave a broken key. */
+function ErrorActions({ code, onSwitched }: { code: string | null; onSwitched: () => void }) {
+  if (code === "insufficient_credits") {
+    return (
+      <Button asChild size="sm">
+        <Link href="/settings/billing">Buy credits</Link>
+      </Button>
+    );
+  }
+  if (code === "byok_key_invalid" || code === "byok_no_balance") {
+    return (
+      <div className="flex flex-wrap gap-2">
+        <form
+          action={async () => {
+            await switchToCreditsAction();
+            onSwitched();
+          }}
+        >
+          <Button type="submit" size="sm">
+            Switch to credits
+          </Button>
+        </form>
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/settings/billing">Billing</Link>
+        </Button>
+      </div>
+    );
+  }
+  return null;
 }
 
 function EmptyStudio({ goal }: { goal: Goal }) {

@@ -5,7 +5,13 @@ import { decryptSecret } from "@/lib/crypto/secrets";
 import { env } from "@/lib/env";
 import { type AiTask, type CatalogEntry, catalogFor, pickModel, sameTierFallbacks } from "./catalog";
 
+/** Encryption context for a workspace's own Gateway key: ciphertext only decrypts for that workspace. */
 export const byokContext = (workspaceId: string) => `byok:${workspaceId}`;
+
+/** A Gateway client for a given key (AI_GATEWAY_BASE_URL only points it at a mock in tests). */
+export function gatewayWithKey(apiKey: string) {
+  return createGateway({ apiKey, ...(env.AI_GATEWAY_BASE_URL && { baseURL: env.AI_GATEWAY_BASE_URL }) });
+}
 
 /** True when the app can reach a model: a Gateway key, Vercel OIDC, or the test mock. */
 export function isAiConfigured(): boolean {
@@ -53,7 +59,7 @@ export async function resolveModel(input: {
 
   const gateway =
     billing === "byok"
-      ? createGateway({ apiKey: decryptSecret(input.workspace.byokKeyEnc as string, byokContext(input.workspace.id)) })
+      ? gatewayWithKey(decryptSecret(input.workspace.byokKeyEnc as string, byokContext(input.workspace.id)))
       : createGateway(env.AI_GATEWAY_API_KEY ? { apiKey: env.AI_GATEWAY_API_KEY } : {});
   return { model: gateway(entry.modelId), entry, billing, providerOptions, gateway };
 }

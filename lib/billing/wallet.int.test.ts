@@ -1,15 +1,43 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { creditLedger, wallets, workspaces } from "@/lib/db/schema";
+import { creditLedger, creditLots, wallets, workspaces } from "@/lib/db/schema";
 import { closeDatabase, resetDatabase } from "@/test/db";
-import { getBalance, InsufficientCreditsError, releaseCredits, reserveCredits, settleCredits } from "./wallet";
+import {
+  creditExpiry,
+  expireCredits,
+  getBalance,
+  grantCredits,
+  InsufficientCreditsError,
+  releaseCredits,
+  reserveCredits,
+  settleCredits,
+} from "./wallet";
 
 let workspaceId: string;
+const DAY = 86_400_000;
 
+/** Empties the wallet, then grants `balance` as one lot that never expires. */
 async function setBalance(balance: number) {
-  await db().update(wallets).set({ balance, reserved: 0 }).where(eq(wallets.workspaceId, workspaceId));
+  await db().delete(creditLots);
   await db().delete(creditLedger);
+  await db().update(wallets).set({ balance: 0, reserved: 0 }).where(eq(wallets.workspaceId, workspaceId));
+  if (balance > 0) await grantCredits({ workspaceId, amount: balance, kind: "adjust", ref: "seed", expiresAt: null });
+}
+
+async function lots() {
+  return db()
+    .select({ amount: creditLots.amount, remaining: creditLots.remaining, expiresAt: creditLots.expiresAt })
+    .from(creditLots)
+    .where(eq(creditLots.workspaceId, workspaceId))
+    .orderBy(asc(creditLots.createdAt));
+}
+
+/** Lots always hold exactly the wallet's balance plus what's reserved. */
+async function expectLotsMatchWallet() {
+  const { balance, reserved } = await wallet();
+  const held = (await lots()).reduce((sum, lot) => sum + lot.remaining, 0);
+  expect(held).toBe(balance + reserved);
 }
 
 async function wallet() {
@@ -75,5 +103,59 @@ describe("wallet", () => {
     const { balance, reserved } = await wallet();
     expect(reserved).toBe(0);
     expect([90, 100]).toContain(balance);
+    await expectLotsMatchWallet();
+  });
+});
+
+describe("credit lots", () => {
+  it("grants once per (kind, ref)", async () => {
+    const grant = {
+      workspaceId,
+      amount: 500,
+      kind: "purchase" as const,
+      ref: "cs_test_1",
+      expiresAt: creditExpiry(new Date()),
+    };
+    expect(await grantCredits(grant)).toBe(true);
+    expect(await grantCredits(grant)).toBe(false);
+    expect(await getBalance(workspaceId)).toBe(600);
+    expect(await lots()).toHaveLength(2);
+    await expectLotsMatchWallet();
+  });
+
+  it("spends the soonest-expiring credits first", async () => {
+    const now = Date.now();
+    await grantCredits({
+      workspaceId,
+      amount: 50,
+      kind: "purchase",
+      ref: "late",
+      expiresAt: new Date(now + 300 * DAY),
+    });
+    await grantCredits({ workspaceId, amount: 30, kind: "purchase", ref: "soon", expiresAt: new Date(now + 10 * DAY) });
+
+    const hold = await reserveCredits(workspaceId, 60, "gen-lots");
+    await settleCredits(hold, 40);
+    // Seed (never expires) 100, late 50, soon 30: the 40 comes from "soon" (30), then "late" (10).
+    expect((await lots()).map((lot) => lot.remaining)).toEqual([100, 40, 0]);
+    await expectLotsMatchWallet();
+  });
+
+  it("expires lots past their date, but not while a generation is in flight", async () => {
+    const now = new Date();
+    await grantCredits({ workspaceId, amount: 25, kind: "purchase", ref: "old", expiresAt: new Date(+now - DAY) });
+    expect(await getBalance(workspaceId)).toBe(125);
+
+    const hold = await reserveCredits(workspaceId, 10, "gen-busy");
+    expect(await expireCredits(now)).toEqual({ workspaces: 0, credits: 0 });
+    await settleCredits(hold, 4);
+    // The charge drew on the expired lot first, so only 21 are left to expire.
+    expect(await expireCredits(now)).toEqual({ workspaces: 1, credits: 21 });
+    expect(await getBalance(workspaceId)).toBe(100);
+    expect(await expireCredits(now)).toEqual({ workspaces: 0, credits: 0 });
+
+    const expired = await db().select().from(creditLedger).where(eq(creditLedger.kind, "expire"));
+    expect(expired.map((row) => row.delta)).toEqual([-21]);
+    await expectLotsMatchWallet();
   });
 });

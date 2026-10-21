@@ -25,6 +25,11 @@ export function maxCredits(entry: CatalogEntry, inputTokens: number, maxOutputTo
 }
 
 /** What a typical call costs, shown before generating. */
+// Planning figures for prices shown before generating: a typical prompt
+// (voice, best posts, recent posts) and typical output per batch size.
+export const TYPICAL_INPUT_TOKENS = 2500;
+export const TYPICAL_OUTPUT_TOKENS = { 3: 900, 5: 1400 } as const;
+
 export function typicalCredits(entry: CatalogEntry, inputTokens: number, typicalOutputTokens: number): number {
   return creditsForCost(costUsd(entry, inputTokens, typicalOutputTokens), entry.markup, entry.minCredits);
 }

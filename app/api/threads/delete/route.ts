@@ -1,4 +1,5 @@
 import { deleteThreadsData } from "@/lib/accounts/provision";
+import { endPlanForDeletedAccount } from "@/lib/billing/subscription";
 import { randomToken } from "@/lib/crypto/sign";
 import { threadsAppConfig } from "@/lib/threads/config";
 import { parseSignedRequest } from "@/lib/threads/signed-request";
@@ -14,6 +15,8 @@ export async function POST(request: Request) {
   if (!payload) return Response.json({ error: "invalid signed_request" }, { status: 400 });
 
   const code = randomToken(12);
+  // Before the profile goes: it's how we find the workspace's plan.
+  await endPlanForDeletedAccount(payload.user_id);
   await deleteThreadsData(payload.user_id, code);
   const url = new URL(`/data-deletion?code=${code}`, request.url);
   return Response.json({ url: url.toString(), confirmation_code: code });

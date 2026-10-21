@@ -1,10 +1,10 @@
 import "server-only";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { creditExpiry, grantCredits } from "@/lib/billing/wallet";
 import { encryptSecret } from "@/lib/crypto/secrets";
 import { sha256 } from "@/lib/crypto/sign";
 import { db, type Tx } from "@/lib/db";
 import {
-  creditLedger,
   deletionRequests,
   memberships,
   sessions,
@@ -132,16 +132,17 @@ async function upsertUser(tx: Tx, threadsUserId: string): Promise<string> {
 }
 
 async function grantTrialOnce(tx: Tx, workspaceId: string, threadsUserId: string): Promise<boolean> {
-  const inserted = await tx
-    .insert(creditLedger)
-    .values({ workspaceId, delta: TRIAL_CREDITS, kind: "trial", ref: `trial:${sha256(threadsUserId)}` })
-    .onConflictDoNothing({ target: [creditLedger.kind, creditLedger.ref] })
-    .returning({ id: creditLedger.id });
-  if (inserted.length === 0) return false;
-  await tx
-    .update(wallets)
-    .set({ balance: sql`${wallets.balance} + ${TRIAL_CREDITS}` })
-    .where(eq(wallets.workspaceId, workspaceId));
+  const granted = await grantCredits(
+    {
+      workspaceId,
+      amount: TRIAL_CREDITS,
+      kind: "trial",
+      ref: `trial:${sha256(threadsUserId)}`,
+      expiresAt: creditExpiry(new Date()),
+    },
+    tx,
+  );
+  if (!granted) return false;
   await tx.update(threadsProfiles).set({ trialGrantedAt: new Date() }).where(eq(threadsProfiles.id, threadsUserId));
   return true;
 }

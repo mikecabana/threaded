@@ -6,7 +6,7 @@ import { connection } from "next/server";
 import { cache } from "react";
 import { loadProfileDataset, type ProfileDataset } from "@/lib/data/dataset";
 import { db } from "@/lib/db";
-import { memberships, threadsProfiles, threadsTokens, wallets, workspaces } from "@/lib/db/schema";
+import { type BillingNotice, memberships, threadsProfiles, threadsTokens, wallets, workspaces } from "@/lib/db/schema";
 import { generateDemoDataset } from "@/lib/demo/generate";
 import { DEMO_PERSONAS, type DemoPersona, isDemoPersonaId } from "@/lib/demo/personas";
 import { env } from "@/lib/env";
@@ -42,6 +42,8 @@ export interface AccountViewer extends ViewerBase {
   userId: string;
   workspaceId: string;
   billingMode: "credits" | "byok";
+  /** A billing problem to show across the app (e.g. a declined auto-recharge). */
+  billingNotice: BillingNotice | null;
   /** False after the user revokes access in Threads; they need to reconnect. */
   connected: boolean;
   lastSyncedAt: Date | null;
@@ -97,6 +99,7 @@ async function loadAccountViewer(sessionToken: string, now: Date): Promise<Accou
     .select({
       workspaceId: workspaces.id,
       billingMode: workspaces.billingMode,
+      billingNotice: workspaces.billingNotice,
       balance: wallets.balance,
       profile: threadsProfiles,
       tokenExpiresAt: threadsTokens.expiresAt,
@@ -125,6 +128,7 @@ async function loadAccountViewer(sessionToken: string, now: Date): Promise<Accou
     userId,
     workspaceId: row.workspaceId,
     billingMode: row.billingMode,
+    billingNotice: row.billingNotice,
     connected: row.tokenExpiresAt !== null && row.tokenExpiresAt > now,
     lastSyncedAt: profile.lastSyncedAt,
     profile: { ...threadsProfile, avatarHue: hueFor(profile.username) },

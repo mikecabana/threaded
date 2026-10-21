@@ -1,5 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import Link from "next/link";
+import { BillingNoticeBanner } from "@/components/billing/billing-notice";
 import { LogoMark } from "@/components/brand/logo";
 import { GoalSwitcher } from "@/components/goal/goal-switcher";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +19,7 @@ export async function TopBar() {
       <GoalSync goal={viewer.goal} />
       {viewer.kind === "demo" && <DemoBanner current={viewer.persona.id} />}
       {viewer.kind === "account" && !viewer.connected && <ReconnectBanner />}
+      {viewer.kind === "account" && viewer.billingNotice && <BillingNoticeBanner notice={viewer.billingNotice} />}
       <div className="flex h-16 items-center gap-3 px-4 md:px-8">
         <Link href="/home" className="md:hidden" aria-label="Home">
           <LogoMark className="size-7" />
@@ -25,7 +27,12 @@ export async function TopBar() {
         <GoalSwitcher key={viewer.goal} initialGoal={viewer.goal} />
         <div className="ml-auto flex items-center gap-2">
           {viewer.kind === "account" && viewer.billingMode === "byok" ? (
-            <span className="rounded-full border border-border px-3 py-1.5 text-muted text-xs">Your key</span>
+            <Link
+              href="/settings/billing"
+              className="rounded-full border border-border px-3 py-1.5 text-muted text-xs transition-colors hover:border-border-strong"
+            >
+              Your key
+            </Link>
           ) : (
             <CreditsPill credits={viewer.credits} />
           )}

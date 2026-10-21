@@ -25,11 +25,11 @@ With no environment variables set, the app runs entirely on the demo accounts.
 | `pnpm typecheck` | Route types + `tsc` |
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm test:int` | Integration tests against `TEST_DATABASE_URL` (wipes that database) |
-| `pnpm build && pnpm test:e2e` | Production build + Playwright (desktop and mobile). With `TEST_DATABASE_URL` set, also runs real Threads sign-in against a local mock of Meta (`e2e/mock-meta.mjs`) |
+| `pnpm build && pnpm test:e2e` | Production build + Playwright (desktop and mobile). With `TEST_DATABASE_URL` set, also runs a real account end to end: Threads sign-in against a mock of Meta (`e2e/mock-meta.mjs`), and payments and key checks against a mock of Stripe and the AI Gateway (`e2e/mock-billing.mjs`) |
 | `pnpm db:generate` | New SQL migration from `lib/db/schema.ts` |
 | `pnpm db:migrate` | Apply migrations to `DATABASE_URL` |
 
-Background jobs (the Threads sync) run on [Vercel Workflow](https://vercel.com/docs/workflow). Locally they
+Background jobs (the Threads sync, auto-recharge) run on [Vercel Workflow](https://vercel.com/docs/workflow). Locally they
 use the built-in Local World, so `pnpm dev` runs them with no setup; inspect runs with `npx workflow web`
 or `npx workflow inspect runs`. Run data lives in `.workflow-data/` (gitignored).
 
@@ -73,13 +73,34 @@ If your machine already has a Chromium build, point Playwright at it with
 
 ## 3. Stripe (test mode)
 
-1. Create a Stripe account and stay in **test mode**.
-2. Copy the secret and publishable keys into `STRIPE_SECRET_KEY` and `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
-3. Turn on **Stripe Tax** (credit packs are taxable in many places).
-4. Phase 1 adds the webhook endpoint (`/api/stripe/webhook`); its signing secret goes in `STRIPE_WEBHOOK_SECRET`. Locally, use `stripe listen --forward-to localhost:3000/api/stripe/webhook`.
+Threaded uses hosted Checkout and the hosted billing portal, so there's no
+publishable key and no products to create: prices come from `lib/pricing.ts`
+(credit packs of $5/$20/$50, a $1 trial, a 1.5× default markup, a $5/month
+BYOK platform fee, and a 12-month credit expiry).
 
-Prices live in code (`lib/pricing.ts`): credit packs of $5/$20/$50, a $1 trial,
-a 1.5× default markup, a $5/month BYOK platform fee, and a 12-month credit expiry.
+1. Create a Stripe account and stay in **test mode**. Put the secret key in `STRIPE_SECRET_KEY`.
+2. **Webhook:** add an endpoint for `https://<your-domain>/api/stripe/webhook` with exactly these events, and
+   put its signing secret in `STRIPE_WEBHOOK_SECRET`:
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+   `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`,
+   `invoice.paid`. Locally: `stripe listen --forward-to localhost:3000/api/stripe/webhook --events …`
+   prints a secret to use instead.
+3. **Customer portal:** Settings → Billing → Customer portal. Save it once (test mode needs this before the
+   portal opens), allow updating payment methods, viewing invoices, and canceling subscriptions at the
+   end of the period.
+4. **Stripe Tax (optional):** activate it and add your registrations, then set `STRIPE_AUTOMATIC_TAX=1`.
+   Checkout then collects addresses and adds tax on top of the pack price; auto-recharge invoices do too.
+
+Payments stay off (the billing page says so) until both Stripe variables are set.
+
+**Testing by hand:** card `4242 4242 4242 4242` pays. To see a failed auto-recharge, save
+`4000 0000 0000 0341` (it saves fine, then every charge is declined), and lower your balance under
+the threshold with a generation.
+
+**How it fits together** (details in `docs/PLAN.md` §6): our ledger decides what a workspace can
+spend; Stripe only takes money. A paid Checkout Session or auto-recharge invoice adds a lot of
+credits, fulfilled from both the webhook and the return page (`/api/billing/return`), idempotently.
+Auto-recharge charges the saved card off-session through an invoice, from a Vercel Workflow run.
 
 ## 4. Resend
 

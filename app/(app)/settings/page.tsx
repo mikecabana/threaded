@@ -1,5 +1,6 @@
-import { LogOut } from "lucide-react";
+import { ChevronRight, LogOut } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { Avatar } from "@/components/app/avatar";
 import { SyncNowButton } from "@/components/app/sync-now-button";
@@ -19,7 +20,6 @@ export const metadata: Metadata = { title: "Settings" };
 
 const UPCOMING = [
   { title: "Models", body: "Pick the AI model for each task, with its price per use." },
-  { title: "Billing", body: "Credits, top-ups, auto-recharge, or your own Vercel AI Gateway key." },
   { title: "Voice", body: "Emoji, casing, banned words and how spicy suggestions get." },
   { title: "Account & data", body: "Re-sync, disconnect Threads, or delete everything." },
 ];
@@ -42,6 +42,18 @@ export default function SettingsPage() {
       <Suspense fallback={<Skeleton className="h-44 rounded-2xl" />}>
         <AccountCard />
       </Suspense>
+
+      <Link href="/settings/billing" className="group block">
+        <Card className="flex items-center justify-between gap-4 p-5 transition-colors group-hover:border-border-strong">
+          <div>
+            <h2 className="font-medium">Billing</h2>
+            <p className="mt-1 text-muted text-sm">
+              Credits, top-ups, auto-recharge, or your own Vercel AI Gateway key.
+            </p>
+          </div>
+          <ChevronRight className="size-5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" />
+        </Card>
+      </Link>
 
       <div className="grid gap-3 sm:grid-cols-2">
         {UPCOMING.map((item) => (

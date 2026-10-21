@@ -19,6 +19,18 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+export interface AutoRechargeSettings {
+  enabled: boolean;
+  thresholdCredits: number;
+  packId: string;
+}
+
+export interface BillingNotice {
+  kind: "auto_recharge_failed" | "byok_ended";
+  message: string;
+  at: string;
+}
+
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
 
@@ -68,7 +80,15 @@ export const workspaces = pgTable("workspaces", {
   stripeCustomerId: text("stripe_customer_id").unique(),
   /** BYOK platform fee subscription. */
   stripeSubscriptionId: text("stripe_subscription_id"),
-  autoRecharge: jsonb("auto_recharge").$type<{ enabled: boolean; thresholdCredits: number; packId: string }>(),
+  /** Mirrors the Stripe subscription; refreshed from Stripe on every webhook. */
+  subscriptionStatus: text("subscription_status"),
+  subscriptionPeriodEnd: timestamp("subscription_period_end", { withTimezone: true }),
+  subscriptionCancelAtPeriodEnd: boolean("subscription_cancel_at_period_end").notNull().default(false),
+  autoRecharge: jsonb("auto_recharge").$type<AutoRechargeSettings>(),
+  /** Set while an auto-recharge charge is in flight, so only one runs at a time. */
+  autoRechargePendingAt: timestamp("auto_recharge_pending_at", { withTimezone: true }),
+  /** A billing problem shown across the app until it's resolved. */
+  billingNotice: jsonb("billing_notice").$type<BillingNotice>(),
   createdAt: createdAt(),
 });
 
@@ -287,6 +307,8 @@ export const generations = pgTable(
       .default("running"),
     /** Suggestions dropped in post-processing (too long, or repeating a past post). */
     dropped: integer("dropped").notNull().default(0),
+    /** Why a failed generation failed, when the user can act on it (e.g. "byok_key_invalid"). */
+    error: text("error"),
     createdAt: createdAt(),
   },
   (t) => [index("generations_profile_idx").on(t.profileId, t.createdAt)],
@@ -346,6 +368,29 @@ export const creditLedger = pgTable(
     uniqueIndex("credit_ledger_kind_ref_idx").on(t.kind, t.ref),
     index("credit_ledger_workspace_idx").on(t.workspaceId, t.createdAt),
   ],
+);
+
+/**
+ * Credits that can still be spent, per purchase or grant, so each batch can
+ * expire on its own date. Spending draws from the soonest-expiring lot first.
+ * Invariant: sum(remaining) = wallet balance + reserved.
+ */
+export const creditLots = pgTable(
+  "credit_lots",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** The purchase, trial or adjustment that added these credits. */
+    ledgerId: uuid("ledger_id").references(() => creditLedger.id, { onDelete: "set null" }),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    remaining: bigint("remaining", { mode: "number" }).notNull(),
+    /** Null never expires. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("credit_lots_workspace_idx").on(t.workspaceId, t.expiresAt)],
 );
 
 // ── Publishing & jobs ────────────────────────────────────────────────────────

@@ -67,6 +67,7 @@ export async function generationResult(profileId: string, generationId: string) 
       status: generations.status,
       dropped: generations.dropped,
       creditsCharged: generations.creditsCharged,
+      error: generations.error,
     })
     .from(generations)
     .where(and(eq(generations.id, generationId), eq(generations.profileId, profileId)));

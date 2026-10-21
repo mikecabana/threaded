@@ -1,12 +1,13 @@
 import { createHmac } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 
-// Full Threads sign-in against e2e/mock-meta.mjs and a real Postgres.
-// Needs TEST_DATABASE_URL (see playwright.config.ts); skipped otherwise.
+// A real account end to end: Threads sign-in against e2e/mock-meta.mjs,
+// payments against e2e/mock-billing.mjs, and a real Postgres. Needs
+// TEST_DATABASE_URL (see playwright.config.ts); skipped otherwise.
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 test.skip(!databaseUrl, "TEST_DATABASE_URL not set");
@@ -81,12 +82,106 @@ test("generates ideas in Studio, charges credits, and surfaces saved ideas on Ho
   ).not.toHaveCount(0);
 });
 
+async function signIn(page: Page) {
+  await page.goto("/api/auth/threads/start?tz=America/Toronto");
+  await expect(page).toHaveURL("/home");
+}
+
+const balance = (page: Page, credits: number) => page.getByRole("link", { name: new RegExp(`^${credits} credits`) });
+
+test("auto-recharge saves a card, then tops up as soon as the balance is low", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/settings/billing");
+  await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible();
+  // 98 credits left after the Studio test, under the default 100 threshold.
+  await page.getByRole("switch", { name: "Auto-recharge" }).check({ force: true });
+  await page.getByRole("button", { name: "Continue to add a card" }).click();
+
+  await expect(page).toHaveURL(/localhost:3998\/pay\//);
+  await page.getByRole("button", { name: "Save card", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/billing\?checkout=card&status=fulfilled/);
+  await expect(page.getByText("Card saved. Auto-recharge is on.")).toBeVisible();
+  await expect(page.getByText("Charges Visa •••• 4242")).toBeVisible();
+
+  // The recharge runs as a workflow: 2,000 credits for $20 on the saved card.
+  await expect(async () => {
+    await page.reload();
+    await expect(balance(page, 2098)).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(page.getByLabel("Credit activity")).toContainText("Auto-recharge");
+});
+
+test("buys a credit pack through Stripe Checkout", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/settings/billing");
+
+  // Backing out of Checkout changes nothing.
+  await page.getByRole("button", { name: "Buy 500 credits for $5" }).click();
+  await page.getByRole("link", { name: "Cancel" }).click();
+  await expect(page.getByText("Checkout canceled. You weren't charged.")).toBeVisible();
+  await expect(balance(page, 2098)).toBeVisible();
+
+  await page.getByRole("button", { name: "Buy 500 credits for $5" }).click();
+  await expect(page).toHaveURL(/localhost:3998\/pay\//);
+  await page.getByRole("button", { name: "Pay $5.00" }).click();
+  await expect(page.getByText("Payment received. Your credits are ready to use.")).toBeVisible();
+  await expect(balance(page, 2598)).toBeVisible();
+  await expect(page.getByLabel("Credit activity")).toContainText("Bought credits");
+});
+
+test("switches to the user's own AI key and back", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/settings/billing");
+  const key = page.getByLabel("Vercel AI Gateway key");
+
+  await key.fill("vck_bad_key_0000000000");
+  await page.getByRole("button", { name: /Check key and continue/ }).click();
+  await expect(page.getByText("The AI Gateway didn't accept that key.")).toBeVisible();
+
+  await key.fill("vck_e2e_good_key_wxyz");
+  await page.getByRole("button", { name: /Check key and continue/ }).click();
+  await expect(page).toHaveURL(/localhost:3998\/pay\//);
+  await page.getByRole("button", { name: "Subscribe $5.00" }).click();
+  await expect(page.getByText("Your plan is active and Threaded now runs on your own key.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Your key" })).toBeVisible();
+  await expect(page.getByText("•••• wxyz")).toBeVisible();
+  await expect(page.getByText("$12.50")).toBeVisible();
+
+  // Studio runs on the key and charges no credits.
+  await page.goto("/studio");
+  await expect(page.getByRole("button", { name: /Generate/ })).toContainText("Your key");
+  await page.getByRole("button", { name: /Generate/ }).click();
+  await expect(page.getByLabel("Ideas", { exact: true }).getByRole("button", { name: "Copy" })).toHaveCount(3, {
+    timeout: 20_000,
+  });
+
+  await page.goto("/settings/billing");
+  await page.getByRole("button", { name: "Switch back to credits" }).click();
+  await expect(balance(page, 2598)).toBeVisible();
+  await expect(page.getByText(/Your plan ends on/)).toBeVisible();
+});
+
+test("shows a billing problem across the app until it's dismissed", async ({ page }) => {
+  const pool = new Pool({ connectionString: databaseUrl });
+  try {
+    await pool.query(`update workspaces set billing_notice = $1 where name = '@mock.user'`, [
+      { kind: "auto_recharge_failed", message: "Auto-recharge couldn't charge your card.", at: new Date() },
+    ]);
+  } finally {
+    await pool.end();
+  }
+  await signIn(page);
+  await expect(page.getByText("Auto-recharge couldn't charge your card.")).toBeVisible();
+  await page.getByRole("button", { name: "Dismiss" }).click();
+  await expect(page.getByText("Auto-recharge couldn't charge your card.")).toHaveCount(0);
+});
+
 test("the daily cron refreshes connected profiles", async ({ request }) => {
   expect((await request.get("/api/cron/daily")).status()).toBe(401);
   expect((await request.get("/api/cron/daily", { headers: { authorization: "Bearer nope" } })).status()).toBe(401);
 
   const response = await request.get("/api/cron/daily", { headers: { authorization: "Bearer test-cron-secret" } });
-  expect(await response.json()).toMatchObject({ profiles: 1, started: 1 });
+  expect(await response.json()).toMatchObject({ profiles: 1, started: 1, expired: { workspaces: 0, credits: 0 } });
 
   // The refresh runs as its own workflow; wait for it to land.
   const pool = new Pool({ connectionString: databaseUrl });

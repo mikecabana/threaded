@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PORT ?? 3100);
 const mockMetaPort = 3999;
+const mockBillingPort = 3998;
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
 export default defineConfig({
@@ -22,7 +23,7 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", use: { ...devices["Pixel 7"] }, testIgnore: /auth\.spec\.ts/ },
+    { name: "mobile", use: { ...devices["Pixel 7"] }, testIgnore: /account\.spec\.ts/ },
   ],
   webServer: [
     {
@@ -30,6 +31,16 @@ export default defineConfig({
       url: `http://localhost:${mockMetaPort}/health`,
       reuseExistingServer: !process.env.CI,
       env: { MOCK_META_PORT: String(mockMetaPort) },
+    },
+    {
+      command: `node e2e/mock-billing.mjs`,
+      url: `http://localhost:${mockBillingPort}/health`,
+      reuseExistingServer: !process.env.CI,
+      env: {
+        MOCK_BILLING_PORT: String(mockBillingPort),
+        MOCK_BILLING_WEBHOOK_URL: `http://localhost:${port}/api/stripe/webhook`,
+        MOCK_BILLING_WEBHOOK_SECRET: "whsec_e2e",
+      },
     },
     {
       command: `pnpm start --port ${port}`,
@@ -52,6 +63,11 @@ export default defineConfig({
             CRON_SECRET: "test-cron-secret",
             // Studio generates with a deterministic mock model (lib/ai/mock-model.ts).
             AI_MOCK: "1",
+            // Payments and key checks run against e2e/mock-billing.mjs.
+            STRIPE_SECRET_KEY: "sk_test_e2e",
+            STRIPE_WEBHOOK_SECRET: "whsec_e2e",
+            STRIPE_API_URL: `http://localhost:${mockBillingPort}`,
+            AI_GATEWAY_BASE_URL: `http://localhost:${mockBillingPort}/v4/ai`,
           }
         : {},
     },

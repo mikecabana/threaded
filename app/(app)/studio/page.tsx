@@ -5,17 +5,12 @@ import { SavedIdeas } from "@/components/studio/saved-ideas";
 import { Studio, type StudioModel } from "@/components/studio/studio";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type CatalogEntry, catalogFor, DEFAULT_CATALOG, pickModel } from "@/lib/ai/catalog";
-import { typicalCredits } from "@/lib/ai/cost";
+import { TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS, typicalCredits } from "@/lib/ai/cost";
 import { getModelPick } from "@/lib/data/settings";
 import { listSuggestions } from "@/lib/data/suggestions";
 import { requireViewer } from "@/lib/session/viewer";
 
 export const metadata: Metadata = { title: "Studio" };
-
-// Planning figures for the price shown before generating: a typical prompt
-// (voice, best posts, recent posts) and typical output per batch size.
-const TYPICAL_INPUT_TOKENS = 2500;
-const TYPICAL_OUTPUT_TOKENS = { 3: 900, 5: 1400 } as const;
 
 function toStudioModel(entry: CatalogEntry): StudioModel {
   return {

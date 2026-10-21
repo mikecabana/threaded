@@ -1,5 +1,6 @@
 import { createGateway } from "ai";
 import { syncCatalogFromGateway } from "@/lib/ai/catalog";
+import { expireCredits } from "@/lib/billing/wallet";
 import { safeEqual } from "@/lib/crypto/sign";
 import { db } from "@/lib/db";
 import { threadsTokens } from "@/lib/db/schema";
@@ -8,7 +9,8 @@ import { startSync } from "@/lib/sync/trigger";
 
 /**
  * Vercel Cron (vercel.json, 06:00 UTC): refreshes model prices from the AI
- * Gateway, then starts a sync for every connected profile. Each sync is its
+ * Gateway, expires credits past their date, then starts a sync for every
+ * connected profile. Each sync is its
  * own durable workflow run, so one slow or failing account doesn't hold up
  * the rest.
  */
@@ -26,6 +28,11 @@ export async function GET(request: Request) {
     });
   }
 
+  const expired = await expireCredits().catch((error) => {
+    console.error("Credit expiry failed", error);
+    return null;
+  });
+
   const profiles = await db().select({ profileId: threadsTokens.profileId }).from(threadsTokens);
   let started = 0;
   for (const { profileId } of profiles) {
@@ -35,5 +42,5 @@ export async function GET(request: Request) {
       console.error(`Could not start the daily sync for ${profileId}`, error);
     }
   }
-  return Response.json({ profiles: profiles.length, started, catalog });
+  return Response.json({ profiles: profiles.length, started, catalog, expired });
 }

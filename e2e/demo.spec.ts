@@ -66,6 +66,7 @@ test.describe("demo flow", () => {
       ["/queue", "Queue"],
       ["/insights", "Insights"],
       ["/settings", "Settings"],
+      ["/settings/billing", "Billing"],
     ]) {
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
