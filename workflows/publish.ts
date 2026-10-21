@@ -6,9 +6,9 @@ import { FatalError, RetryableError, sleep } from "workflow";
 // their implementation with a dynamic import and only carry ids, so tokens and
 // post text stay out of the event log.
 
-/** How often to re-check a container Threads is still preparing, and for how long. */
-const CONTAINER_POLL = "5s";
-const CONTAINER_POLLS = 12;
+/** Meta recommends checking a container's status once a minute, for no more than five minutes. */
+const CONTAINER_POLL = "1m";
+const CONTAINER_POLLS = 5;
 const SNAPSHOT_GAPS = ["1h", "23h", "48h"] as const;
 
 export async function publishPost(postId: string, version: number) {
@@ -27,7 +27,7 @@ export async function publishPost(postId: string, version: number) {
     const containerId = await prepare(postId);
     for (let poll = 0; !(await isReady(postId, containerId)); poll++) {
       if (poll >= CONTAINER_POLLS)
-        throw new FatalError("Threads took too long to prepare the post. Retry in a minute.");
+        throw new FatalError("Threads took too long to prepare the post. Retry in a few minutes.");
       await sleep(CONTAINER_POLL);
     }
     await publish(postId, containerId);

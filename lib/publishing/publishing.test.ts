@@ -13,6 +13,11 @@ describe("draft rules", () => {
     expect(draftProblem("a".repeat(500))).toBeNull();
     expect(draftProblem("🔥".repeat(126))).toBe("too_long");
     expect(draftProblem("Hi", "Build & ship")).toBe("bad_topic");
+    // Threads rejects more than five distinct links.
+    const links = (n: number) => Array.from({ length: n }, (_, i) => `https://example.com/${i}`).join(" ");
+    expect(draftProblem(links(5))).toBeNull();
+    expect(draftProblem(`${links(5)} https://example.com/0`)).toBeNull();
+    expect(draftProblem(links(6))).toBe("too_many_links");
     expect(draftProblem("Hi", "x".repeat(51))).toBe("bad_topic");
     expect(normalizeTopic(" #IndieHackers ")).toBe("IndieHackers");
     expect(normalizeTopic("")).toBeNull();

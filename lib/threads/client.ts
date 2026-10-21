@@ -5,12 +5,15 @@ import type { PostInsights, ThreadsMediaType, ThreadsPost, ThreadsProfile } from
 
 // Typed client for graph.threads.net. Every response is validated with Zod so
 // an API change fails loudly here instead of corrupting stored data.
-// ⚠ Field and metric names follow Meta's docs as of Oct 2026; re-verify.
+// Field and metric names checked against Meta's docs (Oct 2026).
 
 const PROFILE_FIELDS = "id,username,name,threads_profile_picture_url,threads_biography,is_verified";
 const POST_FIELDS = "id,text,timestamp,media_type,permalink,is_quote_post,topic_tag";
 const POST_METRICS = ["views", "likes", "replies", "reposts", "quotes", "shares"] as const;
-const ACCOUNT_METRICS = ["views", "likes", "replies", "reposts", "quotes", "clicks", "followers_count"] as const;
+/** Account metrics that take a date range. followers_count doesn't, so it's read on its own. */
+const ACCOUNT_METRICS = ["views", "likes", "replies", "reposts", "quotes", "clicks"] as const;
+/** Account insights don't go back before Apr 13, 2024 (Unix seconds; Meta's docs). */
+export const ACCOUNT_INSIGHTS_EPOCH = 1712991600;
 
 const errorEnvelope = z.object({
   error: z.object({
@@ -53,6 +56,8 @@ const metricSchema = z.object({
   name: z.string(),
   values: z.array(z.object({ value: z.number(), end_time: z.string().optional() })).optional(),
   total_value: z.object({ value: z.number() }).optional(),
+  /** `clicks` comes back per link. */
+  link_total_values: z.array(z.object({ value: z.number(), link_url: z.string().optional() })).optional(),
 });
 const insightsSchema = z.object({ data: z.array(metricSchema) });
 
@@ -92,7 +97,6 @@ export interface AccountInsights {
   reposts: number;
   quotes: number;
   clicks: number;
-  followersCount: number;
 }
 
 export interface ContainerStatus {
@@ -107,10 +111,11 @@ export interface ThreadsClientOptions {
   baseUrl?: string;
 }
 
-/** Sums a metric whether it comes back as a total or as per-day values. */
+/** Sums a metric whether it comes back as a total, per link, or as per-day values. */
 function metricTotal(metric: z.infer<typeof metricSchema> | undefined): number {
   if (!metric) return 0;
   if (metric.total_value) return metric.total_value.value;
+  if (metric.link_total_values) return metric.link_total_values.reduce((sum, v) => sum + v.value, 0);
   return (metric.values ?? []).reduce((sum, v) => sum + v.value, 0);
 }
 
@@ -169,17 +174,18 @@ export function createThreadsClient({
     async *listPosts(
       options: { since?: number; until?: number; pageSize?: number } = {},
     ): AsyncGenerator<ThreadsPost[]> {
-      let next: string | undefined = "/me/threads";
-      let params: Record<string, string | number | undefined> = {
+      const query = {
         fields: POST_FIELDS,
         limit: options.pageSize ?? 50,
         since: options.since,
         until: options.until,
       };
-      while (next) {
+      let path: string | undefined = "/me/threads";
+      let params: Record<string, string | number | undefined> = query;
+      while (path) {
         const page: z.infer<ReturnType<typeof pageSchema<typeof postSchema>>> = await call(
           "GET",
-          next,
+          path,
           params,
           pageSchema(postSchema),
         );
@@ -194,9 +200,18 @@ export function createThreadsClient({
           isQuotePost: p.is_quote_post ?? false,
           topicTag: p.topic_tag ?? null,
         }));
-        // `next` is a full URL that already carries the query (including the token).
-        next = page.data.length > 0 ? page.paging?.next : undefined;
-        params = {};
+        if (page.data.length === 0) break;
+        // Prefer `next` (a full URL that already carries the query and token);
+        // Meta's docs only promise the `after` cursor, so fall back to it.
+        if (page.paging?.next) {
+          path = page.paging.next;
+          params = {};
+        } else if (page.paging?.cursors?.after) {
+          path = "/me/threads";
+          params = { ...query, after: page.paging.cursors.after };
+        } else {
+          path = undefined;
+        }
       }
     },
 
@@ -213,12 +228,13 @@ export function createThreadsClient({
       };
     },
 
-    /** Account insights between two Unix-second timestamps. */
+    /** Account insights between two Unix-second timestamps (clamped to what Threads keeps). */
     async getAccountInsights(range: { since: number; until: number }): Promise<AccountInsights> {
+      const since = Math.max(range.since, ACCOUNT_INSIGHTS_EPOCH);
       const { data } = await call(
         "GET",
         "/me/threads_insights",
-        { metric: ACCOUNT_METRICS.join(","), since: range.since, until: range.until },
+        { metric: ACCOUNT_METRICS.join(","), since, until: Math.max(range.until, since) },
         insightsSchema,
       );
       const byName = new Map(data.map((m) => [m.name, m]));
@@ -233,8 +249,13 @@ export function createThreadsClient({
         reposts: metricTotal(byName.get("reposts")),
         quotes: metricTotal(byName.get("quotes")),
         clicks: metricTotal(byName.get("clicks")),
-        followersCount: metricTotal(byName.get("followers_count")),
       };
+    },
+
+    /** The follower count as of now (Threads keeps no history of it). */
+    async getFollowersCount(): Promise<number> {
+      const { data } = await call("GET", "/me/threads_insights", { metric: "followers_count" }, insightsSchema);
+      return metricTotal(data.find((m) => m.name === "followers_count"));
     },
 
     async getPublishingLimit(): Promise<{ used: number; total: number }> {

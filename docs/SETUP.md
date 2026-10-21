@@ -48,9 +48,9 @@ If your machine already has a Chromium build, point Playwright at it with
    (`threads_read_replies` and `threads_keyword_search` come later.)
 3. Under the use case's settings, set:
    - **Redirect callback URLs:** `https://<your-domain>/api/auth/threads/callback`, plus one fixed dev URL (an ngrok or cloudflared tunnel, or a stable Vercel alias). Meta needs exact HTTPS URLs, so random preview URLs won't work; previews run in demo mode instead.
-   - **Uninstall callback URL:** `https://<your-domain>/api/threads/uninstall`
-   - **Delete callback URL:** `https://<your-domain>/api/threads/delete`
-4. Copy the Threads app ID and secret into `THREADS_APP_ID` and `THREADS_APP_SECRET`.
+   - **Deauthorize callback URL:** `https://<your-domain>/api/threads/uninstall`
+   - **Data Deletion Requests URL:** `https://<your-domain>/api/threads/delete`
+4. Copy the **Threads** app ID and secret (from the Threads use case's settings, not the app's main ID and secret on the Basic settings page) into `THREADS_APP_ID` and `THREADS_APP_SECRET`. Threads tokens and user ids are scoped to that pair.
 5. **Testers:** under App roles, add your own Threads account (and any teammates) as Threads testers. Each tester accepts the invite in the Threads app (Settings → Account → Website permissions → Invites). Until App Review approves the permissions, only testers can connect.
 6. **App Review:** submit all three permissions. You'll need:
    - Privacy policy URL: `https://<your-domain>/legal/privacy` (have it reviewed first; see below)
@@ -111,4 +111,4 @@ Create an account, verify your sending domain, and put the API key in `RESEND_AP
 
 - [ ] Replace `SITE.contactEmail` in `lib/site.ts` with the real support address.
 - [ ] Have a lawyer review `/legal/terms` and `/legal/privacy`, then remove the draft banner in `components/marketing/legal-page.tsx`.
-- [ ] Confirm the ⚠ items in `docs/PLAN.md` §2 against Meta's live docs (field lists, the token-refresh age rule, the text auto-publish flag, the emoji length rule, and the intent URL in `lib/threads/intent.ts`).
+- [ ] Confirm which secret signs Meta's deauthorize and data-deletion callbacks (the one ⚠ left in `docs/PLAN.md` §2; everything else there was checked against Meta's docs).
