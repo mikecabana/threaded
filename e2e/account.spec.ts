@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -306,6 +306,33 @@ test("the publish sweeper rescues a post whose run was lost", async ({ request }
   } finally {
     await pool.end();
   }
+});
+
+test("signs in on a preview deployment through the production callback", async ({ page }) => {
+  // localhost:3101 plays a Vercel preview. Meta only knows production's callback,
+  // which relays the browser back to the preview that started the sign-in.
+  const preview = "http://localhost:3101";
+  await page.goto(`${preview}/api/auth/threads/start?tz=America/Toronto`);
+  await expect(page).toHaveURL(`${preview}/home`);
+  await expect(page.getByRole("link", { name: /credits/ })).toBeVisible();
+});
+
+test("relays sign-ins only to this app's own previews", async ({ page }) => {
+  /** A relay state as a deployment of this app (holding its secret) would mint it. */
+  const relayState = (origin: string) => {
+    const payload = `nonce1234567890abcdefgh.${Buffer.from(origin).toString("base64url")}`;
+    const key = createHash("sha256").update("threaded/oauth-relay:test-app-secret").digest();
+    return `${payload}.${createHmac("sha256", key).update(payload).digest("base64url")}`;
+  };
+  const callback = (state: string) => `/api/auth/threads/callback?code=mock-code&state=${encodeURIComponent(state)}`;
+
+  // Signed properly, but for an origin that isn't in PREVIEW_ORIGINS.
+  await page.goto(callback(relayState("https://evil.example")));
+  await expect(page).toHaveURL(/\/connect\?error=state/);
+  // Pointing at an allowed preview, but not signed with the app secret.
+  const [nonce, origin] = relayState("http://localhost:3101").split(".");
+  await page.goto(callback(`${nonce}.${origin}.forged`));
+  await expect(page).toHaveURL(/\/connect\?error=state/);
 });
 
 test("the daily cron refreshes connected profiles", async ({ request }) => {

@@ -47,9 +47,9 @@ If your machine already has a Chromium build, point Playwright at it with
 2. In the Threads use case, add the permissions `threads_basic`, `threads_manage_insights` and `threads_content_publish`.
    (`threads_read_replies` and `threads_keyword_search` come later.)
 3. Under the use case's settings, set:
-   - **Redirect callback URLs:** `https://<your-domain>/api/auth/threads/callback`, plus one fixed dev URL (an ngrok or cloudflared tunnel, or a stable Vercel alias). Meta needs exact HTTPS URLs, so random preview URLs won't work; previews run in demo mode instead.
-   - **Uninstall callback URL:** `https://<your-domain>/api/threads/uninstall`
-   - **Delete callback URL:** `https://<your-domain>/api/threads/delete`
+   - **Redirect callback URLs:** `https://<production-host>/api/auth/threads/callback`, plus one fixed dev URL if you sign in locally (an ngrok or cloudflared tunnel). `<production-host>` is your project's `vercel.app` URL until you add a domain (see [Domains and previews](#domains-and-preview-deployments)). Preview deployments don't need entries of their own: they sign in through this one.
+   - **Uninstall callback URL:** `https://<production-host>/api/threads/uninstall`
+   - **Delete callback URL:** `https://<production-host>/api/threads/delete`
 4. Copy the Threads app ID and secret into `THREADS_APP_ID` and `THREADS_APP_SECRET`.
 5. **Testers:** under App roles, add your own Threads account (and any teammates) as Threads testers. Each tester accepts the invite in the Threads app (Settings → Account → Website permissions → Invites). Until App Review approves the permissions, only testers can connect.
 6. **App Review:** submit all three permissions. You'll need:
@@ -66,11 +66,33 @@ If your machine already has a Chromium build, point Playwright at it with
 4. **AI Gateway:** enable it for the team. The model catalog is seeded with Claude Haiku/Sonnet/Opus 5.5 (`lib/ai/catalog.ts`). Check those ids against `gateway.getAvailableModels()` (any the Gateway doesn't list are disabled at the next nightly sync). Deployments authenticate with OIDC automatically. For local development, create an API key and put it in `AI_GATEWAY_API_KEY`, or run `vercel env pull .env.local` after `vercel link`.
 5. Add the remaining variables from `.env.example` under Settings → Environment Variables:
    - Generate `SECRETS_ENC_KEY` and `SESSION_SECRET` with `openssl rand -base64 32`. Use **different values per environment**, and never rotate `SECRETS_ENC_KEY` without a re-encryption step, since it encrypts stored tokens.
-   - Set `DEMO_MODE=1` for the **Preview** environment only.
+   - Leave `THREADS_REDIRECT_URI` and `APP_URL` unset on Vercel: the production URL comes from Vercel (see [Domains and previews](#domains-and-preview-deployments)).
+   - For previews, see the same section: `PREVIEW_ORIGINS`, their own database and secrets, or `DEMO_MODE=1` to keep them demo-only.
    - Generate `CRON_SECRET` the same way. Vercel Cron sends it as a Bearer token to the two crons in `vercel.json`: `/api/cron/daily` (06:00 UTC: model prices, credit expiry, a refresh workflow per connected profile) and `/api/cron/publish` (every 5 minutes: the scheduled-post safety net).
    - The 5-minute cron needs a Vercel **Pro** plan; Hobby plans only allow daily crons and the deploy fails. On Hobby, delete that entry: the daily cron also runs the publish sweep, so missed posts are still rescued, just later.
    - Keep **Fluid compute** on (the default for new projects); Vercel Workflow needs it.
-6. Apply the schema: `pnpm db:migrate` with the production `DATABASE_URL` (or let a deploy hook run it once Phase 1 adds one).
+6. The schema is applied on every deploy: `vercel.json` builds with `pnpm db:deploy && pnpm build`, and `db:deploy` runs the migrations in `drizzle/` against that deployment's database (the unpooled URL when Neon provides one). Keep migrations additive, since the previous deployment serves traffic until the new one is ready. `SKIP_MIGRATIONS=1` turns it off.
+
+## Domains and preview deployments
+
+Nothing in the code names a domain. Threaded works out its URLs per deployment:
+
+- **The production URL** comes from Vercel's `VERCEL_PROJECT_PRODUCTION_URL`: your `<project>.vercel.app` URL, or your custom domain once you add one. (Keep "Automatically expose System Environment Variables" on in the project settings; it's on by default.) `APP_URL` overrides it if you ever need to.
+- **Threads sign-in** always goes through `https://<production-host>/api/auth/threads/callback`, the one URL Meta allows.
+- **Stripe Checkout and the billing portal** send people back to whichever deployment they started from, and that page applies the payment straight away. Stripe's webhook goes to production only.
+
+**Testing on vercel.app now.** Register the three Meta URLs and the Stripe webhook (`https://<production-host>/api/stripe/webhook`) with your `vercel.app` host. Nothing else to set.
+
+**When you buy a domain.** Add it under Settings → Domains. From the next deployment the production URL is the new domain. Then add the new redirect URL in Meta (keep the old one until the switch is done), update the uninstall and delete callbacks, and move the Stripe webhook. No code or variable changes. Also set the old `vercel.app` domain to redirect to the new one (Settings → Domains → Edit), since sign-in only runs on the production URL and previews.
+
+**Demoing on preview deployments.** Demo accounts work on every preview with no setup. For real Threads accounts on previews:
+
+1. Set `PREVIEW_ORIGINS` in **both** Production and Preview to your preview URLs as a pattern, e.g. `https://threaded-*-your-team.vercel.app`. Copy any preview URL from the dashboard and replace the part between the project name and your team with `*`. Production needs it too, because that's where Meta returns: it relays the sign-in back to the preview that started it, but only to origins on this list, and only with a state signed by your Threads app secret.
+2. Give previews their own database: in the Neon integration, turn on a database branch per preview deployment. Each preview build migrates its branch.
+3. A Neon branch starts as a copy of its parent, real users included. Use **different** `SECRETS_ENC_KEY` and `SESSION_SECRET` values in the Preview environment, so production tokens copied into a branch can't be decrypted there; people simply connect Threads again on the preview. Use the same Threads app ID and secret as production, Stripe **test** keys, and the AI Gateway (OIDC works on previews too).
+4. Previews are behind Vercel Authentication by default. To show one to someone outside your team, use the deployment's **Share** button to create a shareable link, or relax Deployment Protection for previews.
+
+What's different on a preview: crons only run in production, so there's no daily refresh or 5-minute publish sweep there (scheduled posts still go out on time through their own workflow runs), and Stripe webhooks don't reach previews (top-ups, saved cards and starting the own-key plan are applied when Checkout returns; changes made later in the Stripe portal aren't). To keep a preview demo-only, set `DEMO_MODE=1` for it.
 
 ## 3. Stripe (test mode)
 
