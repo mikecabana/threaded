@@ -103,7 +103,7 @@ and the hosted billing portal, so there's no publishable key and no products to 
 `lib/pricing.ts` (credit packs of $5/$20/$50, a $1 trial, a 1.5× default markup and a $5/month BYOK platform
 fee). Credits never expire.
 
-1. Create the Stripe account with Canada as its country and work in a **sandbox** (test mode). Put the secret
+1. Use the **Threaded** Stripe account (Canada) in **test mode**, not a separate sandbox. Put its test secret
    key in `STRIPE_SECRET_KEY`.
 2. **Webhook:** add an endpoint for `https://<your-domain>/api/stripe/webhook` with exactly these events, and
    put its signing secret in `STRIPE_WEBHOOK_SECRET`:
@@ -116,16 +116,16 @@ fee). Credits never expire.
    period, edit the billing address.
 4. **Sales tax (Stripe Tax).** Prices are tax-exclusive: tax is added on top, based on the customer's address,
    which Checkout collects.
-   - In Tax settings, enter the head office address in Quebec.
+   - In Tax settings, enter the head office address in Quebec (done in test mode).
    - Add your registrations: **Canada, normal GST/HST** and **Quebec, QST**, each from its effective date (tax
      charged before then isn't yours to keep). Stripe then charges GST + QST in Quebec and GST or HST in the
      other provinces. Customers outside Canada pay no Canadian tax. Stripe watches the sales thresholds for BC,
      Manitoba and Saskatchewan and for other countries; EU and UK VAT on digital services can apply from the
-     first sale. The sandbox already has both registrations.
+     first sale. Test mode already has both registrations.
    - Pick the default product tax code with your accountant; Threaded's inline prices don't set one, so the
      default applies. Candidates: `txcd_10103001` (SaaS, business use), `txcd_10103000` (SaaS, personal use),
      `txcd_10105002` / `txcd_10105001` (AI as a service, cloud, business / personal use). Canadian tax is the
-     same under all four; they differ for US states.
+     same under all four; they differ for US states. Test mode uses `txcd_10103000`.
    - Add your GST and QST numbers to the account so they print on invoices; business customers need them to
      claim input tax credits.
    - Set `STRIPE_AUTOMATIC_TAX=1` (Production and Preview).

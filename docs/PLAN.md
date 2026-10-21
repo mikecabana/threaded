@@ -703,12 +703,13 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 **Stripe sandbox check (Canadian account, Quebec):** Stripe's MCP connector was used to send the app's own Checkout, portal and invoice calls to the real sandbox. The connector can't pay invoices, so the final charge is still only tested against the mock. Checkout in all three modes and the portal work as written. Two bugs the mock had hidden are fixed:
 - Auto-recharge invoices were created without a currency, so on a Canadian account they came out in CAD and refused the USD pack. Every recharge would have failed and been retried as if Stripe were down. The invoice now states USD.
 - With Stripe Tax on, Stripe won't finalize an invoice for a customer without an address, and saving a card didn't collect one. Card Checkout now asks for the address when tax is on, and a recharge that still lacks one stops with a notice instead of retrying.
-- The mock now behaves the same way (CAD by default, no mixed currencies, no taxed invoice without an address), and integration tests cover both cases. The sandbox has GST/HST and QST registrations, and its default portal configuration already matches what Threaded needs.
+- The mock now behaves the same way (CAD by default, no mixed currencies, no taxed invoice without an address), and integration tests cover both cases. The default portal configuration Stripe creates already matches what Threaded needs.
+- These checks ran on a separate "Threaded sandbox". The app now uses the **Threaded** account's test mode, which has its Quebec head office set, default tax code `txcd_10103000`, and GST/HST and QST registrations.
 
 **Phase 1 is feature-complete.** Remaining before testers: the external setup below, then a pass against the real services (Meta's docs are checked; see §2).
 
 **Waiting on you** (see `docs/SETUP.md`):
 - Meta app and App Review submission
 - Vercel project with Neon, Upstash and AI Gateway
-- Stripe: the head office address in Tax settings, a default product tax code (with your accountant), then the secret key and webhook; and a Resend account
+- Stripe: confirm the default tax code with your accountant, then the test secret key and webhook once the Vercel project exists; and a Resend account
 - Legal review of the Terms and Privacy drafts by a Quebec lawyer, including the items in SETUP.md §5
