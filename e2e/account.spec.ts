@@ -37,9 +37,9 @@ test("signs in with Threads, syncs history, and signs out", async ({ page }) => 
 
   // The first sync runs as a durable workflow; Home switches from progress to
   // real metrics on its own when it finishes.
-  await expect(page.getByLabel("Key metrics")).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByRole("main").getByLabel("Key metrics")).toBeVisible({ timeout: 45_000 });
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Mock");
-  await expect(page.getByLabel("Key metrics").getByText("Engagement rate")).toBeVisible();
+  await expect(page.getByRole("main").getByLabel("Key metrics").getByText("Engagement rate")).toBeVisible();
   await expect(page.getByText("What's working for engagement")).toBeVisible();
   // Accounts don't get the demo's sample plays.
   await expect(page.getByText("No ideas yet.")).toBeVisible();
@@ -61,7 +61,7 @@ test("generates ideas in Studio, charges credits, and surfaces saved ideas on Ho
   // Signing back in reuses the synced account.
   await page.goto("/api/auth/threads/start?tz=America/Toronto");
   await expect(page).toHaveURL("/home");
-  await expect(page.getByLabel("Key metrics")).toBeVisible();
+  await expect(page.getByRole("main").getByLabel("Key metrics")).toBeVisible();
   await expect(page.getByRole("link", { name: /credits/ })).toContainText("100");
 
   await page.goto("/studio");
