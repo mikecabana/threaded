@@ -10,7 +10,7 @@ before real accounts can connect (Phase 1).
 
 ## Local development
 
-Requirements: Node 22+, pnpm 10 (`corepack enable`).
+Requirements: Node 22+ (CI runs the latest LTS), pnpm 10 (`corepack enable`).
 
 ```bash
 pnpm install
