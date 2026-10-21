@@ -1,14 +1,15 @@
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as webhook } from "@/app/api/stripe/webhook/route";
 import { createMockBilling, signPayload } from "@/e2e/mock-billing.mjs";
 import { db } from "@/lib/db";
 import { creditLedger, creditLots, wallets, workspaces } from "@/lib/db/schema";
+import { env } from "@/lib/env";
 import { closeDatabase, resetDatabase } from "@/test/db";
 import { claimAutoRecharge, fulfillRechargeInvoice, runAutoRecharge } from "./auto-recharge";
 import { checkGatewayKey, storeByokKey, switchToCredits } from "./byok";
 import { createByokCheckout, createCardCheckout, createTopUpCheckout, fulfillCheckout } from "./checkout";
-import { ensureCustomer } from "./stripe";
+import { ensureCustomer, readyForAutoRecharge, stripeLocales } from "./stripe";
 import { syncSubscription } from "./subscription";
 import { getBalance } from "./wallet";
 
@@ -80,6 +81,17 @@ describe("credit top-ups", () => {
     expect(Math.round(months)).toBe(12);
   });
 
+  it("asks Stripe for French receipts when the browser prefers French", async () => {
+    expect(stripeLocales("fr-CA,fr;q=0.9,en;q=0.8")).toEqual(["fr-CA"]);
+    expect(stripeLocales("fr-FR,fr;q=0.9")).toEqual(["fr"]);
+    expect(stripeLocales("en-CA,en;q=0.9,fr-CA;q=0.8")).toBeUndefined();
+    expect(stripeLocales(null)).toBeUndefined();
+
+    await createTopUpCheckout({ workspaceId, pack: PACK_5, origin: ORIGIN, locales: ["fr-CA"] });
+    const customer = mock.state.customers.get((await workspace()).stripeCustomerId);
+    expect(customer.preferred_locales).toEqual(["fr-CA"]);
+  });
+
   it("reuses one Stripe customer per workspace, even when created concurrently", async () => {
     const ids = await Promise.all([ensureCustomer(workspaceId), ensureCustomer(workspaceId)]);
     expect(new Set(ids).size).toBe(1);
@@ -139,6 +151,8 @@ describe("auto-recharge", () => {
     expect(await runAutoRecharge(workspaceId, attempt as string)).toBe("skipped");
     const paid = [...mock.state.invoices.values()].find((invoice) => invoice.status === "paid");
     expect(paid?.subtotal).toBe(2000);
+    // In USD, not the Canadian account's default currency.
+    expect(paid?.currency).toBe("usd");
     expect(await fulfillRechargeInvoice(paid?.id as string)).toBe(false);
     expect(await getBalance(workspaceId)).toBe(2040);
   });
@@ -158,6 +172,52 @@ describe("auto-recharge", () => {
     expect([...mock.state.invoices.values()].at(-1)?.status).toBe("void");
     // Off means no more attempts until the user turns it back on.
     expect(await claimAutoRecharge(workspaceId)).toBeNull();
+  });
+});
+
+describe("auto-recharge with Stripe Tax on", () => {
+  const taxSetting = env.STRIPE_AUTOMATIC_TAX;
+  beforeEach(() => {
+    env.STRIPE_AUTOMATIC_TAX = "1";
+  });
+  afterEach(() => {
+    env.STRIPE_AUTOMATIC_TAX = taxSetting;
+  });
+  const customerId = async () => (await workspace()).stripeCustomerId as string;
+
+  it("collects the address with the card, then charges a taxed invoice", async () => {
+    await saveCard("pay");
+    expect(mock.state.customers.get(await customerId()).address).toMatchObject({ country: "CA", state: "QC" });
+    expect(await readyForAutoRecharge(await customerId())).toBe(true);
+
+    await setBalance(40);
+    const attempt = (await claimAutoRecharge(workspaceId)) as string;
+    expect(await runAutoRecharge(workspaceId, attempt)).toBe("recharged");
+    expect(await getBalance(workspaceId)).toBe(2040);
+    expect([...mock.state.invoices.values()].at(-1)).toMatchObject({
+      status: "paid",
+      automatic_tax: { enabled: true },
+    });
+  });
+
+  it("stops with a notice, rather than retrying, when there's no address to tax", async () => {
+    // A card saved before tax was turned on: Checkout didn't ask for an address.
+    env.STRIPE_AUTOMATIC_TAX = taxSetting;
+    await saveCard("pay");
+    env.STRIPE_AUTOMATIC_TAX = "1";
+    // Turning auto-recharge back on will go through Checkout, which collects one.
+    expect(await readyForAutoRecharge(await customerId())).toBe(false);
+
+    await setBalance(10);
+    const invoicesBefore = mock.state.invoices.size;
+    const attempt = (await claimAutoRecharge(workspaceId)) as string;
+    expect(await runAutoRecharge(workspaceId, attempt)).toBe("failed");
+
+    const ws = await workspace();
+    expect(ws.autoRecharge?.enabled).toBe(false);
+    expect(ws.autoRechargePendingAt).toBeNull();
+    expect(ws.billingNotice?.message).toContain("billing address");
+    expect(mock.state.invoices.size).toBe(invoicesBefore);
   });
 });
 

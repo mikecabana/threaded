@@ -1,6 +1,13 @@
 // Commercial terms in one place so marketing, legal and billing agree.
 // Starting values from docs/PLAN.md §15; tune once the margin dashboard has data.
 
+/**
+ * Everything is priced in US dollars, though the business (and its Stripe
+ * account) is in Quebec. Pass it on every Stripe object that takes a currency:
+ * Stripe otherwise falls back to the account's, CAD.
+ */
+export const CURRENCY = "usd";
+
 /** Retail value of one credit in USD. */
 export const CREDIT_USD = 0.01;
 

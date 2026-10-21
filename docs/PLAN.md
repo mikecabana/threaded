@@ -17,7 +17,10 @@ Implementation and UI/UX plan. Working name: **Threaded** (after the repo).
 | Who picks AI models? | **Each user**, from a curated list priced per use. Users can also **BYOK** (their own Vercel AI Gateway key) and pay Vercel directly. |
 | Do BYOK users pay us? | **Yes: a $5/month platform fee** covering sync, analytics and scheduling. |
 | Markup, packs, trial | **1.5× default markup** (per model in the catalog), packs of **$5 / $20 / $50**, **$1 trial** (100 credits) once per Threads account. |
-| Expiry and refunds | Purchased credits **expire 12 months** after purchase. **Not refundable** except where the law requires; failed generations are refunded automatically. |
+| Expiry and refunds | Purchased credits **expire 12 months** after purchase. **Not refundable** except where the law requires; failed generations are refunded automatically. (A Quebec lawyer checks the expiry before launch; see SETUP.md §5.) |
+| Where is the business, and which currency? | **Quebec, Canada**, with a Canadian Stripe account. Prices stay in **USD** (AI costs are in USD); Stripe shows customers abroad a converted price at checkout. |
+| Sales tax? | **Stripe Tax**: GST/HST for Canada plus QST for Quebec, tax-exclusive prices. |
+| French? | Required for Quebec customers (Bill 96). **Before public launch** as its own phase (§13). Stripe already sends French receipts to French-speaking customers. |
 
 All commercial values live in `lib/pricing.ts`, so marketing, legal and billing stay in sync.
 
@@ -295,8 +298,10 @@ Posts published through Threaded have a known `media_id`. For posts written else
 **Expiry:** credits arrive in **lots** (`credit_lots`, one per purchase or grant), each with its own expiry 12 months out. A settled charge draws on the soonest-expiring lot first, and the daily cron expires what's left of old lots (skipping a wallet while a generation is in flight). Invariant: the lots' remaining credits equal `balance + reserved`.
 
 **Buying credits:**
-- **Top-ups:** hosted Stripe Checkout in one-time payment mode, packs of $5, $20 and $50 priced inline from `lib/pricing.ts`. The `checkout.session.completed` webhook **and** the return route (`/api/billing/return`) both fulfill the session: each re-reads it from Stripe and adds a `purchase` ledger row, idempotent on the session id. Stripe Tax is optional (`STRIPE_AUTOMATIC_TAX=1`).
-- **Auto-recharge:** "Add a card" is Checkout in setup mode; the card becomes the customer's default for invoices. When a charge leaves the balance under the threshold, a conditional UPDATE claims the workspace (so only one runs), and a Vercel Workflow run charges the card off-session through an invoice (create, add the pack, finalize, pay), so tax and receipts work like Checkout. Every Stripe call is keyed by the claim, so retries never charge twice. A decline turns auto-recharge off and shows an in-app banner (email comes with Resend). A 402 also starts a recharge.
+- **Top-ups:** hosted Stripe Checkout in one-time payment mode, packs of $5, $20 and $50 priced inline from `lib/pricing.ts`. The `checkout.session.completed` webhook **and** the return route (`/api/billing/return`) both fulfill the session: each re-reads it from Stripe and adds a `purchase` ledger row, idempotent on the session id.
+- **Currency and tax:** prices are USD, but the Stripe account is Canadian, so every Stripe object that takes a currency gets `CURRENCY` explicitly (Stripe otherwise uses CAD, and an auto-recharge invoice then rejects its USD item). Stripe Tax (`STRIPE_AUTOMATIC_TAX=1`) adds GST/HST and QST on top of the price, based on the customer's address. Checkout collects that address, including when saving a card for auto-recharge.
+- **Receipt language:** a new Stripe customer gets `preferred_locales` from the browser's language, so French speakers get French receipts and invoices. Checkout picks its language from the browser.
+- **Auto-recharge:** "Add a card" is Checkout in setup mode; the card becomes the customer's default for invoices. When a charge leaves the balance under the threshold, a conditional UPDATE claims the workspace (so only one runs), and a Vercel Workflow run charges the card off-session through an invoice (create, add the pack, finalize, pay), so tax and receipts work like Checkout. Every Stripe call is keyed by the claim, so retries never charge twice. A decline turns auto-recharge off and shows an in-app banner (email comes with Resend). So does a missing address while Stripe Tax is on, which retrying can't fix; turning auto-recharge back on then goes through Checkout to collect it. A 402 also starts a recharge.
 - **Trial:** about $1 of credits, granted once per **Threads account id**, which prevents farming new accounts for trials. That's enough for the onboarding analysis plus several Studio batches.
 
 ### BYOK
@@ -611,6 +616,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | **0: Setup** | Meta app (Threads use case, testers, callbacks); **submit App Review early for basic + insights + publish**; Vercel + Neon + Upstash + AI Gateway + Stripe (test) + Resend; scaffold, design tokens, motion primitives, demo fixtures; Terms + Privacy pages | Demo account renders the Home shell |
 | **1: MVP** | OAuth + workspaces; initial sync; deterministic stats; goal picker; Studio with streaming; **curated catalog + model picker**; **credits wallet** (trial, Checkout top-ups, reserve/settle, auto-recharge, expiry); **BYOK** ($5/month plan); **post now + schedule + Queue**; rate limits | A tester connects, buys credits (test mode), generates, and has a scheduled post publish on time |
 | **2: Intelligence + polish** | LLM classification + Profile DNA, The Read + DNA reveal choreography, Insights page, daily cron (snapshots, token refresh), scorecard, evals harness, **admin margin dashboard**, **series via `reply_to_id`** | Daily loop runs unattended; margins visible per model |
+| **Launch: Quebec readiness** | **French** (Bill 96): site, app, Terms, Privacy and emails, with `fr-CA` as a first-class locale and AI output in the user's language; the Law 25 privacy items; live Stripe Tax; the lawyer's changes (SETUP.md §5) | Public sign-ups open, and everything a Quebec customer sees exists in French |
 | **3: Grow** | Keyword-search trend radar, reply analysis, A/B variants, opt-in nightly "Today's plays", weekly digest email | |
 | **4: Agencies** | Multiple Threads profiles per workspace, team seats, email/Google login, optional subscription plans | |
 
@@ -630,6 +636,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | Small or new accounts | Cold-start mode: playbook-led suggestions plus a low-confidence chip. Personal stats unlock at 10 or more posts. |
 | Token expiry / private profiles | Daily refresh. Grants on private profiles can't be extended past 90 days, so prompt a reconnect 7 days before. Scheduled posts pre-flight the token and alert early if it's invalid. |
 | Threads API changes | One typed client module, response validation with Zod, and fixtures in contract tests |
+| Quebec rules: French, privacy (Law 25), consumer protection | French before public launch (§13). Law 25 checklist and a lawyer's review of credit expiry and the plan's terms (SETUP.md §5). |
 
 ---
 
@@ -693,10 +700,15 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Tests: integration tests drive every step against a fake Graph API (scheduling rules, publish once, container polling and errors, quota, revoked tokens, edits superseding runs, cancel, retry, the sweeper); end-to-end tests schedule, edit and cancel a saved idea, post now through the mock Meta server, show a failed post until it's removed, and rescue an overdue post with the sweeper.
 - Not yet: drag-and-drop onto a week calendar (the slot chips cover it for now), failure emails (needs Resend and the user's email), series via `reply_to_id` (Phase 2).
 
+**Stripe sandbox check (Canadian account, Quebec):** Stripe's MCP connector was used to send the app's own Checkout, portal and invoice calls to the real sandbox. The connector can't pay invoices, so the final charge is still only tested against the mock. Checkout in all three modes and the portal work as written. Two bugs the mock had hidden are fixed:
+- Auto-recharge invoices were created without a currency, so on a Canadian account they came out in CAD and refused the USD pack. Every recharge would have failed and been retried as if Stripe were down. The invoice now states USD.
+- With Stripe Tax on, Stripe won't finalize an invoice for a customer without an address, and saving a card didn't collect one. Card Checkout now asks for the address when tax is on, and a recharge that still lacks one stops with a notice instead of retrying.
+- The mock now behaves the same way (CAD by default, no mixed currencies, no taxed invoice without an address), and integration tests cover both cases. The sandbox has GST/HST and QST registrations, and its default portal configuration already matches what Threaded needs.
+
 **Phase 1 is feature-complete.** Remaining before testers: the external setup below, then a pass against the real services (Meta's docs are checked; see §2).
 
 **Waiting on you** (see `docs/SETUP.md`):
 - Meta app and App Review submission
 - Vercel project with Neon, Upstash and AI Gateway
-- Stripe (test mode) and Resend accounts
-- Legal review of the Terms and Privacy drafts
+- Stripe: the head office address in Tax settings, a default product tax code (with your accountant), then the secret key and webhook; and a Resend account
+- Legal review of the Terms and Privacy drafts by a Quebec lawyer, including the items in SETUP.md §5
