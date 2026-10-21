@@ -620,6 +620,15 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | **3: Grow** | Keyword-search trend radar, reply analysis, A/B variants, opt-in nightly "Today's plays", weekly digest email | |
 | **4: Agencies** | Multiple Threads profiles per workspace, team seats, email/Google login, optional subscription plans | |
 
+**Phase 2, in order.** Each milestone ships as its own PR, tested end to end.
+
+| Milestone | Scope | Done when |
+|---|---|---|
+| **2a: Intelligence** | Post classification (§4c: Fast-tier model, 20 posts per call, cached per post and versioned) and Profile DNA (weekly, mid-tier, stored as versioned JSON). The DNA becomes the voice guide in the generation prompt, and classification makes exemplars and insights topic-aware. Runs inside the sync workflows; the cost is ours (§6). | A real account's posts are classified, its DNA is stored, and Studio's prompt uses both |
+| **2b: Payoff screens** | The Insights page (§9c: views and followers over time annotated with posts, the heatmap, the format × topic matrix, the sortable post table, a plain-English line per chart). Onboarding: The Read (live sync progress) and the DNA reveal, replacing Home's progress card on first sign-in | Insights replaces the placeholder; a first sign-in plays The Read, then the DNA reveal |
+| **2c: Feedback loop + reliability** | The suggestion scorecard (+1h/+24h/+72h chips; winners join the exemplar pool, §5). Emails through Resend: a failed scheduled post, a declined auto-recharge, a lapsed plan, and a reconnect reminder before a private profile's 90-day grant ends. The evals harness (`pnpm eval`, §11). The admin margin dashboard (§6) | Phase 2's exit criteria above |
+| **Polish (any time)** | Series via `reply_to_id` (§7), drag-and-drop onto the week calendar, the "all Gateway models" toggle for BYOK | |
+
 ---
 
 ## 14. Risks and mitigations
@@ -706,10 +715,10 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - The mock now behaves the same way (CAD by default, no mixed currencies, no taxed invoice without an address), and integration tests cover both cases. The default portal configuration Stripe creates already matches what Threaded needs.
 - These checks ran on a separate "Threaded sandbox". The app now uses the **Threaded** account's test mode, which has its Quebec head office set, default tax code `txcd_10103000`, and GST/HST and QST registrations.
 
-**Phase 1 is feature-complete.** Remaining before testers: the external setup below, then a pass against the real services (Meta's docs are checked; see §2).
+**Phase 1 is live.** Production runs on Vercel at the project's `vercel.app` URL, with Neon Postgres (migrated on every deploy) and Threads sign-in for the Meta app's testers (the app is in development mode until App Review). Production uses live Stripe keys; previews use test keys and sign in through production's callback (`PREVIEW_ORIGINS`). Docs-only changes don't build previews (`scripts/vercel-ignore-build.sh`). **Next: Phase 2a** (§13).
 
-**Waiting on you** (see `docs/SETUP.md`):
-- Meta app and App Review submission
-- Vercel project with Neon, Upstash and AI Gateway
-- Stripe: confirm the default tax code with your accountant, then the test secret key and webhook once the Vercel project exists; and a Resend account
-- Legal review of the Terms and Privacy drafts by a Quebec lawyer, including the items in SETUP.md §5
+**Waiting on you** (see `docs/SETUP.md` §5):
+- Meta: verify the app's contact email; submit App Review (screencasts, icon; business verification may be requested)
+- Stripe live mode: check that Tax shows Active, add the GST/HST and QST registrations once you have the numbers, and create the live webhook endpoint
+- A Resend account (Phase 2c emails)
+- Legal review of the Terms and Privacy drafts by a Quebec lawyer, the Law 25 items, and French before public launch

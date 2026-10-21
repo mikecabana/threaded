@@ -71,7 +71,8 @@ If your machine already has a Chromium build, point Playwright at it with
    - Generate `CRON_SECRET` the same way. Vercel Cron sends it as a Bearer token to the two crons in `vercel.json`: `/api/cron/daily` (06:00 UTC: model prices, the publish sweep, a refresh workflow per connected profile) and `/api/cron/publish` (every 5 minutes: the scheduled-post safety net).
    - The 5-minute cron needs a Vercel **Pro** plan; Hobby plans only allow daily crons and the deploy fails. On Hobby, delete that entry: the daily cron also runs the publish sweep, so missed posts are still rescued, just later.
    - Keep **Fluid compute** on (the default for new projects); Vercel Workflow needs it.
-6. The schema is applied on every deploy: `vercel.json` builds with `pnpm db:deploy && pnpm build`, and `db:deploy` runs the migrations in `drizzle/` against that deployment's database (the unpooled URL when Neon provides one). Keep migrations additive, since the previous deployment serves traffic until the new one is ready. `SKIP_MIGRATIONS=1` turns it off.
+6. Docs-only changes don't build previews: `vercel.json`'s `ignoreCommand` runs `scripts/vercel-ignore-build.sh`, which skips a preview when nothing outside `docs/` and Markdown files changed since the branch's last deployment (or, on its first, since it left `main`). Production always builds, and so does anything the script can't be sure about.
+7. The schema is applied on every deploy: `vercel.json` builds with `pnpm db:deploy && pnpm build`, and `db:deploy` runs the migrations in `drizzle/` against that deployment's database (the unpooled URL when Neon provides one). Keep migrations additive, since the previous deployment serves traffic until the new one is ready. `SKIP_MIGRATIONS=1` turns it off.
 
 ## Domains and preview deployments
 
@@ -160,5 +161,7 @@ Create an account, verify your sending domain, and put the API key in `RESEND_AP
   - Name the person in charge of protecting personal information, and publish their title and contact details on the site.
   - Do a privacy impact assessment before personal information leaves Quebec. Vercel, Neon, Stripe, Meta and the AI providers all process it elsewhere.
   - Keep a register of confidentiality incidents.
-- [ ] **Live Stripe:** the head office address, GST/HST + QST registrations with your numbers, the product tax code, and `STRIPE_AUTOMATIC_TAX=1` (§3).
+- [ ] **Live Stripe:** the head office address, GST/HST + QST registrations with your numbers, the product tax code, and `STRIPE_AUTOMATIC_TAX=1` (§3). Live and test mode are configured separately: check that Tax shows **Active** in live mode, or Checkout fails while tax is on.
+- [ ] **Live Stripe webhook:** a live-mode endpoint for `https://<production-host>/api/stripe/webhook` with the same six events (§3). Its signing secret, not the test endpoint's, goes in Production's `STRIPE_WEBHOOK_SECRET`.
+- [ ] **Meta:** verify the app's contact email (App settings → Basic), then submit App Review (§1, step 6). The app stays in development mode, open to Threads testers only, until it's approved.
 - [ ] Confirm which secret signs Meta's deauthorize and data-deletion callbacks (the one ⚠ left in `docs/PLAN.md` §2; everything else there was checked against Meta's docs).
