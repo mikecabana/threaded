@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import { provisionThreadsAccount } from "@/lib/accounts/provision";
+import { relayOrigin } from "@/lib/auth/oauth-relay";
 import { OAUTH_COOKIE, verifyOAuthState } from "@/lib/auth/oauth-state";
+import { isPreviewOrigin } from "@/lib/deployment";
 import { GOAL_COOKIE } from "@/lib/goals";
 import { startSession } from "@/lib/session/session";
 import { startSync } from "@/lib/sync/trigger";
@@ -19,6 +21,18 @@ export async function GET(request: NextRequest) {
   if (!isThreadsLoginEnabled()) return fail(request, "unavailable");
 
   const params = request.nextUrl.searchParams;
+  const { appId, appSecret, redirectUri } = threadsAppConfig();
+
+  // A sign-in that started on a preview deployment: send the browser (and
+  // Meta's answer) back there, if the preview is one of ours.
+  const returnTo = relayOrigin(params.get("state"), appSecret);
+  if (returnTo && returnTo !== request.nextUrl.origin) {
+    if (!isPreviewOrigin(returnTo)) return fail(request, "state");
+    const target = new URL("/api/auth/threads/callback", returnTo);
+    target.search = request.nextUrl.search;
+    return NextResponse.redirect(target);
+  }
+
   const store = await cookies();
   const state = verifyOAuthState(store.get(OAUTH_COOKIE)?.value, params.get("state"));
   store.delete({ name: OAUTH_COOKIE, path: "/api/auth/threads" });
@@ -27,7 +41,6 @@ export async function GET(request: NextRequest) {
   const code = params.get("code");
   if (!state || !code) return fail(request, "state");
 
-  const { appId, appSecret, redirectUri } = threadsAppConfig();
   try {
     const short = await exchangeCode({ appId, appSecret, redirectUri, code });
     const long = await exchangeForLongLived({ appSecret, shortLivedToken: short.accessToken });

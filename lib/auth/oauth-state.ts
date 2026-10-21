@@ -8,11 +8,16 @@ import { randomToken, safeEqual, sign, unsign } from "@/lib/crypto/sign";
 export const OAUTH_COOKIE = "threaded_oauth";
 export const OAUTH_COOKIE_MAX_AGE = 10 * 60;
 
-const stateSchema = z.object({ state: z.string().min(16), tz: z.string().max(64).optional(), at: z.number() });
+const stateSchema = z.object({ state: z.string().min(16).max(512), tz: z.string().max(64).optional(), at: z.number() });
 export type OAuthState = z.infer<typeof stateSchema>;
 
-export function createOAuthState(tz: string | undefined, now = Date.now()): { cookie: string; state: string } {
-  const value: OAuthState = { state: randomToken(24), tz, at: now };
+/** `state` defaults to a random token; previews pass a relay state that carries their origin. */
+export function createOAuthState(
+  tz: string | undefined,
+  state = randomToken(24),
+  now = Date.now(),
+): { cookie: string; state: string } {
+  const value: OAuthState = { state, tz, at: now };
   return { cookie: sign(Buffer.from(JSON.stringify(value)).toString("base64url")), state: value.state };
 }
 

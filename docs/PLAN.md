@@ -583,7 +583,10 @@ evals/                                  prompt and model eval harness
 ## 12. Environment
 
 ```
-THREADS_APP_ID, THREADS_APP_SECRET, THREADS_REDIRECT_URI
+THREADS_APP_ID, THREADS_APP_SECRET
+THREADS_REDIRECT_URI     # local only; on Vercel derived from VERCEL_PROJECT_PRODUCTION_URL
+APP_URL                  # optional override for the production URL
+PREVIEW_ORIGINS          # previews allowed to sign in via production's callback (relay)
 SECRETS_ENC_KEY          # 32-byte base64; encrypts Threads tokens + BYOK keys (key-id prefixed for rotation)
 SESSION_SECRET
 DATABASE_URL             # Neon (Marketplace injects)
@@ -594,7 +597,7 @@ STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
 STRIPE_AUTOMATIC_TAX     # 1 = Stripe Tax on top-ups, auto-recharge and the BYOK plan
 RESEND_API_KEY
 CRON_SECRET
-DEMO_MODE                # 1 on previews
+DEMO_MODE                # 1 = demo accounts only (e.g. a public preview)
 ```
 
 Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixed dev alias (or an ngrok/cloudflared tunnel). Use demo mode on previews.

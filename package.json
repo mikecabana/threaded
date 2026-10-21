@@ -14,6 +14,7 @@
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:deploy": "node scripts/migrate.mjs",
     "db:studio": "drizzle-kit studio",
     "test:int": "vitest run --config vitest.int.config.mts"
   },
