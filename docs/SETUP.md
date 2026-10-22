@@ -87,7 +87,14 @@ Nothing in the code names a domain. Threaded works out its URLs per deployment:
 **When you buy a domain.** No code or variable changes, but the order matters:
 
 1. In Meta, add `https://<new-domain>/api/auth/threads/callback` as a second redirect URL. Keep the old one until the switch is done, because the next deployment moves sign-in to the new domain.
-2. If the DNS lives elsewhere (e.g. Cloudflare), point it at Vercel with the records Vercel shows, set to **DNS only** (no proxy), so Vercel's CDN and certificates sit directly in front of the app.
+2. If the DNS lives elsewhere (e.g. Cloudflare), point it at Vercel with the records Vercel shows. **DNS only** (no proxy) is simplest: Vercel's CDN and certificates sit directly in front of the app. Cloudflare's proxy works too (production runs behind it) with these settings:
+   - SSL/TLS mode **Full (strict)**. Flexible loops forever, because Vercel redirects HTTP to HTTPS.
+   - **Email Address Obfuscation off.** It rewrites `mailto:` links in the HTML before React hydrates it.
+   - **Rocket Loader off**, and no "Cache Everything" rules: signed-in pages differ per person, and Cloudflare's cache ignores the `Vary` headers Next.js relies on. The default (static files only) is fine.
+   - **Bot Fight Mode off**, and no challenge rules on `/api/`. Stripe and Meta POST to `/api/stripe/webhook`, `/api/threads/uninstall` and `/api/threads/delete` from servers that can't solve a challenge, and the Free plan's Bot Fight Mode can't be skipped per path.
+   - Nothing that blocks or caches `/.well-known/acme-challenge/`, which is how Vercel renews the certificate.
+
+   Cron jobs and workflow steps call the deployment's own `vercel.app` URL, so they never pass through the proxy. Vercel sees Cloudflare's IPs rather than visitors' (Cloudflare sends the real one in `CF-Connecting-IP`); nothing in the app uses client IPs yet.
 3. Add the domain under Settings → Domains. Vercel's production URL is the **shortest** production domain, so if you add both `example.com` and `www.example.com`, the bare domain must be the one that serves, with `www` redirecting to it. Otherwise sign-in breaks: the callback points at the bare domain while visitors are on `www`. To serve `www` instead, set `APP_URL=https://www.example.com` and register that callback in Meta.
 4. Redeploy production. Then set the old `vercel.app` domain to redirect to the new one (Settings → Domains → Edit), since sign-in only runs on the production URL and previews.
 5. Point Meta's deauthorize and data-deletion callbacks and the privacy and terms URLs at the new domain, and remove the old redirect URL once sign-in works there. Edit the live Stripe webhook's URL; its signing secret stays the same.
