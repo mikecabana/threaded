@@ -84,7 +84,13 @@ Nothing in the code names a domain. Threaded works out its URLs per deployment:
 
 **Testing on vercel.app now.** Register the three Meta URLs and the Stripe webhook (`https://<production-host>/api/stripe/webhook`) with your `vercel.app` host. Nothing else to set.
 
-**When you buy a domain.** Add it under Settings → Domains. From the next deployment the production URL is the new domain. Then add the new redirect URL in Meta (keep the old one until the switch is done), update the deauthorize and data-deletion callbacks, and move the Stripe webhook. No code or variable changes. Also set the old `vercel.app` domain to redirect to the new one (Settings → Domains → Edit), since sign-in only runs on the production URL and previews.
+**When you buy a domain.** No code or variable changes, but the order matters:
+
+1. In Meta, add `https://<new-domain>/api/auth/threads/callback` as a second redirect URL. Keep the old one until the switch is done, because the next deployment moves sign-in to the new domain.
+2. If the DNS lives elsewhere (e.g. Cloudflare), point it at Vercel with the records Vercel shows, set to **DNS only** (no proxy), so Vercel's CDN and certificates sit directly in front of the app.
+3. Add the domain under Settings → Domains. Vercel's production URL is the **shortest** production domain, so if you add both `example.com` and `www.example.com`, the bare domain must be the one that serves, with `www` redirecting to it. Otherwise sign-in breaks: the callback points at the bare domain while visitors are on `www`. To serve `www` instead, set `APP_URL=https://www.example.com` and register that callback in Meta.
+4. Redeploy production. Then set the old `vercel.app` domain to redirect to the new one (Settings → Domains → Edit), since sign-in only runs on the production URL and previews.
+5. Point Meta's deauthorize and data-deletion callbacks and the privacy and terms URLs at the new domain, and remove the old redirect URL once sign-in works there. Edit the live Stripe webhook's URL; its signing secret stays the same.
 
 **Demoing on preview deployments.** Demo accounts work on every preview with no setup. For real Threads accounts on previews:
 

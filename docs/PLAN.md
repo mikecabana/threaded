@@ -715,7 +715,7 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - The mock now behaves the same way (CAD by default, no mixed currencies, no taxed invoice without an address), and integration tests cover both cases. The default portal configuration Stripe creates already matches what Threaded needs.
 - These checks ran on a separate "Threaded sandbox". The app now uses the **Threaded** account's test mode, which has its Quebec head office set, default tax code `txcd_10103000`, and GST/HST and QST registrations.
 
-**Phase 1 is live.** Production runs on Vercel at the project's `vercel.app` URL, with Neon Postgres (migrated on every deploy) and Threads sign-in for the Meta app's testers (the app is in development mode until App Review). Production uses live Stripe keys; previews use test keys and sign in through production's callback (`PREVIEW_ORIGINS`). Docs-only changes don't build previews (`scripts/vercel-ignore-build.sh`). **Next: Phase 2a** (§13).
+**Phase 1 is live.** Production runs on Vercel at `getthreaded.app` (DNS on Cloudflare, `www` and the old `vercel.app` URL redirect to it), with Neon Postgres (migrated on every deploy) and Threads sign-in for the Meta app's testers (the app is in development mode until App Review). Production uses live Stripe keys; previews use test keys and sign in through production's callback (`PREVIEW_ORIGINS`). Docs-only changes don't build previews (`scripts/vercel-ignore-build.sh`). **Next: Phase 2a** (§13).
 
 **Waiting on you** (see `docs/SETUP.md` §5):
 - Meta: verify the app's contact email; submit App Review (screencasts, icon; business verification may be requested)
