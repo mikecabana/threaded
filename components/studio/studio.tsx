@@ -66,6 +66,7 @@ export function Studio({
   byok,
   models,
   initialModelId,
+  voicePosts = null,
 }: {
   author: PostAuthor;
   goal: Goal;
@@ -73,6 +74,8 @@ export function Studio({
   byok: boolean;
   models: StudioModel[];
   initialModelId: string;
+  /** Posts the author's Profile DNA was learned from, once there is one. */
+  voicePosts?: number | null;
 }) {
   const router = useRouter();
   const composer = useComposer();
@@ -234,6 +237,9 @@ export function Studio({
           <div>
             <p className="text-sm text-subtle">Writing for</p>
             <p className="font-semibold text-accent">{GOAL_META[goal].label}</p>
+            {voicePosts !== null && (
+              <p className="mt-1 text-subtle text-xs">In your voice, learned from {voicePosts} of your posts</p>
+            )}
           </div>
 
           <label className="block">

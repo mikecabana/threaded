@@ -17,11 +17,14 @@ const STEPS = [
   { id: "account", label: "Mapping your audience's days" },
 ] as const;
 
-const ORDER = ["posts", "insights", "account", "done"];
+const ORDER = ["posts", "insights", "account", "classify", "dna", "done"];
+/** Once the account's data is in, Home can show it while the posts are still being classified. */
+const READY = ORDER.indexOf("classify");
 
 /**
  * Live progress of the first sync. Polls the status endpoint while the run is
- * going and refreshes the page (now full of data) when it finishes.
+ * going and refreshes the page as soon as the data is in (classifying the
+ * posts and building Profile DNA carry on in the background).
  */
 export function SyncProgress({ initial }: { initial: SyncStatus }) {
   const router = useRouter();
@@ -36,7 +39,7 @@ export function SyncProgress({ initial }: { initial: SyncStatus }) {
       if (!response?.ok) return;
       const next = (await response.json()) as SyncStatus;
       setStatus(next);
-      if (next.status === "succeeded") router.refresh();
+      if (next.status === "succeeded" || ORDER.indexOf(next.step ?? "") >= READY) router.refresh();
     }, 2000);
     return () => window.clearInterval(id);
   }, [status.status, router]);

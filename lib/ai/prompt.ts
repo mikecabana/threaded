@@ -5,7 +5,8 @@ import { PLAYBOOKS, SPICE_GUIDANCE } from "./playbooks";
 import type { GenerateRequest } from "./schemas";
 
 // Versioned so every stored generation records which prompt produced it.
-export const PROMPT_VERSION = "generate.v1";
+// v2: the Profile DNA voice guide, labelled and topic-aware exemplars, and facts for the goal.
+export const PROMPT_VERSION = "generate.v2";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -29,13 +30,21 @@ export function buildInstructions(request: GenerateRequest): string {
     `Tone: ${SPICE_GUIDANCE[request.spice]}`,
     "",
     "Rules:",
-    "- Match the author's voice: length, casing, emoji habits, line breaks and vocabulary.",
+    "- Match the author's voice: length, casing, emoji habits, line breaks and vocabulary. When a voice guide is given, follow it.",
+    "- Use the author's signature phrases sparingly: at most one idea should lean on one.",
     "- Every post must be under 450 characters (emoji count as several characters).",
     "- Each idea must be meaningfully different from the others.",
     "- In `rationale`, cite the author's own numbers from the context when they support the idea. Never make up numbers.",
     "- `goalFit` is your honest 0–100 estimate for this author, not a compliment.",
     "- `bestSlot` should use the author's best hours when known.",
   ].join("\n");
+}
+
+function topicNote({ matchedTopic, onTopicExemplars }: GenerationContext): string {
+  if (!matchedTopic) return "";
+  return onTopicExemplars > 0
+    ? ` They've written about ${matchedTopic} before; the first examples are their best posts on it.`
+    : ` They've written about ${matchedTopic} before, though not among their best posts for this goal.`;
 }
 
 export function buildPrompt(request: GenerateRequest, context: GenerationContext): string {
@@ -55,6 +64,22 @@ export function buildPrompt(request: GenerateRequest, context: GenerationContext
     );
   } else {
     lines.push("This author hasn't posted yet. Infer their voice and topics from the bio, and keep it natural.", "");
+  }
+
+  const { dna } = context;
+  if (dna) {
+    lines.push(`Voice guide, learned from ${dna.postsAnalyzed} of their posts:`);
+    if (dna.headline) lines.push(`- ${dna.headline}`);
+    if (dna.descriptors.length) lines.push(`- In a few words: ${dna.descriptors.join(", ")}.`);
+    lines.push(...dna.habits.map((h) => `- ${h}`), ...dna.guide.map((g) => `- ${g}`));
+    if (dna.signaturePhrases.length) {
+      lines.push(`- Phrases they really use: ${dna.signaturePhrases.map((p) => `"${p}"`).join(", ")}.`);
+    }
+    lines.push("");
+    if (dna.rewards.length) lines.push("What their audience rewards:", ...dna.rewards.map((r) => `- ${r}`), "");
+    if (dna.blindSpots.length) {
+      lines.push("Blind spots (avoid these, or find a better version):", ...dna.blindSpots.map((b) => `- ${b}`), "");
+    }
   }
 
   if (context.insights.length) lines.push("What the data says:", ...context.insights.map((i) => `- ${i}`), "");
@@ -79,7 +104,7 @@ export function buildPrompt(request: GenerateRequest, context: GenerationContext
 
   lines.push(
     `Write ${request.count} new post ideas.`,
-    request.topic ? `Topic: ${request.topic}.` : "Topic: whatever fits the author's niche best.",
+    request.topic ? `Topic: ${request.topic}.${topicNote(context)}` : "Topic: whatever fits the author's niche best.",
     request.format === "any"
       ? "Mix formats where it helps the goal."
       : `Format: ${FORMAT_LABELS[request.format]} for every idea.`,

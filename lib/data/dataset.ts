@@ -16,11 +16,18 @@ export interface ProfileDataset {
 export const HISTORY_DAYS = 60;
 const DAY_MS = 86_400_000;
 
-export async function loadProfileDataset(profile: ThreadsProfile, now: Date): Promise<ProfileDataset> {
+/**
+ * `postDays` defaults to twice the KPI window, so "previous period"
+ * comparisons have data; Profile DNA reads further back.
+ */
+export async function loadProfileDataset(
+  profile: ThreadsProfile,
+  now: Date,
+  { postDays = 2 * HISTORY_DAYS }: { postDays?: number } = {},
+): Promise<ProfileDataset> {
   const todayStart = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
   const windowStart = new Date(todayStart.getTime() - HISTORY_DAYS * DAY_MS);
-  // Posts from twice the KPI window, so "previous period" comparisons have data.
-  const postsSince = new Date(todayStart.getTime() - 2 * HISTORY_DAYS * DAY_MS);
+  const postsSince = new Date(todayStart.getTime() - postDays * DAY_MS);
 
   const latestMetrics = db()
     .selectDistinctOn([postMetrics.postId], {

@@ -45,6 +45,15 @@ test("signs in with Threads, syncs history, and signs out", async ({ page }) => 
   // Accounts don't get the demo's sample plays.
   await expect(shown(page.getByText("No ideas yet."))).toBeVisible();
 
+  // Classifying the posts and building Profile DNA finish in the background
+  // (with the mock model); Studio then writes in the author's voice.
+  await expect(async () => {
+    await page.goto("/studio");
+    await expect(shown(page.getByText(/In your voice, learned from \d+ of your posts/))).toBeVisible({
+      timeout: 2_000,
+    });
+  }).toPass({ timeout: 30_000 });
+
   await page.goto("/settings");
   await expect(shown(page.getByText("@mock.user"))).toBeVisible();
   await expect(shown(page.getByText(/Last synced .* ago/))).toBeVisible();

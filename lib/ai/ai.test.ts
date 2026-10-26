@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { generateDemoDataset } from "@/lib/demo/generate";
+import { performanceFacts, topicStats } from "@/lib/analysis/facts";
+import { demoFeatures, generateDemoDataset } from "@/lib/demo/generate";
 import { DEMO_PERSONAS } from "@/lib/demo/personas";
 import { creditsForCost } from "@/lib/pricing";
 import { type CatalogEntry, DEFAULT_CATALOG, pickModel, sameTierFallbacks } from "./catalog";
-import { buildContext, insightsFor, voiceStats } from "./context";
+import { buildContext, insightsFor, matchTopic, voiceStats } from "./context";
 import { chargeCredits, costUsd, maxCredits } from "./cost";
+import { assembleDna, buildDnaPrompt } from "./dna-prompt";
 import { byokFailure, gatewayStatus } from "./errors";
-import { MOCK_SUGGESTIONS } from "./mock-model";
+import { MOCK_SUGGESTIONS, mockDna } from "./mock-model";
 import { DUPLICATE_THRESHOLD, postProcess, similarity } from "./postprocess";
 import { buildInstructions, buildPrompt } from "./prompt";
 import { generateRequestSchema, suggestionBatchSchema } from "./schemas";
@@ -14,6 +16,7 @@ import { generateRequestSchema, suggestionBatchSchema } from "./schemas";
 const now = new Date("2026-10-20T19:30:00Z");
 const persona = DEMO_PERSONAS.creator;
 const data = generateDemoDataset(persona, now);
+const features = demoFeatures(persona);
 
 describe("catalog", () => {
   const entries = DEFAULT_CATALOG.filter((m) => m.tasks.includes("generate"));
@@ -94,10 +97,61 @@ describe("context and prompt", () => {
     expect(voice.medianLength).toBeGreaterThan(80);
   });
 
-  it("only states insights the data supports", () => {
+  it("only states insights the data supports, on the goal's metrics", () => {
     // In the demo data, questions clearly out-reply statements.
-    expect(insightsFor(data.posts).some((f) => f.startsWith("Questions get"))).toBe(true);
-    expect(insightsFor([])).toEqual([]);
+    const engagement = insightsFor("engagement", data.posts, features, now);
+    expect(engagement.some((f) => /^Questions get .* reply rate/.test(f))).toBe(true);
+    expect(engagement.some((f) => f.includes("median views"))).toBe(false);
+    expect(insightsFor("views", data.posts, features, now).some((f) => f.includes("reply rate"))).toBe(false);
+    expect(insightsFor("engagement", [], features, now)).toEqual([]);
+  });
+
+  it("matches a requested topic to the author's own", () => {
+    expect(matchTopic("pricing", features)).toBe("pricing");
+    expect(matchTopic("Pricing my app", features)).toBe("pricing");
+    expect(matchTopic("the building process", features)).toBe("building");
+    expect(matchTopic("gardening", features)).toBeNull();
+    expect(matchTopic(undefined, features)).toBeNull();
+  });
+
+  it("leads with the matched topic's best posts and labels every exemplar", () => {
+    const onTopic = buildContext({
+      goal: "engagement",
+      profile: persona.profile,
+      posts: data.posts,
+      timeZone: persona.timezone,
+      now,
+      features,
+      topic: "pricing",
+    });
+    expect(onTopic.matchedTopic).toBe("pricing");
+    expect(onTopic.exemplars[0].summary).toMatch(/^\w[\w ]* · pricing; /);
+    const prompt = buildPrompt(generateRequestSchema.parse({ goal: "engagement", topic: "pricing" }), onTopic);
+    expect(prompt).toContain("They've written about pricing before");
+  });
+
+  it("writes the Profile DNA into the prompt as a voice guide", () => {
+    const facts = performanceFacts(data.posts, features, now);
+    const topics = topicStats(data.posts, features, now);
+    const stats = voiceStats(data.posts);
+    const dnaPrompt = buildDnaPrompt({ profile: persona.profile, stats, facts, topics, samples: [] });
+    const dna = assembleDna({ output: mockDna(dnaPrompt), facts, topics, stats, posts: data.posts });
+    const withDna = buildContext({
+      goal: "engagement",
+      profile: persona.profile,
+      posts: data.posts,
+      timeZone: persona.timezone,
+      now,
+      features,
+      dna,
+    });
+    const prompt = buildPrompt(generateRequestSchema.parse({ goal: "engagement" }), withDna);
+    expect(prompt).toContain(`Voice guide, learned from ${data.posts.length} of their posts:`);
+    expect(prompt).toContain("- In a few words: direct, plain-spoken, curious.");
+    expect(prompt).toContain("What their audience rewards:");
+    // Each claim carries our measurement, not the model's.
+    expect(prompt).toContain(`(${dna.rewards[0].fact.text.replace(/\.$/, "")})`);
+    expect(prompt).not.toMatch(/\n\n\n/);
   });
 
   it("feeds the best and recent posts into the prompt", () => {

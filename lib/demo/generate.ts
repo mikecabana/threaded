@@ -1,4 +1,4 @@
-import type { PostFormat } from "@/lib/analysis/formats";
+import type { PostFeatures, PostFormat } from "@/lib/analysis/formats";
 import { utcDay, zonedParts, zonedTimeToUtc } from "@/lib/analysis/time";
 import type { AccountDay, PostInsights, PostWithInsights, ThreadsProfile } from "@/lib/threads/types";
 import type { DemoPersona } from "./personas";
@@ -170,4 +170,14 @@ export function generateDemoDataset(persona: DemoPersona, now: Date): DemoDatase
     posts: posts.sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
     days,
   };
+}
+
+/** The demo's hand-labelled formats and topics, keyed like its generated posts. */
+export function demoFeatures(persona: DemoPersona): Map<string, PostFeatures> {
+  return new Map(
+    persona.posts.map((seed, i) => [
+      `${persona.profile.id}-${i + 1}`,
+      { format: seed.format, topic: seed.topic.toLowerCase(), hookType: null, tone: null },
+    ]),
+  );
 }
