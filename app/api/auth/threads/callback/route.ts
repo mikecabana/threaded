@@ -57,11 +57,12 @@ export async function GET(request: NextRequest) {
     // Drop any demo goal so the account's own goal applies on the next paint.
     store.delete(GOAL_COOKIE);
     if (!account.lastSyncedAt) {
-      // Home shows live progress while the first sync runs. If it can't start,
-      // Home offers a "Start sync" button instead, so sign-in still succeeds.
+      // The Read plays the first sync live. If it can't start, The Read
+      // offers a "Start sync" button instead, so sign-in still succeeds.
       await startSync(account.profileId, "initial").catch((error) =>
         console.error("Could not start the first sync", error),
       );
+      return NextResponse.redirect(new URL("/onboarding/analyzing", request.url));
     }
     return NextResponse.redirect(new URL("/home", request.url));
   } catch (error) {

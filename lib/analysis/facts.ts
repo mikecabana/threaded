@@ -48,7 +48,10 @@ const METRIC_VALUE: Record<FactMetric, (i: PostInsights) => number> = {
   amplification: amplificationRate,
 };
 
-const METRIC_PHRASE: Record<FactMetric, { baseline: string; noun: string }> = {
+/** A post's value on one metric (views, or a per-view rate). */
+export const metricValue = (metric: FactMetric, insights: PostInsights) => METRIC_VALUE[metric](insights);
+
+export const METRIC_PHRASE: Record<FactMetric, { baseline: string; noun: string }> = {
   views: { baseline: "your median views", noun: "views" },
   replies: { baseline: "your typical reply rate", noun: "replies" },
   engagement: { baseline: "your typical engagement rate", noun: "engagement" },

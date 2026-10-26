@@ -43,8 +43,12 @@ export interface AccountDay {
   reposts: number;
   quotes: number;
   followersCount: number;
+  /** False when no snapshot was taken that day and the count was carried over (we can't backdate followers). */
+  followersMeasured?: boolean;
 }
 
 export interface PostWithInsights extends ThreadsPost {
   insights: PostInsights;
+  /** Published through Threaded (known for posts in our own database). */
+  viaThreaded?: boolean;
 }
