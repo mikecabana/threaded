@@ -19,6 +19,8 @@ export interface FakeThreadsOptions {
   /** Path substrings that answer with an OAuth error. */
   authFailures?: string[];
   pageSize?: number;
+  /** What /debug_token says about data access (Unix seconds); omit for an error. */
+  dataAccessExpiresAt?: number;
   /** Publishing behaviour (see the publishing routes below). */
   publishing?: {
     quotaUsed?: number;
@@ -44,8 +46,11 @@ export function installFakeThreads(options: FakeThreadsOptions) {
   const containers = new Map<string, { text: string; topicTag: string | null; checks: number }>();
   const published: FakePublished[] = [];
 
+  const realFetch = globalThis.fetch;
   const handler = async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input.toString());
+    // Only Threads is faked; anything else (local mock servers) goes through.
+    if (url.hostname !== "graph.threads.net") return realFetch(input, init);
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
     calls.push(url);
     if (options.authFailures?.some((p) => url.pathname.includes(p))) {
@@ -57,6 +62,12 @@ export function installFakeThreads(options: FakeThreadsOptions) {
       return json({ access_token: "refreshed-token", token_type: "bearer", expires_in: 5_184_000 });
     }
     if (path === "/me") return json({ id: "1789", username: "maya.builds", name: "Maya Chen", is_verified: false });
+    if (path === "/debug_token") {
+      if (options.dataAccessExpiresAt === undefined) {
+        return json({ error: { message: "Only testers can debug tokens", type: "OAuthException", code: 200 } }, 403);
+      }
+      return json({ data: { data_access_expires_at: options.dataAccessExpiresAt, is_valid: true } });
+    }
 
     // Publishing: containers, their status, publish, and the 24h quota.
     if (path === "/me/threads" && method === "POST") {

@@ -27,6 +27,10 @@ export default defineConfig({
       STRIPE_WEBHOOK_SECRET: "whsec_test_mock",
       STRIPE_API_URL: "http://localhost:3997",
       AI_GATEWAY_BASE_URL: "http://localhost:3997/v4/ai",
+      // Emails go to the same mock's Resend endpoint (tests that send start it).
+      RESEND_API_KEY: "re_test_mock",
+      RESEND_API_URL: "http://localhost:3997",
+      APP_URL: "http://app.test",
     },
   },
 });

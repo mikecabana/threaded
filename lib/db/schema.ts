@@ -72,8 +72,10 @@ export const users = pgTable("users", {
   id: id(),
   /** Login identity in the MVP (Threads OAuth). */
   threadsUserId: text("threads_user_id").notNull().unique(),
-  /** Threads doesn't share email; we ask during onboarding. */
+  /** Threads doesn't share email; the user adds one in Settings for alerts. */
   email: text("email"),
+  /** Set when the address was confirmed from a link sent to it; alerts only go to confirmed addresses. */
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   isStaff: boolean("is_staff").notNull().default(false),
   createdAt: createdAt(),
 });
@@ -143,6 +145,14 @@ export const threadsTokens = pgTable("threads_tokens", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   scopes: text("scopes").array().notNull(),
   lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
+  /** When the user last went through Threads' consent screen. */
+  grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * When Threads stops sharing this profile's data (debug_token). Refreshing
+   * the token extends it for public profiles; private ones must grant again.
+   */
+  dataAccessExpiresAt: timestamp("data_access_expires_at", { withTimezone: true }),
+  accessCheckedAt: timestamp("access_checked_at", { withTimezone: true }),
 });
 
 export const sessions = pgTable(
@@ -338,11 +348,14 @@ export const suggestions = pgTable(
     bestSlot: jsonb("best_slot").$type<{ weekday: number; hour: number }>(),
     status: suggestionStatusEnum("status").notNull().default("new"),
     postedMediaId: text("posted_media_id").references(() => posts.id, { onDelete: "set null" }),
-    /** Views vs. the profile's median at +72h, filled by the scorecard job. */
+    /** Views vs. the author's usual at 3 days (lib/analysis/scorecard.ts), filled once measured. */
     perfVsBaseline: numeric("perf_vs_baseline", { precision: 8, scale: 3 }),
     createdAt: createdAt(),
   },
-  (t) => [index("suggestions_generation_idx").on(t.generationId)],
+  (t) => [
+    index("suggestions_generation_idx").on(t.generationId),
+    index("suggestions_posted_media_idx").on(t.postedMediaId),
+  ],
 );
 
 // ── Billing ──────────────────────────────────────────────────────────────────
@@ -437,6 +450,32 @@ export const scheduledPosts = pgTable(
     index("scheduled_posts_due_idx").on(t.status, t.scheduledFor),
     index("scheduled_posts_profile_idx").on(t.profileId, t.scheduledFor),
   ],
+);
+
+/**
+ * Emails sent (or attempted) to a user. One row per (user, kind, ref), so an
+ * alert goes out once however many times the event that causes it is seen.
+ * The address and the content aren't kept.
+ */
+export const emailLog = pgTable(
+  "email_log",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    /** What it's about, e.g. the failed post's id and version. */
+    ref: text("ref").notNull(),
+    /** "sent"; "logged" when no email provider is configured; "failed". */
+    status: text("status", { enum: ["sending", "sent", "logged", "failed"] })
+      .notNull()
+      .default("sending"),
+    providerId: text("provider_id"),
+    error: text("error"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("email_log_once_idx").on(t.userId, t.kind, t.ref)],
 );
 
 /** Meta data-deletion callbacks; the code is shown on the public status page. */

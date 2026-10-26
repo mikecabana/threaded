@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { POST as webhook } from "@/app/api/stripe/webhook/route";
 import { createMockBilling, signPayload } from "@/e2e/mock-billing.mjs";
 import { db } from "@/lib/db";
-import { creditLedger, creditLots, wallets, workspaces } from "@/lib/db/schema";
+import { creditLedger, creditLots, memberships, users, wallets, workspaces } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { closeDatabase, resetDatabase } from "@/test/db";
 import { claimAutoRecharge, fulfillRechargeInvoice, runAutoRecharge } from "./auto-recharge";
@@ -19,6 +19,7 @@ const mock = createMockBilling();
 const ORIGIN = "http://app.test";
 const PACK_5 = { id: "pack_5", usd: 5, credits: 500 } as const;
 let workspaceId: string;
+let ownerEmail: string;
 
 const sessionId = (url: string) => url.split("/pay/")[1];
 
@@ -53,7 +54,16 @@ beforeEach(async () => {
   const [ws] = await db().insert(workspaces).values({ name: "@billing" }).returning({ id: workspaces.id });
   workspaceId = ws.id;
   await db().insert(wallets).values({ workspaceId });
+  // An owner with a confirmed address, so billing problems are emailed.
+  ownerEmail = `owner-${ws.id}@example.com`;
+  const [owner] = await db()
+    .insert(users)
+    .values({ threadsUserId: `t-${ws.id}`, email: ownerEmail, emailVerifiedAt: new Date() })
+    .returning({ id: users.id });
+  await db().insert(memberships).values({ userId: owner.id, workspaceId });
 });
+
+const emailsTo = (to: string) => mock.state.emails.filter((e: { to: string[] }) => e.to.includes(to));
 afterAll(async () => {
   await mock.close();
   await closeDatabase();
@@ -170,6 +180,10 @@ describe("auto-recharge", () => {
     expect([...mock.state.invoices.values()].at(-1)?.status).toBe("void");
     // Off means no more attempts until the user turns it back on.
     expect(await claimAutoRecharge(workspaceId)).toBeNull();
+    // And the owner gets one email about it.
+    expect(emailsTo(ownerEmail).map((e: { subject: string }) => e.subject)).toEqual([
+      "Auto-recharge couldn't charge your card",
+    ]);
   });
 });
 
@@ -265,5 +279,8 @@ describe("bring your own key", () => {
       subscriptionStatus: "canceled",
       billingNotice: { kind: "byok_ended" },
     });
+    // Seeing the same ended plan again doesn't email twice.
+    await syncSubscription(ws.stripeSubscriptionId as string);
+    expect(emailsTo(ownerEmail).map((e: { subject: string }) => e.subject)).toEqual(["Your Threaded plan has ended"]);
   });
 });

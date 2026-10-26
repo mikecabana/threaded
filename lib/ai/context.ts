@@ -129,21 +129,36 @@ export function voiceGuide(dna: ProfileDna): VoiceGuide {
   };
 }
 
+/** Studio drafts that beat the author's usual at 3 days (lib/publishing/scorecard.ts). */
+export interface WinningDraft {
+  postId: string;
+  /** Views against the usual at 3 days. */
+  score: number;
+}
+
+/** Winners pinned among the exemplars, at most. */
+const MAX_WINNER_EXEMPLARS = 2;
+
 /**
  * Best exemplars for the goal. With a matched topic, up to three come from
  * that topic, but only from the author's better half: a weak post on the
- * right topic is still a weak example.
+ * right topic is still a weak example. Then up to two of Studio's own drafts
+ * that beat the author's usual, so what worked feeds the next batch.
  */
 function pickExemplars(
   ranked: RankedPost[],
   features: ReadonlyMap<string, PostFeatures>,
   topic: string | null,
+  winners: PostWithInsights[],
   count = 5,
-): { exemplars: RankedPost[]; onTopic: number } {
-  const betterHalf = ranked.slice(0, Math.ceil(ranked.length / 2));
-  const onTopic = topic ? betterHalf.filter((r) => features.get(r.post.id)?.topic === topic).slice(0, 3) : [];
+): { exemplars: PostWithInsights[]; onTopic: number } {
+  const betterHalf = ranked.slice(0, Math.ceil(ranked.length / 2)).map((r) => r.post);
+  const onTopic = topic ? betterHalf.filter((p) => features.get(p.id)?.topic === topic).slice(0, 3) : [];
+  // A winner can still be settling (it's scored from 54 hours), so it isn't necessarily ranked.
+  const pinned = winners.filter((p) => !onTopic.includes(p)).slice(0, MAX_WINNER_EXEMPLARS);
+  const first = [...onTopic, ...pinned];
   return {
-    exemplars: [...onTopic, ...ranked.filter((r) => !onTopic.includes(r))].slice(0, count),
+    exemplars: [...first, ...ranked.map((r) => r.post).filter((p) => !first.includes(p))].slice(0, count),
     onTopic: onTopic.length,
   };
 }
@@ -158,19 +173,32 @@ export function buildContext(input: {
   dna?: ProfileDna | null;
   /** What the user asked to write about. */
   topic?: string;
+  winners?: readonly WinningDraft[];
 }): GenerationContext {
   const { goal, posts, timeZone, now } = input;
   const features = input.features ?? new Map<string, PostFeatures>();
+  const winners = input.winners ?? [];
   const ranked = topPosts(goal, posts, now, posts.length);
   const matchedTopic = matchTopic(input.topic, features);
-  const { exemplars, onTopic } = pickExemplars(ranked, features, matchedTopic);
+  const won = new Map(winners.map((w) => [w.postId, w.score]));
+  const winningPosts = winners.flatMap((w) => posts.find((p) => p.id === w.postId) ?? []);
+  const { exemplars, onTopic } = pickExemplars(ranked, features, matchedTopic, winningPosts);
   const dna = input.dna ? voiceGuide(input.dna) : null;
   // Facts the voice guide already states aren't repeated.
   const stated = new Set([...(input.dna?.rewards ?? []), ...(input.dna?.blindSpots ?? [])].map((c) => c.fact.text));
   return {
     profile: input.profile,
     voice: voiceStats(posts),
-    exemplars: exemplars.map(({ post }) => ({ text: post.text, summary: summarize(post, features.get(post.id)) })),
+    exemplars: exemplars.map((post) => {
+      const summary = summarize(post, features.get(post.id));
+      const score = won.get(post.id);
+      return {
+        text: post.text,
+        summary: score
+          ? `${summary}; drafted in Threaded, ${formatMetric(score, "multiplier")} their usual views at 3 days`
+          : summary,
+      };
+    }),
     weakest: ranked.length >= 8 ? ranked.slice(-3).map(({ post }) => post.text) : [],
     recent: [...posts]
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))

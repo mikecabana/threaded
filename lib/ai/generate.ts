@@ -14,6 +14,7 @@ import { loadProfileDataset } from "@/lib/data/dataset";
 import { latestDna, loadPostFeatures } from "@/lib/data/intelligence";
 import { db } from "@/lib/db";
 import { generations, suggestions, threadsProfiles, workspaces } from "@/lib/db/schema";
+import { winningDrafts } from "@/lib/publishing/scorecard";
 import type { AccountIdentity } from "@/lib/session/identity";
 import { buildContext } from "./context";
 import { chargeCredits, costUsd, estimateTokens, maxCredits } from "./cost";
@@ -97,10 +98,11 @@ export async function startGeneration(input: {
     profilePictureUrl: profile.profilePictureUrl,
     isVerified: profile.isVerified,
   };
-  const [dataset, features, stored] = await Promise.all([
+  const [dataset, features, stored, winners] = await Promise.all([
     loadProfileDataset(threadsProfile, now),
     loadPostFeatures(profile.id),
     latestDna(profile.id),
+    winningDrafts(profile.id),
   ]);
   const context = buildContext({
     goal: request.goal,
@@ -111,6 +113,7 @@ export async function startGeneration(input: {
     features,
     dna: stored?.dna ?? null,
     topic: request.topic,
+    winners,
   });
   const instructions = buildInstructions(request);
   const prompt = buildPrompt(request, context);

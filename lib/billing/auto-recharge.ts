@@ -3,6 +3,9 @@ import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 import { db, type Tx } from "@/lib/db";
 import { type AutoRechargeSettings, wallets, workspaces } from "@/lib/db/schema";
+import { alertWorkspace } from "@/lib/email/alerts";
+import { emailOrigin } from "@/lib/email/send";
+import { rechargeDeclinedEmail } from "@/lib/email/templates";
 import { CURRENCY, packById } from "@/lib/pricing";
 import { automaticTax, isCardError, needsTaxAddress, stripe } from "./stripe";
 import { grantCredits } from "./wallet";
@@ -180,16 +183,19 @@ export async function fulfillRechargeInvoice(invoiceId: string): Promise<boolean
 }
 
 async function failRecharge(workspaceId: string, attemptAt: string, reason: string) {
-  await db()
+  const message = `Auto-recharge couldn't charge your card, so it's off for now. ${reason}`.trim();
+  const updated = await db()
     .update(workspaces)
     .set({
       autoRecharge: sql`jsonb_set(${workspaces.autoRecharge}, '{enabled}', 'false')`,
       autoRechargePendingAt: null,
-      billingNotice: {
-        kind: "auto_recharge_failed",
-        message: `Auto-recharge couldn't charge your card, so it's off for now. ${reason}`.trim(),
-        at: new Date().toISOString(),
-      },
+      billingNotice: { kind: "auto_recharge_failed", message, at: new Date().toISOString() },
     })
-    .where(claimIs(workspaceId, attemptAt));
+    .where(claimIs(workspaceId, attemptAt))
+    .returning({ id: workspaces.id });
+  if (updated.length > 0) {
+    await alertWorkspace(workspaceId, "recharge_declined", attemptAt, () =>
+      rechargeDeclinedEmail({ message, url: `${emailOrigin()}/settings/billing` }),
+    );
+  }
 }

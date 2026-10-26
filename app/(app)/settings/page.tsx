@@ -1,17 +1,20 @@
-import { ChevronRight, LogOut } from "lucide-react";
+import { BellRing, ChevronRight, LogOut } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Avatar } from "@/components/app/avatar";
 import { SyncNowButton } from "@/components/app/sync-now-button";
 import { ThemeToggle } from "@/components/app/theme-toggle";
+import { EmailForm } from "@/components/settings/email-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { exitDemoAction, startDemoAction } from "@/lib/actions/demo";
+import { removeEmailAction } from "@/lib/actions/email";
 import { signOutAction } from "@/lib/actions/session";
 import { DEMO_PERSONA_IDS, DEMO_PERSONAS } from "@/lib/demo/personas";
+import { alertAddress } from "@/lib/email/verify";
 import { timeAgo } from "@/lib/format";
 import { type DemoViewer, requireViewer } from "@/lib/session/viewer";
 import { cn } from "@/lib/utils";
@@ -24,7 +27,7 @@ const UPCOMING = [
   { title: "Account & data", body: "Re-sync, disconnect Threads, or delete everything." },
 ];
 
-export default function SettingsPage() {
+export default function SettingsPage({ searchParams }: { searchParams: Promise<{ email?: string }> }) {
   return (
     <div className="mx-auto max-w-3xl space-y-6 py-4">
       <h1 className="font-semibold text-2xl tracking-tight sm:text-3xl">Settings</h1>
@@ -41,6 +44,10 @@ export default function SettingsPage() {
 
       <Suspense fallback={<Skeleton className="h-44 rounded-2xl" />}>
         <AccountCard />
+      </Suspense>
+
+      <Suspense fallback={<Skeleton className="h-40 rounded-2xl" />}>
+        <EmailCard searchParams={searchParams} />
       </Suspense>
 
       <Link href="/settings/billing" className="group block">
@@ -98,6 +105,62 @@ async function AccountCard() {
             : "Your first sync hasn't finished yet."}
         </p>
         {viewer.connected && <SyncNowButton />}
+      </CardContent>
+    </Card>
+  );
+}
+
+const ALERTS = [
+  "A scheduled post didn't go out",
+  "Auto-recharge couldn't charge your card",
+  "Your own-key plan ended",
+  "Your Threads connection is about to lapse",
+];
+
+const EMAIL_NOTICES: Record<string, { tone: "ok" | "error"; text: string }> = {
+  confirmed: { tone: "ok", text: "Email confirmed. Alerts will go there." },
+  expired: { tone: "error", text: "That link has expired or was already replaced. Send a new one." },
+};
+
+async function EmailCard({ searchParams }: { searchParams: Promise<{ email?: string }> }) {
+  const viewer = await requireViewer();
+  if (viewer.kind === "demo") return null;
+  const [address, { email: flag }] = await Promise.all([alertAddress(viewer.userId), searchParams]);
+  const notice = flag ? EMAIL_NOTICES[flag] : undefined;
+  return (
+    <Card id="email">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-fg">
+          <BellRing className="size-4" aria-hidden /> Email alerts
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {notice && (
+          <p role="status" className={cn("text-sm", notice.tone === "ok" ? "text-fg" : "text-negative")}>
+            {notice.text}
+          </p>
+        )}
+        <div className="text-muted text-sm">
+          <p>Threaded emails you only when something needs you:</p>
+          <ul className="mt-2 list-disc space-y-0.5 pl-5">
+            {ALERTS.map((alert) => (
+              <li key={alert}>{alert}</li>
+            ))}
+          </ul>
+        </div>
+        {address && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
+            <p className="min-w-0 text-sm">
+              Alerts go to <span className="break-all font-medium">{address}</span>
+            </p>
+            <form action={removeEmailAction}>
+              <Button type="submit" variant="ghost" size="sm">
+                Remove
+              </Button>
+            </form>
+          </div>
+        )}
+        <EmailForm current={address} />
       </CardContent>
     </Card>
   );

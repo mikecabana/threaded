@@ -274,9 +274,11 @@ test("posts now after an explicit confirmation", async ({ page }) => {
   await composer.getByRole("button", { name: "Done" }).click();
 
   await page.reload();
-  const posted = page.getByRole("region", { name: "Posted with Threaded" });
-  await expect(posted).toContainText("Shipping the queue today.");
-  await expect(posted.getByRole("link", { name: /View on Threads/ })).toBeVisible();
+  // It's on the scorecard, waiting for its first reading at one hour.
+  const scorecard = page.getByRole("region", { name: "Scorecard" });
+  await expect(scorecard).toContainText("Shipping the queue today.");
+  await expect(scorecard).toContainText("Measured at 1 hour, in");
+  await expect(scorecard.getByRole("link", { name: /View on Threads/ })).toBeVisible();
 });
 
 test("a post Threads can't take shows up as failed until it's dealt with", async ({ page }) => {
@@ -302,6 +304,60 @@ test("a post Threads can't take shows up as failed until it's dealt with", async
   await failed.getByRole("button", { name: "Remove" }).click();
   await expect(page.getByRole("region", { name: "Needs attention" })).toHaveCount(0);
   await expect(shown(page.getByText("A scheduled post didn't go out."))).toHaveCount(0);
+});
+
+test("adds an alert email through the emailed link, then gets an email when a post fails", async ({
+  page,
+  request,
+}) => {
+  const address = "mock.user@example.com";
+  const outbox = async () =>
+    (await (await request.get(`http://localhost:3998/__control/emails?to=${address}`)).json()).data as {
+      subject: string;
+      text: string;
+    }[];
+
+  await signIn(page);
+  await page.goto("/settings");
+  const card = page.getByRole("main").locator("#email");
+  await card.getByLabel("Email for alerts").fill(address);
+  await card.getByRole("button", { name: "Send link" }).click();
+  await expect(card.getByRole("status")).toHaveText(
+    `Check ${address} for a link to confirm it. It works for 24 hours.`,
+  );
+
+  // Nothing is stored until the emailed link is opened.
+  const [confirmation] = await outbox();
+  expect(confirmation.subject).toBe("Confirm your email for Threaded alerts");
+  const link = confirmation.text.match(/http:\/\/localhost:\d+\/api\/email\/verify\?token=\S+/)?.[0] ?? "";
+  await page.goto(link);
+  await expect(page).toHaveURL("/settings?email=confirmed");
+  await expect(card).toContainText("Email confirmed. Alerts will go there.");
+  await expect(card).toContainText(`Alerts go to ${address}`);
+
+  // A post that fails is emailed about, once.
+  await page.goto("/queue");
+  await page.getByRole("button", { name: "New post" }).click();
+  const composer = page.getByRole("dialog", { name: "New post" });
+  await composer.getByLabel("Post text").fill("This one breaks the mock too #fail");
+  await composer
+    .locator("label")
+    .filter({ hasText: /^Post now$/ })
+    .click();
+  await composer.getByRole("button", { name: "Post now" }).click();
+  await composer.getByRole("button", { name: "Yes, post it" }).click();
+  await expect(composer.getByText("That didn't go out")).toBeVisible({ timeout: 30_000 });
+  await expect
+    .poll(async () => (await outbox()).map((e) => e.subject), { timeout: 15_000 })
+    .toEqual(["Confirm your email for Threaded alerts", "A scheduled post didn't go out"]);
+  await composer.getByRole("button", { name: "Done" }).click();
+  await page.reload();
+  await page.getByRole("region", { name: "Needs attention" }).getByRole("button", { name: "Remove" }).click();
+
+  // Removing the address stops alerts.
+  await page.goto("/settings");
+  await card.getByRole("button", { name: "Remove" }).click();
+  await expect(card).not.toContainText("Alerts go to");
 });
 
 test("the publish sweeper rescues a post whose run was lost", async ({ request }) => {

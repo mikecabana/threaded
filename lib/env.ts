@@ -28,7 +28,10 @@ const schema = z.object({
   STRIPE_WEBHOOK_SECRET: optional,
   /** "1" turns on Stripe Tax for top-ups, auto-recharge and the BYOK plan (activate it in Stripe first). */
   STRIPE_AUTOMATIC_TAX: z.enum(["0", "1"]).optional(),
+  /** Alert emails. Without it, emails are logged instead of sent. */
   RESEND_API_KEY: optional,
+  /** Sender for alert emails, on a domain verified in Resend. Defaults to alerts@ the production domain. */
+  EMAIL_FROM: optional,
   CRON_SECRET: optional,
   DEMO_MODE: z.enum(["0", "1"]).optional(),
   /** Test only: point the Threads client at a mock server (see e2e/mock-meta.mjs). */
@@ -37,6 +40,8 @@ const schema = z.object({
   /** Test only: point Stripe and the AI Gateway's account endpoints at a mock server (see e2e/mock-billing.mjs). */
   STRIPE_API_URL: z.url().optional(),
   AI_GATEWAY_BASE_URL: z.url().optional(),
+  /** Test only: point Resend at a mock server (see e2e/mock-billing.mjs). */
+  RESEND_API_URL: z.url().optional(),
   /** Test only: "1" streams canned ideas from lib/ai/mock-model.ts; "error" simulates a provider failure. */
   AI_MOCK: z.enum(["1", "error", ""]).optional(),
 });

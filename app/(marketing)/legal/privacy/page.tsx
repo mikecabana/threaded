@@ -16,8 +16,9 @@ export default function PrivacyPage() {
             available, audience demographics).
           </li>
           <li>
-            <strong>From you:</strong> your email address (for receipts and alerts), your goal and voice preferences,
-            drafts, saved and scheduled posts, and, if you choose, your own Vercel AI Gateway key.
+            <strong>From you:</strong> your goal and voice preferences, drafts, saved and scheduled posts, and, if you
+            choose, an email address for alerts (kept only once you confirm it) and your own Vercel AI Gateway key.
+            Stripe collects the email for your receipts when you pay.
           </li>
           <li>
             <strong>Automatically:</strong> basic usage and device information needed to run and secure the service.
@@ -30,6 +31,11 @@ export default function PrivacyPage() {
         <ul>
           <li>To analyze what performs for your account and generate post suggestions for your chosen goal.</li>
           <li>To publish or schedule posts when you ask us to.</li>
+          <li>
+            To email you when something needs you, if you've added an address: a scheduled post that didn't go out, a
+            declined auto-recharge, a plan that ended, or a Threads connection about to lapse. We don't send marketing
+            email.
+          </li>
           <li>To bill credits, prevent abuse and keep the service secure.</li>
         </ul>
         <p className="mt-3">We don't sell your data, and we don't use your content to train AI models.</p>
@@ -66,6 +72,10 @@ export default function PrivacyPage() {
         <h2>Retention and deletion</h2>
         <ul>
           <li>We keep your data while your account is active.</li>
+          <li>
+            Removing your email in Settings deletes it. We keep a record of which alerts were sent and when, not to
+            which address.
+          </li>
           <li>
             Disconnecting Threads deletes your access token. Deleting your account, or removing {SITE.name} from your
             Threads settings, deletes your Threads data, drafts and settings.

@@ -107,7 +107,16 @@ export async function provisionThreadsAccount(input: ProvisionInput): Promise<Pr
       .values({ profileId: profile.id, accessTokenEnc: sealed, expiresAt: input.expiresAt, scopes: [...input.scopes] })
       .onConflictDoUpdate({
         target: threadsTokens.profileId,
-        set: { accessTokenEnc: sealed, expiresAt: input.expiresAt, scopes: [...input.scopes], lastRefreshedAt: null },
+        set: {
+          accessTokenEnc: sealed,
+          expiresAt: input.expiresAt,
+          scopes: [...input.scopes],
+          lastRefreshedAt: null,
+          // A fresh consent starts a new grant.
+          grantedAt: new Date(),
+          dataAccessExpiresAt: null,
+          accessCheckedAt: null,
+        },
       });
 
     const trialGranted = await grantTrialOnce(tx, workspaceId, profile.id);

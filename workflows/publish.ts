@@ -43,6 +43,7 @@ export async function publishPost(postId: string, version: number) {
     await sleep(gap);
     await snapshot(postId);
   }
+  await score(postId);
   return { outcome: "published" };
 }
 
@@ -105,4 +106,11 @@ async function snapshot(postId: string) {
   "use step";
   const { snapshotPublished } = await import("@/lib/publishing/publish");
   return snapshotPublished(postId);
+}
+
+/** With the 3-day snapshot in, the post's draft gets its score. */
+async function score(postId: string) {
+  "use step";
+  const { scorePublished } = await import("@/lib/publishing/publish");
+  await scorePublished(postId);
 }

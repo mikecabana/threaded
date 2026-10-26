@@ -349,11 +349,11 @@ Posts published through Threaded have a known `media_id`. For posts written else
 
 ```
 -- tenancy
-users            id, threads_user_id (unique; login identity in MVP), email (asked in onboarding; Threads OAuth doesn't provide one), created_at
+users            id, threads_user_id (unique; login identity in MVP), email + email_verified_at (added in Settings for alerts; Threads OAuth doesn't provide one), created_at
 workspaces       id, name, billing_mode (credits|byok), byok_key_enc, byok_key_last4, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, subscription_cancel_at_period_end, auto_recharge jsonb, auto_recharge_pending_at, billing_notice jsonb, created_at
 memberships      user_id, workspace_id, role (owner|member)
 threads_profiles id (threads user id), workspace_id, username, name, avatar_url, bio, is_verified, timezone, active_goal
-threads_tokens   profile_id, access_token_enc, expires_at, scopes[], last_refreshed_at
+threads_tokens   profile_id, access_token_enc, expires_at, scopes[], last_refreshed_at, granted_at, data_access_expires_at, access_checked_at
 sessions         id (random 256-bit), user_id, expires_at, user_agent
 
 -- content & analytics (keyed by profile)
@@ -378,6 +378,7 @@ credit_lots      id, workspace_id, ledger_id, amount, remaining, created_at   �
 -- publishing & jobs
 scheduled_posts  id, profile_id, suggestion_id, text, topic_tag, scheduled_for (utc), status (scheduled|publishing|published|failed|canceled), version, container_id, media_id, permalink, attempts, last_error, workflow_run_id, publishing_at, published_at
 sync_runs        id, profile_id, kind, status, step, stats jsonb, error, started_at, finished_at
+email_log        id, user_id, kind, ref, status, provider_id, error, created_at   unique(user_id, kind, ref): each alert once
 ```
 
 **Security:**
@@ -700,7 +701,7 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - BYOK: keys are checked with `getCredits()`, stored encrypted and bound to the workspace; the $5/month plan is a Checkout subscription mirrored from webhooks. Switching back deletes the key and ends the plan with its period; a lapsed plan falls back to credits with a notice; Meta's data-deletion callback cancels the plan.
 - Studio shows actionable errors for a rejected key or an empty Gateway balance, with a one-click switch back to credits.
 - Tested against `e2e/mock-billing.mjs`, a stateful mock of the Stripe API, hosted Checkout, signed webhooks and the Gateway credits endpoint: integration tests for top-ups, webhooks, auto-recharge (paid and declined), lots, and the BYOK plan lifecycle; end-to-end tests that save a card and watch the recharge workflow top up, buy a pack, switch to a key and back, and show and dismiss a billing notice.
-- Not yet: emails for failed recharges and lapsed plans (needs Resend; planned with 1e's failure emails), the admin margin view (Phase 2), the "all Gateway models" toggle for BYOK users.
+- Not yet: the admin margin view (Phase 2), the "all Gateway models" toggle for BYOK users. (Emails for failed recharges and lapsed plans came in 2c.)
 
 **1e, publishing (done):**
 - A composer (dialog on desktop, bottom sheet on phones) with a live Threads preview, a length ring that counts emoji the Threads way, and an optional topic tag. **Schedule** offers the idea's own slot and the author's best hours as chips ("Today 7 PM · your best hour"), or any time in the profile's timezone; **Post now** asks for confirmation first.
@@ -708,7 +709,7 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Queue: a week strip, the scheduled timeline grouped by day (edit, post now, cancel), "Needs attention" for failures (retry, edit, remove), saved ideas ready to schedule, and recently posted with their latest numbers. Home's "Up next" counts down to the next post. The demo shows a sample queue.
 - Durable `publishPost` runs with versioning, a single-publisher claim, idempotent container and publish steps, user-facing failure messages, and the sweeper (§7).
 - Tests: integration tests drive every step against a fake Graph API (scheduling rules, publish once, container polling and errors, quota, revoked tokens, edits superseding runs, cancel, retry, the sweeper); end-to-end tests schedule, edit and cancel a saved idea, post now through the mock Meta server, show a failed post until it's removed, and rescue an overdue post with the sweeper.
-- Not yet: drag-and-drop onto a week calendar (the slot chips cover it for now), failure emails (needs Resend and the user's email), series via `reply_to_id` (Phase 2).
+- Not yet: drag-and-drop onto a week calendar (the slot chips cover it for now), series via `reply_to_id` (Phase 2). (Failure emails came in 2c.)
 
 **Stripe sandbox check (Canadian account, Quebec):** Stripe's MCP connector was used to send the app's own Checkout, portal and invoice calls to the real sandbox. The connector can't pay invoices, so the final charge is still only tested against the mock. Checkout in all three modes and the portal work as written. Two bugs the mock had hidden are fixed:
 - Auto-recharge invoices were created without a currency, so on a Canadian account they came out in CAD and refused the USD pack. Every recharge would have failed and been retried as if Stripe were down. The invoice now states USD.
@@ -741,4 +742,12 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - **DNA reveal** (`/onboarding/dna`): the headline in the display serif, then cards one by one: what your audience rewards (each with its measured number), topics sized by how often you post about them, the best-hours heatmap cascading in, the blind spot, and your voice with the rules Studio writes by. Insights links back to it. The demo personas get one too, from hand-written voices and their own measured facts.
 - Not built: the goal-picker step (`/onboarding/goal`); the goal switcher in the header covers it. Demographics wait for eligible accounts.
 
-**Next: Phase 2c** (§13): the suggestion scorecard, Resend emails, the evals harness and the admin margin dashboard.
+**2c, part 1: scorecard and emails (done):** 2c ships as two PRs; this is the first.
+- **Scorecard** (Queue): every post from the last 30 days that went out through Threaded, or that the author posted themselves from a Studio idea, with chips for views at 1 hour, 1 day and 3 days against their usual at the same age (`lib/analysis/scorecard.ts`). The usual is the median of up to 30 earlier posts measured at that age; at 3 days, earlier posts' final views stand in until enough were measured. Until there's a usual, a chip shows the raw number. One line sums it up ("2 of 3 posts beat your usual views at 3 days").
+- Posts written elsewhere are matched to the draft they came from on each sync (character-trigram similarity of 0.5 or more, the draft written in the 30 days before; scheduled drafts are left alone). Each posted draft's 3-day score is stored in `suggestions.perf_vs_baseline`, from the sync and from the publish run's 3-day snapshot.
+- **Winners feed Studio:** drafts that beat the usual by 1.3× or more at 3 days are pinned among the exemplars (up to two), labelled as drafted in Threaded with their score (prompt `generate.v3`).
+- **Emails through Resend** (`lib/email`): a scheduled post that didn't go out (including ones the sweeper gives up on), a declined auto-recharge, a lapsed own-key plan, and a reminder a week before a Threads grant lapses. People add an address in Settings; it's stored only once the emailed link is opened (signed, 24 hours, three links an hour). Each alert goes to the workspace's confirmed addresses once per event (`email_log`, unique per user, kind and reference), with Resend's idempotency key on top; a failed send frees the claim so the next occurrence retries. Without `RESEND_API_KEY`, emails are logged instead of sent.
+- **Reconnect reminders:** Threads doesn't say whether a profile is private, so from day 60 of a grant the daily sync asks `debug_token` when data access ends (weekly while it's far off) and reminds in the last week. Meta documents `debug_token` for testers' tokens; if it refuses other users', there's no reminder, and the failed-post email still covers a lapsed connection.
+- Tests: the scorecard maths, matching and the summary line; integration tests for matching, scoring, winners, confirming an address, once-only alerts, provider failures, the failed-post, declined-recharge and lapsed-plan emails, and reconnect reminders; end to end, adding an address through the emailed link, and the scorecard on the Queue (demo sample included).
+
+**Next: Phase 2c, part 2:** the evals harness (`pnpm eval`, §11) and the admin margin dashboard (§6).

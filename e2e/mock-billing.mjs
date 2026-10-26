@@ -1,8 +1,9 @@
 // A small, stateful stand-in for the parts of Stripe that Threaded uses
 // (customers, hosted Checkout, subscriptions, invoices, the billing portal and
-// signed webhooks) plus the AI Gateway's credits endpoint. Integration tests
-// start it in-process; the end-to-end tests run it as a web server
-// (STRIPE_API_URL and AI_GATEWAY_BASE_URL point here).
+// signed webhooks), the AI Gateway's credits endpoint, and Resend's send
+// endpoint (emails land in an outbox tests can read). Integration tests start
+// it in-process; the end-to-end tests run it as a web server (STRIPE_API_URL,
+// AI_GATEWAY_BASE_URL and RESEND_API_URL point here).
 //
 // Hosted Checkout is a plain HTML page at /pay/:id with buttons for each
 // outcome. Saving the "declining" card mimics Stripe's 4000 0000 0000 0341
@@ -56,6 +57,8 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
     paymentMethods: new Map(),
     invoices: new Map(),
     idempotency: new Map(),
+    /** Emails "sent" through the Resend endpoint, oldest first. */
+    emails: [],
     /** Every event sent (or that would have been sent), newest last. */
     events: [],
   };
@@ -427,6 +430,23 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
           return send(res, 401, { error: { type: "authentication_error", message: "Invalid API key" } });
         }
         return send(res, 200, { balance: "12.50", total_used: "3.10" });
+      }
+
+      // Resend: POST /emails with a Bearer key ("re_" prefix). Repeats of an idempotency key send once.
+      if (url.pathname === "/emails" && req.method === "POST") {
+        const key = (req.headers.authorization ?? "").replace(/^Bearer /, "");
+        if (!key.startsWith("re_")) return send(res, 401, { name: "validation_error", message: "API key is invalid" });
+        const idempotencyKey = req.headers["idempotency-key"];
+        const existing = idempotencyKey && state.emails.find((e) => e.idempotencyKey === idempotencyKey);
+        if (existing) return send(res, 200, { id: existing.id });
+        const email = { id: newId("email"), idempotencyKey, ...JSON.parse(await readBody(req)) };
+        state.emails.push(email);
+        return send(res, 200, { id: email.id });
+      }
+      // Test control: the outbox, optionally for one address.
+      if (url.pathname === "/__control/emails" && req.method === "GET") {
+        const to = url.searchParams.get("to");
+        return send(res, 200, { data: state.emails.filter((e) => !to || e.to.includes(to)) });
       }
 
       const pay = url.pathname.match(/^\/pay\/([^/]+)$/);

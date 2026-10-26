@@ -8,7 +8,8 @@ import { PlayCard } from "@/components/home/play-card";
 import { demoSlotLabel } from "@/components/home/side-cards";
 import { Reveal, Stagger, StaggerItem } from "@/components/motion/reveal";
 import { ThreadLine } from "@/components/motion/thread-line";
-import { FailedItem, PostedItem, ScheduledItem } from "@/components/queue/queue-items";
+import { FailedItem, ScheduledItem } from "@/components/queue/queue-items";
+import { Scorecard } from "@/components/queue/scorecard";
 import { dayKey, WeekStrip } from "@/components/queue/week-strip";
 import { PostPreview } from "@/components/threads/post-preview";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { hourLabel, zonedParts } from "@/lib/analysis/time";
 import { type QueuedPost, queueFor } from "@/lib/data/queue";
 import { listSuggestions } from "@/lib/data/suggestions";
-import { timeAgo } from "@/lib/format";
+import { demoScorecard } from "@/lib/demo/scorecard";
+import { scorecardFor } from "@/lib/publishing/scorecard";
 import { slotLabel } from "@/lib/publishing/slots";
 import { type AccountViewer, type DemoViewer, requireViewer } from "@/lib/session/viewer";
 
@@ -75,9 +77,10 @@ function byDay(posts: QueuedPost[], timeZone: string, now: Date) {
 
 async function AccountQueue({ viewer }: { viewer: AccountViewer }) {
   const { profile, timezone, now } = viewer;
-  const [queue, saved] = await Promise.all([
+  const [queue, saved, scorecard] = await Promise.all([
     queueFor(profile.id),
     listSuggestions(profile.id, { statuses: ["saved"], sinceDays: 90, limit: 6 }),
+    scorecardFor(profile.id, now),
   ]);
   const composer = composerConfig(viewer);
   const author = profile;
@@ -180,23 +183,7 @@ async function AccountQueue({ viewer }: { viewer: AccountViewer }) {
         </section>
       )}
 
-      {queue.posted.length > 0 && (
-        <section aria-labelledby="posted-heading" className="mt-10">
-          <h2 id="posted-heading" className="mb-3 font-semibold text-lg">
-            Posted with Threaded
-          </h2>
-          <div className="grid gap-3">
-            {queue.posted.map((post) => (
-              <PostedItem
-                key={post.id}
-                author={author}
-                post={post}
-                time={timeAgo(post.publishedAt ?? post.scheduledFor, now)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      <Scorecard author={author} entries={scorecard.entries} line={scorecard.line} now={now} />
     </>
   );
   return composer ? <ComposerProvider config={composer}>{page}</ComposerProvider> : page;
@@ -237,6 +224,7 @@ function DemoQueue({ viewer }: { viewer: DemoViewer }) {
           ))}
         </div>
       </section>
+      <Scorecard author={profile} {...demoScorecard(viewer.data.posts, viewer.now)} now={viewer.now} sample />
     </>
   );
 }
