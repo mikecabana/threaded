@@ -23,8 +23,16 @@ export async function backgroundModel(profileId: string, task: "classify" | "dna
     .where(eq(threadsProfiles.id, profileId));
   if (!row) return null;
   const ownKey = row.workspace.billingMode === "byok" && row.workspace.byokKeyEnc !== null;
-  if (!ownKey && !isAiConfigured()) return null;
+  if (!ownKey && !isAiConfigured()) {
+    logNoGateway(task === "dna" ? "Profile DNA" : "Topic discovery");
+    return null;
+  }
   return { resolved: await resolveModel({ task, workspace: row.workspace }), profile: row.profile };
+}
+
+/** A skipped run says why, so a missing credential never passes for "nothing to do". */
+export function logNoGateway(what: string) {
+  console.warn(`${what} skipped: the AI Gateway has no credential (AI_GATEWAY_API_KEY or the Vercel OIDC token).`);
 }
 
 /** Logs a failed background call without its payload (which can include post text). */
