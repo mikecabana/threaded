@@ -50,3 +50,6 @@ next-env.d.ts
 .workflow-data/
 .workflow-data-preview/
 /.swc
+
+# Eval reports (pnpm eval); commit one when it decides something
+/evals/results

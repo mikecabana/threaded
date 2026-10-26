@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { randomToken, sha256 } from "@/lib/crypto/sign";
 import { db } from "@/lib/db";
@@ -36,7 +36,8 @@ export async function readSessionUserId(token: string | undefined): Promise<stri
   const [row] = await db()
     .select({ userId: sessions.userId })
     .from(sessions)
-    .where(and(eq(sessions.idHash, sha256(token)), gt(sessions.expiresAt, new Date())))
+    // The database's clock, so rendering doesn't read the time (Cache Components prerenders).
+    .where(and(eq(sessions.idHash, sha256(token)), gt(sessions.expiresAt, sql`now()`)))
     .limit(1);
   return row?.userId ?? null;
 }

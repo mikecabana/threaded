@@ -287,7 +287,10 @@ export const modelCatalog = pgTable("model_catalog", {
   /** USD per million tokens, synced nightly from the Gateway catalog. */
   inputPrice: numeric("input_price", { precision: 10, scale: 4 }),
   outputPrice: numeric("output_price", { precision: 10, scale: 4 }),
+  /** Switched on or off in /admin. */
   enabled: boolean("enabled").notNull().default(true),
+  /** Whether the Gateway still offers it (the nightly sync). A model is used only when both are true. */
+  available: boolean("available").notNull().default(true),
   syncedAt: timestamp("synced_at", { withTimezone: true }),
 });
 
@@ -382,6 +385,10 @@ export const creditLedger = pgTable(
     /** Idempotency reference: Stripe event id, generation id, etc. */
     ref: text("ref").notNull(),
     generationId: uuid("generation_id").references(() => generations.id, { onDelete: "set null" }),
+    /** Why, for a manual adjustment. */
+    note: text("note"),
+    /** The staff member who made a manual adjustment. */
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
   (t) => [

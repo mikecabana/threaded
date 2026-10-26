@@ -16,6 +16,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:deploy": "node scripts/migrate.mjs",
     "db:studio": "drizzle-kit studio",
+    "eval": "tsx --conditions=react-server scripts/eval.ts",
     "test:int": "vitest run --config vitest.int.config.mts"
   },
   "dependencies": {
@@ -51,6 +52,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "drizzle-kit": "^0.31.11",
     "tailwindcss": "^4",
+    "tsx": "4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.5"
   },

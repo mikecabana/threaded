@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { exitDemoAction, startDemoAction } from "@/lib/actions/demo";
 import { removeEmailAction } from "@/lib/actions/email";
 import { signOutAction } from "@/lib/actions/session";
+import { currentStaff } from "@/lib/admin/access";
 import { DEMO_PERSONA_IDS, DEMO_PERSONAS } from "@/lib/demo/personas";
 import { alertAddress } from "@/lib/email/verify";
 import { timeAgo } from "@/lib/format";
@@ -48,6 +49,10 @@ export default function SettingsPage({ searchParams }: { searchParams: Promise<{
 
       <Suspense fallback={<Skeleton className="h-40 rounded-2xl" />}>
         <EmailCard searchParams={searchParams} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <AdminLink />
       </Suspense>
 
       <Link href="/settings/billing" className="group block">
@@ -91,6 +96,7 @@ async function AccountCard() {
         <div className="min-w-0">
           <p className="truncate font-medium">{viewer.profile.name}</p>
           <p className="truncate text-sm text-subtle">@{viewer.profile.username}</p>
+          <p className="truncate font-mono text-subtle text-xs">Threads user ID {viewer.profile.id}</p>
         </div>
         <form action={signOutAction} className="ml-auto">
           <Button type="submit" variant="ghost" size="sm">
@@ -107,6 +113,22 @@ async function AccountCard() {
         {viewer.connected && <SyncNowButton />}
       </CardContent>
     </Card>
+  );
+}
+
+/** Only staff see the way into /admin. */
+async function AdminLink() {
+  if (!(await currentStaff())) return null;
+  return (
+    <Link href="/admin" className="group block">
+      <Card className="flex items-center justify-between gap-4 p-5 transition-colors group-hover:border-border-strong">
+        <div>
+          <h2 className="font-medium">Admin</h2>
+          <p className="mt-1 text-muted text-sm">Margins, the model catalog, and workspace lookup.</p>
+        </div>
+        <ChevronRight className="size-5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" />
+      </Card>
+    </Link>
   );
 }
 
