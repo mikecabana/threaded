@@ -29,30 +29,41 @@ function signedRequest(payload: object, secret = "test-app-secret") {
   return `${createHmac("sha256", secret).update(body).digest("base64url")}.${body}`;
 }
 
-test("signs in with Threads, syncs history, and signs out", async ({ page }) => {
+test("signs in with Threads, plays The Read and the DNA reveal, and signs out", async ({ page }) => {
   await page.goto("/api/auth/threads/start?tz=America/Toronto");
+  // The first sync plays out on The Read, step by step, driven by the real
+  // (local) workflow run and the mock models.
+  await expect(page).toHaveURL("/onboarding/analyzing");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Mock");
+  await expect(shown(page.getByText("Reading your posts"))).toBeVisible();
+  await expect(shown(page.getByText("Finding your voice"))).toBeVisible();
+
+  // When it's done, the Profile DNA is revealed, with our own numbers.
+  await expect(page).toHaveURL("/onboarding/dna", { timeout: 45_000 });
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("You're at your best keeping it short and direct.");
+  await expect(page.getByRole("heading", { name: "What your audience rewards" })).toBeVisible();
+  await expect(shown(page.getByText(/^\d+(\.\d)?×$/)).first()).toBeVisible();
+  await page.getByRole("link", { name: "Go to your dashboard" }).click();
+
   await expect(page).toHaveURL("/home");
   // New accounts start with the free trial.
   await expect(page.getByRole("link", { name: /credits/ })).toContainText("100");
   await expect(shown(page.getByText("Demo account"))).toHaveCount(0);
-
-  // The first sync runs as a durable workflow; Home switches from progress to
-  // real metrics on its own when it finishes.
-  await expect(page.getByRole("main").getByLabel("Key metrics")).toBeVisible({ timeout: 45_000 });
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Mock");
   await expect(page.getByRole("main").getByLabel("Key metrics").getByText("Engagement rate")).toBeVisible();
   await expect(shown(page.getByText("What's working for engagement"))).toBeVisible();
   // Accounts don't get the demo's sample plays.
   await expect(shown(page.getByText("No ideas yet."))).toBeVisible();
 
-  // Classifying the posts and building Profile DNA finish in the background
-  // (with the mock model); Studio then writes in the author's voice.
-  await expect(async () => {
-    await page.goto("/studio");
-    await expect(shown(page.getByText(/In your voice, learned from \d+ of your posts/))).toBeVisible({
-      timeout: 2_000,
-    });
-  }).toPass({ timeout: 30_000 });
+  // Studio writes in the author's voice; Insights has the charts and links back to the DNA.
+  await page.goto("/studio");
+  await expect(shown(page.getByText(/In your voice, learned from \d+ of your posts/))).toBeVisible();
+  await page.goto("/insights");
+  await expect(page.getByRole("heading", { name: "Formats × topics" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "See your DNA" })).toBeVisible();
+  // Returning to The Read after it's finished just offers the way on.
+  await page.goto("/onboarding/analyzing");
+  await expect(page.getByRole("link", { name: "Continue" })).toBeVisible();
 
   await page.goto("/settings");
   await expect(shown(page.getByText("@mock.user"))).toBeVisible();

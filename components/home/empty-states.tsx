@@ -4,29 +4,21 @@ import { Reveal } from "@/components/motion/reveal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { GOAL_META, type Goal } from "@/lib/goals";
-import type { SyncStatus } from "@/lib/sync/status";
-import { SyncProgress } from "./sync-progress";
 
-/** Home before any posts have been synced: live sync progress, or a nudge if there's nothing to sync. */
-export function FirstSync({ firstName, sync }: { firstName: string; sync: SyncStatus }) {
-  const finishedEmpty = sync.status === "succeeded";
+/** Home after a first sync that found no posts. */
+export function FirstSync({ firstName }: { firstName: string }) {
   return (
     <Reveal className="mx-auto flex max-w-xl flex-col items-center py-12 text-center">
       <h1 className="font-semibold text-2xl tracking-tight sm:text-3xl">Welcome, {firstName}</h1>
       <p className="mt-3 mb-10 text-muted leading-relaxed">
-        {finishedEmpty
-          ? "We didn't find any posts on your Threads account yet. Threaded learns from what you post, so suggestions get sharper as your history grows. You can start generating ideas right away."
-          : "We're reading your Threads posts and insights to learn what your audience rewards. This usually takes a minute or two."}
+        We didn't find any posts on your Threads account yet. Threaded learns from what you post, so suggestions get
+        sharper as your history grows. You can start generating ideas right away.
       </p>
-      {finishedEmpty ? (
-        <Button asChild>
-          <Link href="/studio">
-            <Sparkles /> Open Studio
-          </Link>
-        </Button>
-      ) : (
-        <SyncProgress initial={sync} />
-      )}
+      <Button asChild>
+        <Link href="/studio">
+          <Sparkles /> Open Studio
+        </Link>
+      </Button>
     </Reveal>
   );
 }

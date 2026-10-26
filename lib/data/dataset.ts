@@ -53,6 +53,7 @@ export async function loadProfileDataset(
         permalink: posts.permalink,
         isQuotePost: posts.isQuotePost,
         topicTag: posts.topicTag,
+        viaThreaded: posts.viaThreaded,
         views: sql<number>`coalesce(${latestMetrics.views}, 0)`,
         likes: sql<number>`coalesce(${latestMetrics.likes}, 0)`,
         replies: sql<number>`coalesce(${latestMetrics.replies}, 0)`,
@@ -90,6 +91,7 @@ export async function loadProfileDataset(
       reposts: d.reposts,
       quotes: d.quotes,
       followersCount: lastFollowers,
+      followersMeasured: d.followersCount !== null,
     };
   });
 
@@ -103,6 +105,7 @@ export async function loadProfileDataset(
       permalink: p.permalink ?? "",
       isQuotePost: p.isQuotePost,
       topicTag: p.topicTag,
+      viaThreaded: p.viaThreaded,
       insights: {
         views: Number(p.views),
         likes: Number(p.likes),

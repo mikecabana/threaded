@@ -73,4 +73,29 @@ test.describe("demo flow", () => {
       await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
     }
   });
+  test("Insights explains the numbers, and the demo has a Profile DNA", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Try a demo account" }).first().click();
+    await expect(page).toHaveURL("/home");
+    await page.goto("/insights");
+    for (const name of ["Views", "Followers", "Best hours", "Formats × topics", "Your posts"]) {
+      await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    }
+    await expect(shown(page.getByText(/views in the last 30 days/))).toBeVisible();
+    await expect(page.getByRole("slider", { name: "Views by day" })).toBeVisible();
+
+    // The post table sorts by any number.
+    const viewsHeader = page.getByRole("table", { name: /^Your posts/ }).getByRole("columnheader", { name: "Views" });
+    await expect(viewsHeader).toHaveAttribute("aria-sort", "none");
+    await viewsHeader.getByRole("button").click();
+    await expect(viewsHeader).toHaveAttribute("aria-sort", "descending");
+
+    await page.getByRole("link", { name: "See your DNA" }).click();
+    await expect(page).toHaveURL("/onboarding/dna");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("real numbers");
+    await expect(page.getByRole("heading", { name: "What your audience rewards" })).toBeVisible();
+    // The demo has no sync to watch.
+    await page.goto("/onboarding/analyzing");
+    await expect(page).toHaveURL("/home");
+  });
 });

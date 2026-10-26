@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { composerConfig } from "@/components/composer/config";
 import { ComposerProvider } from "@/components/composer/provider";
@@ -17,7 +18,6 @@ import { GOAL_META, type Goal } from "@/lib/goals";
 import { nextScheduledPost } from "@/lib/publishing/posts";
 import { slotLabel } from "@/lib/publishing/slots";
 import { requireViewer, type Viewer } from "@/lib/session/viewer";
-import { toSyncStatus } from "@/lib/sync/status";
 import { latestSyncRun } from "@/lib/sync/sync";
 
 export const metadata: Metadata = { title: "Home" };
@@ -51,8 +51,10 @@ async function HomeContent() {
   const author = profile;
   const firstName = profile.name.split(" ")[0];
   if (data.posts.length === 0) {
+    // Until the first sync has finished, The Read is where it plays out.
     const run = viewer.kind === "account" ? await latestSyncRun(profile.id) : null;
-    return <FirstSync firstName={firstName} sync={toSyncStatus(run)} />;
+    if (viewer.kind === "account" && run?.status !== "succeeded") redirect("/onboarding/analyzing");
+    return <FirstSync firstName={firstName} />;
   }
 
   const kpis = buildKpis(goal, data.posts, data.days, now);
