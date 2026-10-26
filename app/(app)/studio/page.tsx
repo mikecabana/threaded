@@ -8,6 +8,7 @@ import { Studio, type StudioModel } from "@/components/studio/studio";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type CatalogEntry, catalogFor, DEFAULT_CATALOG, pickModel } from "@/lib/ai/catalog";
 import { TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS, typicalCredits } from "@/lib/ai/cost";
+import { latestDna } from "@/lib/data/intelligence";
 import { getModelPick } from "@/lib/data/settings";
 import { listSuggestions } from "@/lib/data/suggestions";
 import { requireViewer } from "@/lib/session/viewer";
@@ -50,6 +51,7 @@ async function StudioContent() {
   const saved = account
     ? await listSuggestions(account.profile.id, { statuses: ["saved"], sinceDays: 90, limit: 20 })
     : [];
+  const dna = account ? await latestDna(account.profile.id) : null;
 
   const composer = account ? composerConfig(account) : null;
   const content = (
@@ -63,6 +65,7 @@ async function StudioContent() {
         byok={account?.billingMode === "byok"}
         models={entries.map(toStudioModel)}
         initialModelId={pickModel(entries, "generate", pick).modelId}
+        voicePosts={dna?.dna.postsAnalyzed ?? null}
       />
       <SavedIdeas author={viewer.profile} ideas={saved} />
     </>

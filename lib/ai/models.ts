@@ -53,7 +53,7 @@ export async function resolveModel(input: {
 
   if (process.env.AI_MOCK === "1" || process.env.AI_MOCK === "error") {
     const { createMockModel } = await import("./mock-model");
-    const model = createMockModel(5, entry.modelId, { fail: process.env.AI_MOCK === "error" });
+    const model = createMockModel(5, entry.modelId, { fail: process.env.AI_MOCK === "error", task: input.task });
     return { model, entry, billing, providerOptions, gateway: null };
   }
 

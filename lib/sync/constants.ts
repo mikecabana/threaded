@@ -17,5 +17,9 @@ export const INSIGHTS_BATCH = 25;
 /** Account days per step (one API call each). */
 export const ACCOUNT_DAYS_BATCH = 15;
 
-export const SYNC_STEPS = ["posts", "insights", "account", "done"] as const;
+/** Posts per classification call (and per workflow step). */
+export const CLASSIFY_BATCH = 20;
+
+/** "classify" and "dna" run once the account's data is in, so the app can show it meanwhile. */
+export const SYNC_STEPS = ["posts", "insights", "account", "classify", "dna", "done"] as const;
 export type SyncStep = (typeof SYNC_STEPS)[number];

@@ -153,8 +153,9 @@ The **top 5 posts by the active goal's score** become few-shot examples. The **b
 
 ### 4c. LLM layer
 
-- **Post classification** (fast model, 20 posts per call, `Output.object`): format, topic cluster, hook type, tone and stance. Cached per post and versioned.
-- **Profile DNA** (mid-tier model, run weekly): voice descriptors, signature phrases, emoji and casing habits, typical length, core topics, *"what your audience rewards"* statements backed by real stats, and *"blind spots"*. Stored as versioned JSON and shown in the UI.
+- **Post classification** (fast model, 20 posts per call, `Output.object`): format, topic, hook type and tone (stance is covered by tone, e.g. "contrarian"). Labels are stored per post and classifier version, so each post is classified once per version. Each call is offered the author's existing topics so labels stay consistent across batches.
+- **Performance facts** (deterministic, `lib/analysis/facts.ts`): how each format, topic, hook, tone and trait (question, length, link, media, emoji) performs against the author's median, on views, replies, engagement and reposts. A group needs 3+ settled posts on each side and a 1.3× difference either way.
+- **Profile DNA** (mid-tier model, run weekly): voice descriptors, signature phrases, writing habits, ghostwriter rules, core topics, *"what your audience rewards"* and *"blind spots"*. The model never writes a number: each claim cites a fact by id, and the stored claim carries our measurement. Signature phrases are kept only if they appear in at least two posts. Stored as versioned JSON (`profile_dna`, one row per version).
 
 **Cold start** (<10 posts): personal stats are hidden. Generation relies on the goal playbook plus the bio. The UI shows a "confidence: low" chip.
 
@@ -715,10 +716,21 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - The mock now behaves the same way (CAD by default, no mixed currencies, no taxed invoice without an address), and integration tests cover both cases. The default portal configuration Stripe creates already matches what Threaded needs.
 - These checks ran on a separate "Threaded sandbox". The app now uses the **Threaded** account's test mode, which has its Quebec head office set, default tax code `txcd_10103000`, and GST/HST and QST registrations.
 
-**Phase 1 is live.** Production runs on Vercel at `getthreaded.app` (behind Cloudflare's proxy, settings under "Domains" in `docs/SETUP.md`; `www` redirects to it), with Neon Postgres (migrated on every deploy) and Threads sign-in for the Meta app's testers (the app is in development mode until App Review). Production uses live Stripe keys; previews use test keys and sign in through production's callback (`PREVIEW_ORIGINS`). Docs-only changes don't build previews (`scripts/vercel-ignore-build.sh`). **Next: Phase 2a** (§13).
+**Phase 1 is live.** Production runs on Vercel at `getthreaded.app` (behind Cloudflare's proxy, settings under "Domains" in `docs/SETUP.md`; `www` redirects to it), with Neon Postgres (migrated on every deploy) and Threads sign-in for the Meta app's testers (the app is in development mode until App Review). Production uses live Stripe keys; previews use test keys and sign in through production's callback (`PREVIEW_ORIGINS`). Docs-only changes don't build previews (`scripts/vercel-ignore-build.sh`). Phase 2 is under way (§18).
 
 **Waiting on you** (see `docs/SETUP.md` §5):
 - Meta: verify the app's contact email; submit App Review (screencasts, icon; business verification may be requested)
 - Stripe live mode: check that Tax shows Active, add the GST/HST and QST registrations once you have the numbers, and create the live webhook endpoint
 - A Resend account (Phase 2c emails)
 - Legal review of the Terms and Privacy drafts by a Quebec lawyer, the Law 25 items, and French before public launch
+
+## 18. Phase 2 progress
+
+**2a, intelligence (done):**
+- Every sync classifies the posts that aren't labelled yet (fast model, 20 per call, one workflow step per call), then rebuilds Profile DNA if it's over a week old and the account has 10+ posts. Both run after the account's data is in: Home shows the data straight away while they finish.
+- It's enrichment, never a failure: if no model is reachable or a call fails, the sync still succeeds and the rest is picked up next time. On credits the cost is ours; with the workspace's own key it runs on that key.
+- Studio's prompt is now `generate.v2`: the DNA as a voice guide (habits, rules, real signature phrases, what the audience rewards and the blind spots, each with our number), exemplars labelled with format and topic, up to three on-topic exemplars from the author's better half when the requested topic matches one of theirs, and the facts that matter for the goal. Studio says when it's writing in the author's voice.
+- Tests: facts and prompt assembly on the demo data; integration tests against Postgres for classification (batching, topic reuse, failures, no double labelling, no credits charged), DNA (weekly rebuilds, versions, claims checked against facts, cold start), and Studio's prompt; the end-to-end sign-in now waits for the DNA through the real workflow, with the mock model answering from the prompt.
+- Rough cost at catalog prices: about half a cent per 20 posts classified (about 12¢ once for a full 500-post history), and about 2¢ a week for the DNA.
+
+**Next: classify with Jev**, then Phase 2b (§13: the Insights page, The Read and the DNA reveal). Jev (`typesafe-ai/jev`, through AI Gateway with the AI SDK's `experimental_evaluate`) answers typed questions about one post at a time, in well under a second, so a full history classifies in parallel in under a minute instead of a few minutes, which matters for The Read. Format, hook and tone become "choice" questions. Jev can't invent labels, so one fast-model call per account proposes the author's topic list and Jev picks from it (plus "other"); the weekly DNA rebuild refreshes the list when "other" piles up. Posts Jev is unsure about fall back to the fast model through the Gateway's `confidenceBelow` rule. Compare it with the current classifier on real posts before switching.

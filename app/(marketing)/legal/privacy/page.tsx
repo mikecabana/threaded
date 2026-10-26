@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Privacy Policy" };
 
 export default function PrivacyPage() {
   return (
-    <LegalPage title="Privacy Policy" updated="October 20, 2026">
+    <LegalPage title="Privacy Policy" updated="October 26, 2026">
       <section>
         <h2>What we collect</h2>
         <ul>
@@ -39,8 +39,9 @@ export default function PrivacyPage() {
         <h2>Who we share it with</h2>
         <ul>
           <li>
-            <strong>AI providers, through Vercel AI Gateway:</strong> the relevant parts of your posts and profile are
-            sent to the AI model you pick in order to generate suggestions.
+            <strong>AI providers, through Vercel AI Gateway:</strong> your posts and profile are sent to AI models to
+            label your posts (format and topic) and learn your writing voice, and the relevant parts are sent to the
+            model you pick to generate suggestions.
           </li>
           <li>
             <strong>Infrastructure providers:</strong> hosting (Vercel), database (Neon), caching (Upstash) and email

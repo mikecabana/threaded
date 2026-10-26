@@ -1,6 +1,7 @@
 import { FatalError, RetryableError } from "workflow";
 import {
   ACCOUNT_DAYS_BATCH,
+  CLASSIFY_BATCH,
   INITIAL_ACCOUNT_DAYS,
   INITIAL_HISTORY_DAYS,
   INSIGHTS_BATCH,
@@ -15,13 +16,20 @@ import {
 // the workflow sandbox bundle. Steps receive ids and numbers only, so tokens
 // and post text never land in the workflow event log.
 
-/** First sync after connecting: a year of posts, their metrics, and 60 days of account insights. */
+/**
+ * First sync after connecting: a year of posts, their metrics, and 60 days of
+ * account insights; then the posts are classified and Profile DNA is built.
+ */
 export async function initialSync(profileId: string) {
   "use workflow";
   return runSync(profileId, "initial", INITIAL_HISTORY_DAYS, INITIAL_ACCOUNT_DAYS);
 }
 
-/** Daily (cron) or on-demand refresh: new posts, fresh metrics for recent posts, the last few days. */
+/**
+ * Daily (cron) or on-demand refresh: new posts, fresh metrics for recent
+ * posts, the last few days; new posts are classified, and the DNA is rebuilt
+ * once a week.
+ */
 export async function refreshSync(profileId: string, kind: "daily" | "manual" = "daily") {
   "use workflow";
   return runSync(profileId, kind, REFRESH_POST_DAYS, REFRESH_ACCOUNT_DAYS);
@@ -48,7 +56,23 @@ async function runSync(profileId: string, kind: "initial" | "daily" | "manual", 
       days += await measureAccountDays(profileId, accountDays, start, ACCOUNT_DAYS_BATCH);
     }
 
-    const stats = { posts: listed.length, measured, days };
+    // Enrichment (docs/PLAN.md §4c). It never fails the sync: when no model is
+    // reachable or a call fails, whatever's left is picked up next time.
+    let classified = 0;
+    const pending = await pendingLabels(profileId);
+    for (let i = 0; i < pending.length; i += CLASSIFY_BATCH) {
+      await markStep(runId, "classify", { posts: listed.length, measured, days, classified });
+      const result = await labelPosts(profileId, pending.slice(i, i + CLASSIFY_BATCH));
+      if (!result.ok) break;
+      classified += result.classified;
+    }
+    let dna = 0;
+    if (await dnaIsDue(profileId)) {
+      await markStep(runId, "dna", { posts: listed.length, measured, days, classified });
+      dna = (await writeDna(profileId)).version ?? 0;
+    }
+
+    const stats = { posts: listed.length, measured, days, classified, dna };
     await finishRun(runId, profileId, true, stats);
     return stats;
   } catch (error) {
@@ -117,4 +141,28 @@ async function measureAccountDays(profileId: string, total: number, start: numbe
   "use step";
   const { recentDays, syncAccountDays } = await import("@/lib/sync/sync");
   return syncAccountDays(profileId, recentDays(total).slice(start, start + count)).catch(classify);
+}
+
+async function pendingLabels(profileId: string) {
+  "use step";
+  const { pendingClassification } = await import("@/lib/ai/classify");
+  return pendingClassification(profileId);
+}
+
+async function labelPosts(profileId: string, postIds: string[]) {
+  "use step";
+  const { classifyPosts } = await import("@/lib/ai/classify");
+  return classifyPosts(profileId, postIds);
+}
+
+async function dnaIsDue(profileId: string) {
+  "use step";
+  const { dnaDue } = await import("@/lib/ai/dna");
+  return dnaDue(profileId);
+}
+
+async function writeDna(profileId: string) {
+  "use step";
+  const { buildDna } = await import("@/lib/ai/dna");
+  return buildDna(profileId);
 }

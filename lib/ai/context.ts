@@ -1,12 +1,16 @@
-import { engagementRate, replyRate } from "@/lib/analysis/metrics";
-import { rankHours, topPosts } from "@/lib/analysis/summary";
+import { featureLabel, GOAL_METRICS, performanceFacts } from "@/lib/analysis/facts";
+import type { PostFeatures } from "@/lib/analysis/formats";
+import { engagementRate, median } from "@/lib/analysis/metrics";
+import { type RankedPost, rankHours, topPosts } from "@/lib/analysis/summary";
 import { hourLabel } from "@/lib/analysis/time";
 import { formatMetric } from "@/lib/format";
 import type { Goal } from "@/lib/goals";
 import type { PostWithInsights, ThreadsProfile } from "@/lib/threads/types";
+import type { ProfileDna } from "./dna-prompt";
 
 // Everything the writer should know about this author, distilled from their
-// own posts. Pure functions, so they're easy to test and reason about.
+// own posts, their labels and their Profile DNA. Pure functions, so they're
+// easy to test and reason about.
 
 const EMOJI = /\p{Extended_Pictographic}/u;
 
@@ -29,14 +33,26 @@ export interface GenerationContext {
   /** Recent posts, so suggestions don't repeat them. */
   recent: string[];
   bestHours: string[];
-  /** Plain-language facts, e.g. "Questions get 2.9× the replies of other posts." */
+  /** Plain-language facts for the goal, e.g. "Questions get 3.3× your typical reply rate (5 posts)." */
   insights: string[];
+  /** The voice guide from Profile DNA, when there is one. */
+  dna: VoiceGuide | null;
+  /** The author's own topic closest to the one asked for, if any. */
+  matchedTopic: string | null;
+  /** How many exemplars are about the matched topic. */
+  onTopicExemplars: number;
 }
 
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
+export interface VoiceGuide {
+  postsAnalyzed: number;
+  headline: string;
+  descriptors: string[];
+  signaturePhrases: string[];
+  habits: string[];
+  guide: string[];
+  /** Claims with the measurement behind each. */
+  rewards: string[];
+  blindSpots: string[];
 }
 
 function share(posts: PostWithInsights[], test: (p: PostWithInsights) => boolean): number {
@@ -46,7 +62,7 @@ function share(posts: PostWithInsights[], test: (p: PostWithInsights) => boolean
 export function voiceStats(posts: PostWithInsights[]): VoiceStats {
   return {
     posts: posts.length,
-    medianLength: median(posts.map((p) => p.text.length)),
+    medianLength: Math.round(median(posts.map((p) => p.text.length))),
     emojiShare: share(posts, (p) => EMOJI.test(p.text)),
     questionShare: share(posts, (p) => p.text.includes("?")),
     lowercaseShare: share(posts, (p) => /^[a-z]/.test(p.text)),
@@ -54,27 +70,17 @@ export function voiceStats(posts: PostWithInsights[]): VoiceStats {
   };
 }
 
-const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
-
-/** Facts the model can cite in its rationales. Only claims the data supports. */
-export function insightsFor(posts: PostWithInsights[]): string[] {
-  const facts: string[] = [];
-  const questions = posts.filter((p) => p.text.includes("?"));
-  const others = posts.filter((p) => !p.text.includes("?"));
-  if (questions.length >= 3 && others.length >= 3) {
-    const ratio =
-      mean(questions.map((p) => replyRate(p.insights))) / (mean(others.map((p) => replyRate(p.insights))) || 1);
-    if (ratio >= 1.3) facts.push(`Questions get ${formatMetric(ratio, "multiplier")} the replies of other posts.`);
-    if (ratio <= 0.77) facts.push("Questions get fewer replies than statements for this author.");
-  }
-  const short = posts.filter((p) => p.text.length <= 140);
-  const long = posts.filter((p) => p.text.length > 140);
-  if (short.length >= 3 && long.length >= 3) {
-    const ratio = median(short.map((p) => p.insights.views)) / (median(long.map((p) => p.insights.views)) || 1);
-    if (ratio >= 1.3)
-      facts.push(`Short posts (≤140 characters) get ${formatMetric(ratio, "multiplier")} the views of longer ones.`);
-    if (ratio <= 0.77) facts.push(`Longer posts get ${formatMetric(1 / ratio, "multiplier")} the views of short ones.`);
-  }
+/**
+ * Facts the model can cite in its rationales: only differences the author's
+ * own numbers show, on the metrics that matter for the goal.
+ */
+export function insightsFor(
+  goal: Goal,
+  posts: PostWithInsights[],
+  features: ReadonlyMap<string, PostFeatures>,
+  now: Date,
+): string[] {
+  const facts = performanceFacts(posts, features, now, { metrics: GOAL_METRICS[goal], limit: 6 }).map((f) => f.text);
   if (posts.length >= 5) {
     facts.push(
       `Typical engagement rate: ${formatMetric(median(posts.map((p) => engagementRate(p.insights))), "percent")}.`,
@@ -83,9 +89,63 @@ export function insightsFor(posts: PostWithInsights[]): string[] {
   return facts;
 }
 
-function summarize(post: PostWithInsights): string {
+const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}.+#-]*/gu) ?? [];
+const STOP_WORDS = new Set("a an and about at for how in is it my of on our the to what why with your".split(" "));
+
+/**
+ * The author's topic that best matches what was asked for: an exact match,
+ * else the most-used topic sharing a word with the request.
+ */
+export function matchTopic(requested: string | undefined, features: ReadonlyMap<string, PostFeatures>): string | null {
+  const wanted = requested?.trim().toLowerCase();
+  if (!wanted) return null;
+  const counts = new Map<string, number>();
+  for (const f of features.values()) if (f.topic) counts.set(f.topic, (counts.get(f.topic) ?? 0) + 1);
+  const asked = new Set(words(wanted).filter((w) => w.length >= 2 && !STOP_WORDS.has(w)));
+  const exact = (topic: string) => topic.toLowerCase() === wanted;
+  const [best] = [...counts]
+    .filter(([topic]) => exact(topic) || words(topic).some((w) => asked.has(w)))
+    .sort((a, b) => Number(exact(b[0])) - Number(exact(a[0])) || b[1] - a[1]);
+  return best?.[0] ?? null;
+}
+
+function summarize(post: PostWithInsights, features: PostFeatures | undefined): string {
   const i = post.insights;
-  return `${formatMetric(i.views, "compact")} views, ${i.likes} likes, ${i.replies} replies, ${i.reposts + i.quotes} reposts/quotes`;
+  const numbers = `${formatMetric(i.views, "compact")} views, ${i.likes} likes, ${i.replies} replies, ${i.reposts + i.quotes} reposts/quotes`;
+  const label = featureLabel(features);
+  return label ? `${label}; ${numbers}` : numbers;
+}
+
+export function voiceGuide(dna: ProfileDna): VoiceGuide {
+  return {
+    postsAnalyzed: dna.postsAnalyzed,
+    headline: dna.headline,
+    descriptors: dna.voice.descriptors,
+    signaturePhrases: dna.voice.signaturePhrases,
+    habits: dna.voice.habits,
+    guide: dna.guide,
+    rewards: dna.rewards.map((r) => `${r.claim} (${r.fact.text.replace(/\.$/, "")})`),
+    blindSpots: dna.blindSpots.map((b) => `${b.claim} (${b.fact.text.replace(/\.$/, "")})`),
+  };
+}
+
+/**
+ * Best exemplars for the goal. With a matched topic, up to three come from
+ * that topic, but only from the author's better half: a weak post on the
+ * right topic is still a weak example.
+ */
+function pickExemplars(
+  ranked: RankedPost[],
+  features: ReadonlyMap<string, PostFeatures>,
+  topic: string | null,
+  count = 5,
+): { exemplars: RankedPost[]; onTopic: number } {
+  const betterHalf = ranked.slice(0, Math.ceil(ranked.length / 2));
+  const onTopic = topic ? betterHalf.filter((r) => features.get(r.post.id)?.topic === topic).slice(0, 3) : [];
+  return {
+    exemplars: [...onTopic, ...ranked.filter((r) => !onTopic.includes(r))].slice(0, count),
+    onTopic: onTopic.length,
+  };
 }
 
 export function buildContext(input: {
@@ -94,13 +154,23 @@ export function buildContext(input: {
   posts: PostWithInsights[];
   timeZone: string;
   now: Date;
+  features?: ReadonlyMap<string, PostFeatures>;
+  dna?: ProfileDna | null;
+  /** What the user asked to write about. */
+  topic?: string;
 }): GenerationContext {
   const { goal, posts, timeZone, now } = input;
+  const features = input.features ?? new Map<string, PostFeatures>();
   const ranked = topPosts(goal, posts, now, posts.length);
+  const matchedTopic = matchTopic(input.topic, features);
+  const { exemplars, onTopic } = pickExemplars(ranked, features, matchedTopic);
+  const dna = input.dna ? voiceGuide(input.dna) : null;
+  // Facts the voice guide already states aren't repeated.
+  const stated = new Set([...(input.dna?.rewards ?? []), ...(input.dna?.blindSpots ?? [])].map((c) => c.fact.text));
   return {
     profile: input.profile,
     voice: voiceStats(posts),
-    exemplars: ranked.slice(0, 5).map(({ post }) => ({ text: post.text, summary: summarize(post) })),
+    exemplars: exemplars.map(({ post }) => ({ text: post.text, summary: summarize(post, features.get(post.id)) })),
     weakest: ranked.length >= 8 ? ranked.slice(-3).map(({ post }) => post.text) : [],
     recent: [...posts]
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
@@ -109,6 +179,9 @@ export function buildContext(input: {
     bestHours: rankHours(goal, posts, timeZone, now)
       .slice(0, 3)
       .map((h) => hourLabel(h.hour)),
-    insights: insightsFor(posts),
+    insights: insightsFor(goal, posts, features, now).filter((fact) => !stated.has(fact)),
+    dna,
+    matchedTopic,
+    onTopicExemplars: onTopic,
   };
 }

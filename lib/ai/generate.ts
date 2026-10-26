@@ -11,6 +11,7 @@ import {
   settleCredits,
 } from "@/lib/billing/wallet";
 import { loadProfileDataset } from "@/lib/data/dataset";
+import { latestDna, loadPostFeatures } from "@/lib/data/intelligence";
 import { db } from "@/lib/db";
 import { generations, suggestions, threadsProfiles, workspaces } from "@/lib/db/schema";
 import type { AccountIdentity } from "@/lib/session/identity";
@@ -96,13 +97,20 @@ export async function startGeneration(input: {
     profilePictureUrl: profile.profilePictureUrl,
     isVerified: profile.isVerified,
   };
-  const dataset = await loadProfileDataset(threadsProfile, now);
+  const [dataset, features, stored] = await Promise.all([
+    loadProfileDataset(threadsProfile, now),
+    loadPostFeatures(profile.id),
+    latestDna(profile.id),
+  ]);
   const context = buildContext({
     goal: request.goal,
     profile: threadsProfile,
     posts: dataset.posts,
     timeZone: profile.timezone,
     now,
+    features,
+    dna: stored?.dna ?? null,
+    topic: request.topic,
   });
   const instructions = buildInstructions(request);
   const prompt = buildPrompt(request, context);

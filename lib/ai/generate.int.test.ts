@@ -70,7 +70,7 @@ describe("startGeneration", () => {
     expect(generation).toMatchObject({
       status: "done",
       billingMode: "credits",
-      promptVersion: "generate.v1",
+      promptVersion: "generate.v2",
       dropped: 0,
     });
     // Mock usage: 1,200 input + 400 output tokens on the default (Sonnet-tier) price, ×1.5 markup.
