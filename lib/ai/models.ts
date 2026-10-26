@@ -1,5 +1,6 @@
 import "server-only";
 import type { GatewayProviderOptions } from "@ai-sdk/gateway";
+import { getVercelOidcTokenSync } from "@vercel/oidc";
 import { createGateway, type Experimental_DecisionModel, type JSONValue, type LanguageModel } from "ai";
 import { decryptSecret } from "@/lib/crypto/secrets";
 import { env } from "@/lib/env";
@@ -13,9 +14,24 @@ export function gatewayWithKey(apiKey: string) {
   return createGateway({ apiKey, ...(env.AI_GATEWAY_BASE_URL && { baseURL: env.AI_GATEWAY_BASE_URL }) });
 }
 
-/** True when the app can reach a model: a Gateway key, Vercel OIDC, or the test mock. */
+/**
+ * True when the platform Gateway has a credential: an API key, or the
+ * deployment's OIDC token. On Vercel that token comes with each request as a
+ * header (the env var only exists at build time and after `vercel env pull`),
+ * so it's read the same way the Gateway provider reads it.
+ */
+export function gatewayReachable(): boolean {
+  if (env.AI_GATEWAY_API_KEY) return true;
+  try {
+    return Boolean(getVercelOidcTokenSync());
+  } catch {
+    return false;
+  }
+}
+
+/** True when the app can reach a model: the platform Gateway, or the test mock. */
 export function isAiConfigured(): boolean {
-  return Boolean(env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN || process.env.AI_MOCK);
+  return Boolean(process.env.AI_MOCK) || gatewayReachable();
 }
 
 export interface ResolvedModel {

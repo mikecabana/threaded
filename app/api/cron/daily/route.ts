@@ -1,5 +1,6 @@
 import { createGateway } from "ai";
 import { syncCatalogFromGateway } from "@/lib/ai/catalog";
+import { gatewayReachable } from "@/lib/ai/models";
 import { safeEqual } from "@/lib/crypto/sign";
 import { db } from "@/lib/db";
 import { threadsTokens } from "@/lib/db/schema";
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
   if (!expected || !safeEqual(given, expected)) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   let catalog: { updated: number; disabled: number } | null = null;
-  if (env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN) {
+  if (gatewayReachable()) {
     const gateway = createGateway(env.AI_GATEWAY_API_KEY ? { apiKey: env.AI_GATEWAY_API_KEY } : {});
     catalog = await syncCatalogFromGateway(() => gateway.getAvailableModels()).catch((error) => {
       console.error("Model catalog sync failed", error);

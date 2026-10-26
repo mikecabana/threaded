@@ -5,7 +5,7 @@ import type { PostFeatures } from "@/lib/analysis/formats";
 import { db } from "@/lib/db";
 import { postFeatures, posts, threadsProfiles, workspaces } from "@/lib/db/schema";
 import { CLASSIFY_BATCH, MAX_POSTS } from "@/lib/sync/constants";
-import { backgroundModel, logBackgroundFailure } from "./background";
+import { backgroundModel, logBackgroundFailure, logNoGateway } from "./background";
 import {
   CLASSIFIER_MODEL,
   CLASSIFIER_VERSION,
@@ -165,7 +165,10 @@ export async function classifyPosts(profileId: string, postIds: string[]): Promi
       .where(eq(threadsProfiles.id, profileId));
     if (!row) return { classified: 0, ok: false };
     const ownKey = row.workspace.billingMode === "byok" && row.workspace.byokKeyEnc !== null;
-    if (!ownKey && !isAiConfigured()) return { classified: 0, ok: false };
+    if (!ownKey && !isAiConfigured()) {
+      logNoGateway("Classification");
+      return { classified: 0, ok: false };
+    }
 
     const resolved = await resolveDecisionModel({
       modelId: CLASSIFIER_MODEL,
