@@ -3,14 +3,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { provisionThreadsAccount } from "@/lib/accounts/provision";
 import { latestDna, loadPostFeatures } from "@/lib/data/intelligence";
 import { db } from "@/lib/db";
-import { postFeatures, postMetrics, posts, profileDna, wallets } from "@/lib/db/schema";
+import { postFeatures, postMetrics, posts, profileDna, threadsProfiles, wallets } from "@/lib/db/schema";
 import { TRIAL_CREDITS } from "@/lib/pricing";
 import { closeDatabase, resetDatabase } from "@/test/db";
-import { classifyPosts, pendingClassification } from "./classify";
-import { CLASSIFIER_VERSION, CLASSIFY_BATCH } from "./classify-prompt";
+import { classifyPosts, pendingClassification, refreshTopics } from "./classify";
+import { CLASSIFIER_MODEL, CLASSIFIER_VERSION } from "./classify-questions";
 import { buildDna, dnaDue } from "./dna";
 import { startGeneration } from "./generate";
-import { mockCalls } from "./mock-model";
+import { mockCalls, mockDecisions } from "./mock-model";
 import { generateRequestSchema } from "./schemas";
 
 const now = new Date();
@@ -89,7 +89,16 @@ beforeAll(async () => {
 beforeEach(() => {
   process.env.AI_MOCK = "1";
   mockCalls.length = 0;
+  mockDecisions.length = 0;
 });
+
+async function storedTopics() {
+  const [row] = await db()
+    .select({ topics: threadsProfiles.topics })
+    .from(threadsProfiles)
+    .where(eq(threadsProfiles.id, profileId));
+  return row.topics;
+}
 afterEach(() => {
   process.env.AI_MOCK = "";
 });
@@ -103,6 +112,21 @@ describe("post classification", () => {
     expect(pending).not.toContain("img");
   });
 
+  it("names the author's topics first, once", async () => {
+    expect(await refreshTopics(profileId, now)).toEqual({ topics: 4, refreshed: true });
+    expect(mockCalls).toHaveLength(1);
+    expect(mockCalls[0]).toMatchObject({ task: "classify", prompt: expect.stringContaining('[1] """Hot take:') });
+    expect((await storedTopics())?.list.map((t) => t.name).sort()).toEqual([
+      "building",
+      "favourite",
+      "reading",
+      "shipping",
+    ]);
+    // A fresh list isn't asked for again.
+    expect(await refreshTopics(profileId, now)).toEqual({ topics: 4, refreshed: false });
+    expect(mockCalls).toHaveLength(1);
+  });
+
   it("leaves posts pending when the model fails", async () => {
     process.env.AI_MOCK = "error";
     const pending = await pendingClassification(profileId);
@@ -113,35 +137,26 @@ describe("post classification", () => {
   it("skips quietly when no model is reachable", async () => {
     process.env.AI_MOCK = "";
     expect(await classifyPosts(profileId, ["p0"])).toEqual({ classified: 0, ok: false });
-    expect(mockCalls).toHaveLength(0);
+    expect(mockDecisions).toHaveLength(0);
   });
 
-  it("labels a batch of 20 in one call, then reuses the topics it found", async () => {
-    const first = await pendingClassification(profileId);
-    expect(await classifyPosts(profileId, first)).toEqual({ classified: CLASSIFY_BATCH, ok: true });
-    expect(mockCalls).toHaveLength(1);
-    expect(mockCalls[0].task).toBe("classify");
-    expect(mockCalls[0].prompt).toContain("[20] ");
-    expect(mockCalls[0].prompt).not.toContain("[21] ");
-
-    const rest = await pendingClassification(profileId);
-    expect(rest).toHaveLength(6);
-    expect(await classifyPosts(profileId, rest)).toEqual({ classified: 6, ok: true });
-    expect(mockCalls[1].prompt).toContain("existing topics (reuse when they fit)");
+  it("asks Jev about each post and files it under the author's topics", async () => {
+    const pending = await pendingClassification(profileId);
+    expect(await classifyPosts(profileId, pending)).toEqual({ classified: 26, ok: true });
+    expect(mockDecisions).toHaveLength(26);
+    expect(mockDecisions[0].questions).toEqual(["format", "hook", "tone", "topic"]);
     expect(await pendingClassification(profileId)).toEqual([]);
 
-    const stored = await db().select().from(postFeatures).where(eq(postFeatures.postId, "p1"));
-    expect(stored).toEqual([
-      expect.objectContaining({
-        version: CLASSIFIER_VERSION,
-        format: "question",
-        hookType: "bold_claim",
-        model: "anthropic/claude-haiku-5.5",
-      }),
-    ]);
+    const [stored] = await db().select().from(postFeatures).where(eq(postFeatures.postId, "p1"));
+    expect(stored).toMatchObject({
+      version: CLASSIFIER_VERSION,
+      format: "question",
+      topic: "favourite",
+      model: CLASSIFIER_MODEL,
+    });
     const features = await loadPostFeatures(profileId);
     expect(features.size).toBe(26);
-    expect(features.get("p0")?.format).toBe("hot_take");
+    expect(features.get("p0")).toMatchObject({ format: "hot_take", topic: "shipping" });
     // Background work on credits is on us.
     expect(await wallet()).toMatchObject({ balance: TRIAL_CREDITS, reserved: 0 });
   });
@@ -150,6 +165,27 @@ describe("post classification", () => {
     expect(await classifyPosts(profileId, ["p0", "p1"])).toEqual({ classified: 2, ok: true });
     const rows = await db().select().from(postFeatures).where(eq(postFeatures.postId, "p0"));
     expect(rows).toHaveLength(1);
+  });
+
+  it("refreshes stale topics when too many posts fit none, and files those posts again", async () => {
+    const weekAgo = new Date(now.getTime() - 8 * DAY_MS).toISOString();
+    await db()
+      .update(threadsProfiles)
+      .set({ topics: { list: [{ name: "shipping", description: "Releasing work" }], updatedAt: weekAgo } })
+      .where(eq(threadsProfiles.id, profileId));
+    await db().delete(postFeatures);
+    await classifyPosts(profileId, await pendingClassification(profileId));
+    // Only the hot takes mention shipping; the other 19 posts fit no topic.
+    expect((await loadPostFeatures(profileId)).get("p1")?.topic).toBeNull();
+
+    expect(await refreshTopics(profileId, now)).toEqual({ topics: 4, refreshed: true });
+    // Existing topics keep their place and name; new ones follow.
+    expect((await storedTopics())?.list[0]).toEqual({ name: "shipping", description: "Releasing work" });
+    const relabel = await pendingClassification(profileId);
+    expect(relabel).toHaveLength(19);
+    expect(relabel).not.toContain("p0");
+    await classifyPosts(profileId, relabel);
+    expect((await loadPostFeatures(profileId)).get("p1")?.topic).toBe("favourite");
   });
 });
 

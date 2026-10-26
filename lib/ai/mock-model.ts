@@ -1,15 +1,17 @@
 import { simulateReadableStream } from "ai";
-import { MockLanguageModelV4 } from "ai/test";
+import { Experimental_DecisionMockModelV4, MockLanguageModelV4 } from "ai/test";
+import type { PostFormat } from "@/lib/analysis/formats";
 import type { AiTask } from "./catalog";
-import type { Classification } from "./classify-prompt";
 import type { DnaOutput } from "./dna-prompt";
 import type { Suggestion } from "./schemas";
+import type { TopicsOutput } from "./topics-prompt";
 
-// Test-only stand-in for a real model (AI_MOCK=1). Studio's generations
+// Test-only stand-ins for real models (AI_MOCK=1). Studio's generations
 // stream a fixed, valid batch of suggestions in small chunks, so the whole
 // pipeline (reserve → stream → post-process → settle) runs without a
-// provider. Classification and Profile DNA answer from the prompt itself:
-// every numbered post gets plausible labels, and the DNA cites real fact ids.
+// provider. Everything else answers from what it's given: topics come from
+// the posts' own words, the decision model (standing in for Jev) labels each
+// post with simple rules, and the DNA cites real fact ids.
 
 export const MOCK_SUGGESTIONS: Suggestion[] = [
   {
@@ -77,7 +79,7 @@ function promptText(prompt: PromptMessage[]): string {
     .join("\n");
 }
 
-function mockFormat(text: string): Classification["posts"][number]["format"] {
+function mockFormat(text: string): PostFormat {
   if (/^(hot take|unpopular opinion)/i.test(text)) return "hot_take";
   if (/\n\s*\d+[.)]/.test(text)) return "list";
   if (text.includes("?")) return "question";
@@ -86,19 +88,56 @@ function mockFormat(text: string): Classification["posts"][number]["format"] {
   return "observation";
 }
 
-/** Labels every numbered post in a classification prompt: topic is its first long word. */
-export function mockClassification(prompt: string): Classification {
-  const posts = [...prompt.matchAll(/^\[(\d+)\] """([\s\S]*?)"""$/gm)].map(([, n, text]) => {
-    const word = text.toLowerCase().match(/[a-z]{6,}/)?.[0] ?? "life";
-    return {
-      n: Number(n),
-      format: mockFormat(text),
-      topic: word,
-      hookType: text.trim().endsWith("?") ? ("question" as const) : ("bold_claim" as const),
-      tone: "neutral" as const,
-    };
+/** A post's topic, for the mock: its first word of six letters or more. */
+const topicWord = (text: string) => text.toLowerCase().match(/[a-z]{6,}/)?.[0] ?? null;
+
+/** Topics from a topics prompt: each numbered post's first long word, existing topics kept. */
+export function mockTopics(prompt: string): TopicsOutput {
+  const words = [...prompt.matchAll(/^\[\d+\] """([\s\S]*?)"""$/gm)].map(([, text]) => topicWord(text));
+  const names = [...new Set(words.filter((w): w is string => w !== null))].slice(0, 8);
+  return { topics: names.map((name) => ({ name, description: `Posts about ${name}` })) };
+}
+
+/** Every decision the mock made: the post's text and the questions asked. */
+export const mockDecisions: { state: string; questions: string[] }[] = [];
+
+type Criteria = Record<string, unknown>;
+
+/**
+ * Stands in for Jev: answers format, hook and tone with simple rules, and
+ * picks the topic whose name appears in the post (else "other").
+ */
+export function createMockDecisionModel(modelId = "mock/decision", { fail = false } = {}) {
+  return new Experimental_DecisionMockModelV4({
+    provider: "mock",
+    modelId,
+    supportedQuestionTypes: ["choice", "score", "boolean"],
+    doDecide: async ({ state, questions }) => {
+      const text = state.map((part) => ("text" in part ? part.text : JSON.stringify(part))).join("\n");
+      mockDecisions.push({ state: text, questions: Object.keys(questions) });
+      if (mockDecisions.length > 200) mockDecisions.shift();
+      if (fail) throw new Error("Mock provider failure");
+      const lower = text.toLowerCase();
+      const topicCriteria = (questions.topic as { criteria?: Criteria } | undefined)?.criteria ?? {};
+      const topic =
+        Object.entries(topicCriteria).find(([, label]) => {
+          const name = String(label).split(":")[0];
+          return name !== "None of these" && lower.includes(name.toLowerCase());
+        })?.[0] ?? "other";
+      const answers: Record<string, { type: "choice"; choice: string }> = {
+        format: { type: "choice", choice: mockFormat(text) },
+        hook: { type: "choice", choice: text.trim().endsWith("?") ? "question" : "bold_claim" },
+        tone: { type: "choice", choice: "neutral" },
+        ...(questions.topic ? { topic: { type: "choice" as const, choice: topic } } : {}),
+      };
+      return {
+        answers,
+        usage: { inputTokens: 300, outputTokens: 20 },
+        warnings: [],
+        response: { modelId },
+      };
+    },
   });
-  return { posts };
 }
 
 /** A DNA built from the prompt: rewards cite the facts above 1×, blind spots the ones below. */
@@ -146,8 +185,7 @@ export function createMockModel(
       const prompt = promptText(options.prompt as PromptMessage[]);
       record(task, prompt);
       if (fail) throw new Error("Mock provider failure");
-      const answer =
-        task === "dna" ? mockDna(prompt) : task === "classify" ? mockClassification(prompt) : { suggestions: [] };
+      const answer = task === "dna" ? mockDna(prompt) : task === "classify" ? mockTopics(prompt) : { suggestions: [] };
       return {
         content: [{ type: "text", text: JSON.stringify(answer) }],
         finishReason: { unified: "stop", raw: undefined },

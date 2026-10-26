@@ -1,0 +1,1 @@
+ALTER TABLE "threads_profiles" ADD COLUMN "topics" jsonb;

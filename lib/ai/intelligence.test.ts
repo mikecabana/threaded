@@ -2,63 +2,140 @@ import { describe, expect, it } from "vitest";
 import { performanceFacts, topicStats } from "@/lib/analysis/facts";
 import { demoFeatures, generateDemoDataset } from "@/lib/demo/generate";
 import { DEMO_PERSONAS } from "@/lib/demo/personas";
-import { buildClassifyPrompt, normalizeTopic, readClassification } from "./classify-prompt";
+import { classifyQuestions, mapLimit, readAnswers } from "./classify-questions";
 import { voiceStats } from "./context";
 import { assembleDna, buildDnaPrompt, DNA_SCHEMA_VERSION, dnaSamples, readDna } from "./dna-prompt";
-import { mockClassification, mockDna } from "./mock-model";
+import { createMockDecisionModel, mockDna, mockTopics } from "./mock-model";
+import { buildTopicsPrompt, normalizeTopic, readTopics, topicsNeedRefresh } from "./topics-prompt";
 
 const now = new Date("2026-10-20T19:30:00Z");
 const persona = DEMO_PERSONAS.creator;
 const data = generateDemoDataset(persona, now);
 const features = demoFeatures(persona);
 
-describe("classification", () => {
-  it("numbers the posts and offers known topics", () => {
-    const prompt = buildClassifyPrompt({ bio: "Indie dev", knownTopics: ["pricing", "AI"], posts: [" one ", "two"] });
-    expect(prompt).toBe(
+const TOPICS = [
+  { name: "pricing", description: "What to charge and how" },
+  { name: "shipping", description: "Releasing work" },
+];
+
+describe("classification questions", () => {
+  it("asks format, hook and tone, plus the author's topics with a way out", () => {
+    const questions = classifyQuestions(TOPICS) as Record<string, { criteria: unknown }>;
+    expect(Object.keys(questions)).toEqual(["format", "hook", "tone", "topic"]);
+    expect(questions.topic.criteria).toEqual({
+      t1: "pricing: What to charge and how",
+      t2: "shipping: Releasing work",
+      other: "None of these",
+    });
+    expect(Object.keys(classifyQuestions([]))).toEqual(["format", "hook", "tone"]);
+  });
+
+  it("reads answers back into labels", () => {
+    const choice = (c: string) => ({ type: "choice", choice: c });
+    expect(
+      readAnswers(
+        { format: choice("tip"), hook: choice("how_to"), tone: choice("earnest"), topic: choice("t2") },
+        TOPICS,
+      ),
+    ).toEqual({ format: "tip", topic: "shipping", hookType: "how_to", tone: "earnest" });
+    // "other", refusals and unknown choices leave that label empty.
+    expect(
+      readAnswers(
+        { format: choice("list"), hook: { type: "refusal" }, tone: choice("smug"), topic: choice("other") },
+        TOPICS,
+      ),
+    ).toEqual({ format: "list", topic: null, hookType: null, tone: null });
+    // Without a format there's nothing to store; the post stays pending.
+    expect(readAnswers({ format: { type: "refusal" } }, TOPICS)).toBeNull();
+    expect(readAnswers({ format: choice("poem") }, TOPICS)).toBeNull();
+  });
+
+  it("runs work a few at a time, keeping the order", async () => {
+    let running = 0;
+    let peak = 0;
+    const results = await mapLimit([5, 1, 4, 2, 3], 2, async (n) => {
+      running++;
+      peak = Math.max(peak, running);
+      await new Promise((resolve) => setTimeout(resolve, n));
+      running--;
+      return n * 10;
+    });
+    expect(results).toEqual([50, 10, 40, 20, 30]);
+    expect(peak).toBe(2);
+  });
+
+  it("the test mock files a post under the topic it mentions", async () => {
+    const model = createMockDecisionModel();
+    const decide = (text: string) =>
+      model.doDecide({ state: [{ type: "text", text }], questions: classifyQuestions(TOPICS) });
+    expect((await decide("What should I charge? Pricing is hard.")).answers).toMatchObject({
+      format: { choice: "question" },
+      topic: { choice: "t1" },
+    });
+    expect((await decide("Hot take: nobody reads docs")).answers).toMatchObject({
+      format: { choice: "hot_take" },
+      topic: { choice: "other" },
+    });
+  });
+});
+
+describe("topic list", () => {
+  it("numbers the sample and shows the topics so far", () => {
+    expect(buildTopicsPrompt({ bio: "Indie dev", existing: TOPICS, posts: [" one ", "two"] })).toBe(
       [
         "Author's bio: Indie dev",
         "",
-        "The author's existing topics (reuse when they fit): pricing, AI.",
+        "Their topics so far:",
+        "- pricing: What to charge and how",
+        "- shipping: Releasing work",
         "",
         "Posts:",
         '[1] """one"""',
         '[2] """two"""',
       ].join("\n"),
     );
-    expect(buildClassifyPrompt({ bio: "", knownTopics: [], posts: ["x"] })).toBe('Posts:\n[1] """x"""');
+    expect(buildTopicsPrompt({ bio: "", existing: [], posts: ["x"] })).toBe('Posts:\n[1] """x"""');
   });
 
-  it("normalizes topics, keeping acronyms and names, and reusing known ones", () => {
+  it("normalizes names, keeping acronyms and names like TikTok", () => {
     expect(normalizeTopic("#Remote Work.")).toBe("remote work");
     expect(normalizeTopic("AI tools")).toBe("AI tools");
     expect(normalizeTopic("TikTok growth")).toBe("TikTok growth");
-    expect(normalizeTopic("Pricing", ["pricing"])).toBe("pricing");
     expect(normalizeTopic("one two three four")).toBe("one two three");
     expect(normalizeTopic("  ")).toBeNull();
   });
 
-  it("maps answers back by number, first answer wins, out-of-range ignored", () => {
-    const labels = readClassification(
+  it("keeps existing topics first and under their names, then adds new ones", () => {
+    const list = readTopics(
       {
-        posts: [
-          { n: 2, format: "tip", topic: "Pricing", hookType: "how_to", tone: "earnest" },
-          { n: 2, format: "list", topic: "other", hookType: "number", tone: "neutral" },
-          { n: 9, format: "story", topic: "x", hookType: "confession", tone: "vulnerable" },
-          { n: 1.5, format: "story", topic: "x", hookType: "confession", tone: "vulnerable" },
+        topics: [
+          { name: "Pricing", description: "Renamed by the model" },
+          { name: "Design", description: " Interfaces " },
+          { name: "design", description: "Duplicate" },
+          { name: "  ", description: "Empty" },
         ],
       },
-      ["a", "b"],
+      TOPICS,
     );
-    expect([...labels]).toEqual([["b", { format: "tip", topic: "pricing", hookType: "how_to", tone: "earnest" }]]);
+    expect(list).toEqual([...TOPICS, { name: "design", description: "Interfaces" }]);
+    const many = { topics: Array.from({ length: 20 }, (_, i) => ({ name: `topic ${i}`, description: "x" })) };
+    expect(readTopics(many, [])).toHaveLength(12);
   });
 
-  it("the test mock labels every numbered post", () => {
-    const prompt = buildClassifyPrompt({ bio: "", knownTopics: [], posts: ["What do you think?", "Hot take: no"] });
-    expect(mockClassification(prompt).posts.map((p) => [p.n, p.format])).toEqual([
-      [1, "question"],
-      [2, "hot_take"],
-    ]);
+  it("asks again when there's no list, or weekly when too many posts fit none", () => {
+    const now = new Date("2026-10-26T12:00:00Z");
+    const fresh = { list: TOPICS, updatedAt: "2026-10-25T12:00:00Z" };
+    const stale = { list: TOPICS, updatedAt: "2026-10-18T12:00:00Z" };
+    expect(topicsNeedRefresh(null, { labelled: 0, unfiled: 0 }, now)).toBe(true);
+    expect(topicsNeedRefresh(fresh, { labelled: 20, unfiled: 20 }, now)).toBe(false);
+    expect(topicsNeedRefresh(stale, { labelled: 20, unfiled: 4 }, now)).toBe(false);
+    expect(topicsNeedRefresh(stale, { labelled: 20, unfiled: 5 }, now)).toBe(true);
+    expect(topicsNeedRefresh(stale, { labelled: 4, unfiled: 4 }, now)).toBe(false);
+  });
+
+  it("the test mock names topics after the posts' words", () => {
+    const prompt = buildTopicsPrompt({ bio: "", existing: [], posts: ["Shipping weekly", "Pricing is hard", "ok"] });
+    expect(mockTopics(prompt).topics.map((t) => t.name)).toEqual(["shipping", "pricing"]);
   });
 });
 

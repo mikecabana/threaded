@@ -25,6 +25,13 @@ export interface AutoRechargeSettings {
   packId: string;
 }
 
+/** The author's topics, proposed by a model and used as the classifier's choices. */
+export interface ProfileTopics {
+  list: { name: string; description: string }[];
+  /** ISO time of the last proposal. */
+  updatedAt: string;
+}
+
 export interface BillingNotice {
   kind: "auto_recharge_failed" | "byok_ended";
   message: string;
@@ -124,6 +131,7 @@ export const threadsProfiles = pgTable("threads_profiles", {
   /** Set once per Threads account so trials can't be farmed. */
   trialGrantedAt: timestamp("trial_granted_at", { withTimezone: true }),
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  topics: jsonb("topics").$type<ProfileTopics>(),
   createdAt: createdAt(),
 });
 
