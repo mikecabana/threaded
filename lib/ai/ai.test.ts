@@ -130,6 +130,35 @@ describe("context and prompt", () => {
     expect(prompt).toContain("They've written about pricing before");
   });
 
+  it("pins Studio's own winning drafts among the exemplars", () => {
+    const ranked = buildContext({
+      goal: "engagement",
+      profile: persona.profile,
+      posts: data.posts,
+      timeZone: persona.timezone,
+      now,
+    });
+    // A middling post that, as a Threaded draft, beat its usual.
+    const draft = data.posts.find((p) => !ranked.exemplars.some((e) => e.text === p.text) && p.text.length > 0);
+    if (!draft) throw new Error("demo data needs a post outside the top five");
+    const withWinner = buildContext({
+      goal: "engagement",
+      profile: persona.profile,
+      posts: data.posts,
+      timeZone: persona.timezone,
+      now,
+      winners: [{ postId: draft.id, score: 1.6 }],
+    });
+    expect(withWinner.exemplars).toHaveLength(5);
+    expect(withWinner.exemplars[0]).toMatchObject({ text: draft.text });
+    expect(withWinner.exemplars[0].summary).toMatch(/drafted in Threaded, 1\.6× their usual views at 3 days$/);
+    const prompt = buildPrompt(generateRequestSchema.parse({ goal: "engagement" }), withWinner);
+    expect(prompt).toContain("The ones drafted in Threaded beat their usual");
+    expect(buildPrompt(generateRequestSchema.parse({ goal: "engagement" }), ranked)).not.toContain(
+      "drafted in Threaded",
+    );
+  });
+
   it("writes the Profile DNA into the prompt as a voice guide", () => {
     const facts = performanceFacts(data.posts, features, now);
     const topics = topicStats(data.posts, features, now);

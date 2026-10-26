@@ -2,6 +2,9 @@ import "server-only";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { posts, scheduledPosts, suggestions } from "@/lib/db/schema";
+import { alertProfile } from "@/lib/email/alerts";
+import { emailOrigin } from "@/lib/email/send";
+import { postFailedEmail } from "@/lib/email/templates";
 import { clientForProfile, NotConnectedError, revokeToken } from "@/lib/sync/client";
 import { postRow, syncPostInsights } from "@/lib/sync/sync";
 import { ThreadsApiError } from "@/lib/threads/errors";
@@ -190,7 +193,7 @@ export async function markFailed(postId: string, version: number, message: strin
   const row = await load(postId);
   if (!row || row.version !== version) return;
   if (row.mediaId) return markPublished(postId);
-  await db()
+  const failed = await db()
     .update(scheduledPosts)
     .set({ status: "failed", lastError: message })
     .where(
@@ -199,7 +202,26 @@ export async function markFailed(postId: string, version: number, message: strin
         eq(scheduledPosts.version, version),
         inArray(scheduledPosts.status, ["scheduled", "publishing"]),
       ),
-    );
+    )
+    .returning({ id: scheduledPosts.id });
+  if (failed.length > 0) await alertFailed({ ...row, lastError: message });
+}
+
+/** Emails the workspace that a post didn't go out, once per version of it. */
+async function alertFailed(post: {
+  id: string;
+  profileId: string;
+  version: number;
+  text: string;
+  lastError: string | null;
+}) {
+  await alertProfile(post.profileId, "post_failed", `${post.id}:${post.version}`, () =>
+    postFailedEmail({
+      text: post.text,
+      reason: post.lastError ?? "Threads didn't take the post.",
+      url: `${emailOrigin()}/queue`,
+    }),
+  );
 }
 
 /** A metrics snapshot for the published post (best effort; the daily sync also measures it). */
@@ -210,6 +232,14 @@ export async function snapshotPublished(postId: string): Promise<number> {
     console.warn(`Snapshot for ${row.mediaId} failed`, error);
     return 0;
   });
+}
+
+/** Scores the published post's draft once its 3-day snapshot is in. */
+export async function scorePublished(postId: string): Promise<void> {
+  const row = await load(postId);
+  if (!row?.mediaId) return;
+  const { updateScorecard } = await import("./scorecard");
+  await updateScorecard(row.profileId);
 }
 
 /**
@@ -244,7 +274,14 @@ export async function sweepPublishing(now = new Date()): Promise<{ restarted: st
         lt(scheduledPosts.publishingAt, new Date(now.getTime() - STUCK_PUBLISHING_MS)),
       ),
     )
-    .returning({ id: scheduledPosts.id });
+    .returning({
+      id: scheduledPosts.id,
+      profileId: scheduledPosts.profileId,
+      version: scheduledPosts.version,
+      text: scheduledPosts.text,
+      lastError: scheduledPosts.lastError,
+    });
+  for (const post of stuck) await alertFailed(post);
 
   const { start } = await import("workflow/api");
   const { publishPost } = await import("@/workflows/publish");

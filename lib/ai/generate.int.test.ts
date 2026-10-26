@@ -10,6 +10,7 @@ import { closeDatabase, resetDatabase } from "@/test/db";
 import { RATE_LIMIT, startGeneration } from "./generate";
 import { MOCK_SUGGESTIONS } from "./mock-model";
 import { byokContext } from "./models";
+import { PROMPT_VERSION } from "./prompt";
 import { generateRequestSchema } from "./schemas";
 
 let identity: AccountIdentity;
@@ -70,7 +71,7 @@ describe("startGeneration", () => {
     expect(generation).toMatchObject({
       status: "done",
       billingMode: "credits",
-      promptVersion: "generate.v2",
+      promptVersion: PROMPT_VERSION,
       dropped: 0,
     });
     // Mock usage: 1,200 input + 400 output tokens on the default (Sonnet-tier) price, ×1.5 markup.

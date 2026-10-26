@@ -55,6 +55,12 @@ async function runSync(profileId: string, kind: "initial" | "daily" | "manual", 
     for (let start = 0; start < accountDays; start += ACCOUNT_DAYS_BATCH) {
       days += await measureAccountDays(profileId, accountDays, start, ACCOUNT_DAYS_BATCH);
     }
+    if (kind !== "initial") {
+      // The day's snapshots are in: link posts to the drafts they came from and score them.
+      await scoreDrafts(profileId);
+      // A private profile's access lapses after 90 days; remind the user a week before.
+      await checkAccess(profileId);
+    }
 
     // Enrichment (docs/PLAN.md §4c). It never fails the sync: when no model is
     // reachable or a call fails, whatever's left is picked up next time.
@@ -143,6 +149,18 @@ async function measureAccountDays(profileId: string, total: number, start: numbe
   "use step";
   const { recentDays, syncAccountDays } = await import("@/lib/sync/sync");
   return syncAccountDays(profileId, recentDays(total).slice(start, start + count)).catch(classify);
+}
+
+async function scoreDrafts(profileId: string) {
+  "use step";
+  const { updateScorecard } = await import("@/lib/publishing/scorecard");
+  await updateScorecard(profileId);
+}
+
+async function checkAccess(profileId: string) {
+  "use step";
+  const { checkDataAccess } = await import("@/lib/sync/access");
+  await checkDataAccess(profileId);
 }
 
 async function prepareTopics(profileId: string) {

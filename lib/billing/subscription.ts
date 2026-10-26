@@ -2,6 +2,9 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { threadsProfiles, workspaces } from "@/lib/db/schema";
+import { alertWorkspace } from "@/lib/email/alerts";
+import { emailOrigin } from "@/lib/email/send";
+import { planLapsedEmail } from "@/lib/email/templates";
 import { isStripeConfigured, stripe } from "./stripe";
 
 // The BYOK plan ($5/month) mirrored from Stripe. A workspace runs on its own
@@ -22,7 +25,7 @@ export async function syncSubscription(subscriptionId: string): Promise<void> {
   const ended = ENDED.has(subscription.status);
   const periodEnd = Math.max(0, ...subscription.items.data.map((item) => item.current_period_end));
 
-  await db().transaction(async (tx) => {
+  const lapsed = await db().transaction(async (tx) => {
     const [workspace] = await tx
       .select({
         subscriptionId: workspaces.stripeSubscriptionId,
@@ -32,9 +35,9 @@ export async function syncSubscription(subscriptionId: string): Promise<void> {
       .from(workspaces)
       .where(eq(workspaces.id, workspaceId))
       .for("update");
-    if (!workspace) return;
+    if (!workspace) return false;
     // An old plan ending doesn't touch a newer one.
-    if (workspace.subscriptionId && workspace.subscriptionId !== subscription.id && !live) return;
+    if (workspace.subscriptionId && workspace.subscriptionId !== subscription.id && !live) return false;
 
     const byok = live && workspace.hasKey !== null;
     await tx
@@ -57,7 +60,13 @@ export async function syncSubscription(subscriptionId: string): Promise<void> {
           }),
       })
       .where(eq(workspaces.id, workspaceId));
+    return ended && workspace.billingMode === "byok";
   });
+  if (lapsed) {
+    await alertWorkspace(workspaceId, "plan_lapsed", subscription.id, () =>
+      planLapsedEmail({ url: `${emailOrigin()}/settings/billing` }),
+    );
+  }
 }
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, ExternalLink, LoaderCircle, RotateCw, Send, TriangleAlert, X } from "lucide-react";
+import { CalendarClock, LoaderCircle, RotateCw, Send, TriangleAlert, X } from "lucide-react";
 import { AnimatePresence, m } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cancelPostAction, retryPostAction } from "@/lib/actions/publishing";
 import type { QueuedPost } from "@/lib/data/queue";
-import { formatMetric } from "@/lib/format";
 
 /** A post waiting to go out (its time sits beside it on the timeline): edit it, post it now, or cancel it. */
 export function ScheduledItem({ author, post }: { author: PostAuthor; post: QueuedPost }) {
@@ -146,35 +145,6 @@ export function FailedItem({ author, post, time }: { author: PostAuthor; post: Q
         </Button>
       </div>
       {message && <p className="mt-2 text-negative text-sm">{message}</p>}
-    </Card>
-  );
-}
-
-/** A post that went out through Threaded, with its latest numbers. */
-export function PostedItem({ author, post, time }: { author: PostAuthor; post: QueuedPost; time: string }) {
-  return (
-    <Card className="p-4">
-      <PostPreview author={author} text={post.text} clamp={2} meta={<span className="text-xs">{time}</span>} />
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-border border-t pt-3 text-sm">
-        {post.metrics ? (
-          <span className="text-muted">
-            {formatMetric(post.metrics.views, "compact")} views · {formatMetric(post.metrics.likes, "compact")} likes ·{" "}
-            {formatMetric(post.metrics.replies, "compact")} replies
-          </span>
-        ) : (
-          <span className="text-subtle">First numbers arrive about an hour after posting.</span>
-        )}
-        {post.permalink && (
-          <a
-            href={post.permalink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-auto inline-flex items-center gap-1 text-accent hover:underline"
-          >
-            View on Threads <ExternalLink className="size-3.5" aria-hidden />
-          </a>
-        )}
-      </div>
     </Card>
   );
 }

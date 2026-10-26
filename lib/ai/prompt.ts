@@ -6,7 +6,8 @@ import type { GenerateRequest } from "./schemas";
 
 // Versioned so every stored generation records which prompt produced it.
 // v2: the Profile DNA voice guide, labelled and topic-aware exemplars, and facts for the goal.
-export const PROMPT_VERSION = "generate.v2";
+// v3: drafts from Threaded that beat the author's usual are pinned among the exemplars.
+export const PROMPT_VERSION = "generate.v3";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -89,6 +90,9 @@ export function buildPrompt(request: GenerateRequest, context: GenerationContext
   if (context.exemplars.length) {
     lines.push(`Their best posts for ${GOAL_META[request.goal].label.toLowerCase()} (learn the voice and what works):`);
     for (const [i, e] of context.exemplars.entries()) lines.push(`${i + 1}. """${e.text}""" (${e.summary})`);
+    if (context.exemplars.some((e) => e.summary.includes("drafted in Threaded"))) {
+      lines.push("The ones drafted in Threaded beat their usual: build on what made them work, without copying them.");
+    }
     lines.push("");
   }
   if (context.weakest.length) {

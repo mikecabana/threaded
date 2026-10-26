@@ -96,6 +96,12 @@ const server = createServer(async (req, res) => {
   if (url.pathname.startsWith("/v1.0/") && token !== "long-token") {
     return json(res, 401, { error: { message: "bad token", type: "OAuthException", code: 190 } });
   }
+  if (url.pathname === "/v1.0/debug_token") {
+    // A public profile: refreshing keeps access going, so it's always 90 days out.
+    return json(res, 200, {
+      data: { data_access_expires_at: Math.floor(Date.now() / 1000) + 90 * 86_400, is_valid: true },
+    });
+  }
   if (url.pathname === "/v1.0/me/threads" && req.method === "POST") {
     const id = `mock-container-${containers.size + 1}`;
     containers.set(id, { text: url.searchParams.get("text") ?? "", topicTag: url.searchParams.get("topic_tag") });

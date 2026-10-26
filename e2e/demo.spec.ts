@@ -98,4 +98,15 @@ test.describe("demo flow", () => {
     await page.goto("/onboarding/analyzing");
     await expect(page).toHaveURL("/home");
   });
+
+  test("the Queue shows a sample scorecard", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Try a demo account" }).first().click();
+    await expect(page).toHaveURL("/home");
+    await page.goto("/queue");
+    const scorecard = page.getByRole("region", { name: /^Scorecard/ });
+    await expect(scorecard).toContainText("Sample");
+    await expect(scorecard.getByRole("list", { name: "Views against your usual" })).toHaveCount(3);
+    await expect(scorecard).toContainText(/your usual views at (1 hour|1 day|3 days)/);
+  });
 });

@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { postMetrics, scheduledPosts } from "@/lib/db/schema";
+import { scheduledPosts } from "@/lib/db/schema";
 
 export interface QueuedPost {
   id: string;
@@ -13,8 +13,6 @@ export interface QueuedPost {
   permalink: string | null;
   lastError: string | null;
   suggestionId: string | null;
-  /** Latest snapshot, for published posts. */
-  metrics: { views: number; likes: number; replies: number } | null;
 }
 
 const columns = {
@@ -27,13 +25,12 @@ const columns = {
   permalink: scheduledPosts.permalink,
   lastError: scheduledPosts.lastError,
   suggestionId: scheduledPosts.suggestionId,
-  mediaId: scheduledPosts.mediaId,
 };
 
 const selectPosts = () => db().select(columns).from(scheduledPosts);
 type Row = Awaited<ReturnType<typeof selectPosts>>[number];
 
-function toQueued(row: Row, metrics: Map<string, QueuedPost["metrics"]>): QueuedPost {
+function toQueued(row: Row): QueuedPost {
   return {
     id: row.id,
     text: row.text,
@@ -44,14 +41,13 @@ function toQueued(row: Row, metrics: Map<string, QueuedPost["metrics"]>): Queued
     permalink: row.permalink,
     lastError: row.lastError,
     suggestionId: row.suggestionId,
-    metrics: (row.mediaId && metrics.get(row.mediaId)) || null,
   };
 }
 
-/** The profile's queue: what's coming up, what needs attention, and what went out recently. */
+/** The profile's queue: what's coming up and what needs attention. Posts that went out are on the scorecard. */
 export async function queueFor(profileId: string) {
   const mine = eq(scheduledPosts.profileId, profileId);
-  const [upcoming, failed, posted] = await Promise.all([
+  const [upcoming, failed] = await Promise.all([
     selectPosts()
       .where(and(mine, inArray(scheduledPosts.status, ["scheduled", "publishing"])))
       .orderBy(asc(scheduledPosts.scheduledFor)),
@@ -59,32 +55,8 @@ export async function queueFor(profileId: string) {
       .where(and(mine, eq(scheduledPosts.status, "failed")))
       .orderBy(desc(scheduledPosts.scheduledFor))
       .limit(20),
-    selectPosts()
-      .where(and(mine, eq(scheduledPosts.status, "published")))
-      .orderBy(desc(scheduledPosts.publishedAt))
-      .limit(10),
   ]);
-
-  const mediaIds = posted.flatMap((p) => (p.mediaId ? [p.mediaId] : []));
-  const latest = mediaIds.length
-    ? await db()
-        .selectDistinctOn([postMetrics.postId], {
-          postId: postMetrics.postId,
-          views: postMetrics.views,
-          likes: postMetrics.likes,
-          replies: postMetrics.replies,
-        })
-        .from(postMetrics)
-        .where(inArray(postMetrics.postId, mediaIds))
-        .orderBy(postMetrics.postId, sql`${postMetrics.capturedAt} desc`)
-    : [];
-  const metrics = new Map(latest.map(({ postId, ...m }) => [postId, m]));
-
-  return {
-    upcoming: upcoming.map((r) => toQueued(r, metrics)),
-    failed: failed.map((r) => toQueued(r, metrics)),
-    posted: posted.map((r) => toQueued(r, metrics)),
-  };
+  return { upcoming: upcoming.map(toQueued), failed: failed.map(toQueued) };
 }
 
 /** Failed posts waiting on the user, for the app-wide banner. */

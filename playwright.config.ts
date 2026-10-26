@@ -30,6 +30,9 @@ function appEnv(serverPort: number, overrides: Record<string, string> = {}): Rec
     STRIPE_WEBHOOK_SECRET: "whsec_e2e",
     STRIPE_API_URL: `http://localhost:${mockBillingPort}`,
     AI_GATEWAY_BASE_URL: `http://localhost:${mockBillingPort}/v4/ai`,
+    // Emails go to the same mock's Resend endpoint; tests read its outbox.
+    RESEND_API_KEY: "re_e2e",
+    RESEND_API_URL: `http://localhost:${mockBillingPort}`,
     ...overrides,
   };
 }

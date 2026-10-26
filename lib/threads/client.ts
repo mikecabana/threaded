@@ -99,6 +99,10 @@ export interface AccountInsights {
   clicks: number;
 }
 
+const debugTokenSchema = z.object({
+  data: z.object({ data_access_expires_at: z.number().optional(), is_valid: z.boolean().optional() }),
+});
+
 export interface ContainerStatus {
   id: string;
   status: z.infer<typeof containerStatusSchema>["status"];
@@ -288,6 +292,15 @@ export function createThreadsClient({
     async getPost(mediaId: string): Promise<{ id: string; permalink: string | null; timestamp: string | null }> {
       const p = await call("GET", `/${mediaId}`, { fields: "id,permalink,timestamp" }, mediaSchema);
       return { id: p.id, permalink: p.permalink ?? null, timestamp: p.timestamp ?? null };
+    },
+
+    /**
+     * When Threads stops sharing this user's data with the app (GET /debug_token
+     * on the user's own token). Null when Threads doesn't say.
+     */
+    async getDataAccessExpiry(): Promise<Date | null> {
+      const { data } = await call("GET", "/debug_token", { input_token: accessToken }, debugTokenSchema);
+      return data.data_access_expires_at ? new Date(data.data_access_expires_at * 1000) : null;
     },
 
     /** Step 2 of publishing. Returns the published media id. */

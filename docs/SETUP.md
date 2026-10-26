@@ -163,7 +163,20 @@ Auto-recharge charges the saved card off-session through an invoice, from a Verc
 
 ## 4. Resend
 
-Create an account, verify your sending domain, and put the API key in `RESEND_API_KEY`.
+Alert emails (a scheduled post that didn't go out, a declined auto-recharge, a lapsed plan, a
+reminder to reconnect Threads) go through [Resend](https://resend.com). Until it's set up, they're
+logged instead of sent, and everything else works.
+
+1. Create an account and add `getthreaded.app` under **Domains**.
+2. Resend lists a few DNS records (DKIM, plus SPF and an MX record on a `send` subdomain). Add them
+   in Cloudflare's DNS, each set to **DNS only** (grey cloud), then click **Verify** in Resend.
+3. Create an API key with **Sending access** for that domain, and put it in Vercel's Production
+   `RESEND_API_KEY`. Leave it out of Preview, so previews never email real people.
+4. Optional: `EMAIL_FROM` (for example `Threaded <alerts@getthreaded.app>`). By default emails come
+   from `alerts@` the production domain.
+
+People add an address in **Settings → Email alerts**. It's stored only after they open the
+confirmation link, and each alert goes out once per event (the `email_log` table).
 
 ## 5. Before launch
 
@@ -177,4 +190,5 @@ Create an account, verify your sending domain, and put the API key in `RESEND_AP
 - [ ] **Live Stripe:** the head office address, GST/HST + QST registrations with your numbers, the product tax code, and `STRIPE_AUTOMATIC_TAX=1` (§3). Live and test mode are configured separately: check that Tax shows **Active** in live mode, or Checkout fails while tax is on.
 - [ ] **Live Stripe webhook:** a live-mode endpoint for `https://<production-host>/api/stripe/webhook` with the same six events (§3). Its signing secret, not the test endpoint's, goes in Production's `STRIPE_WEBHOOK_SECRET`.
 - [ ] **Meta:** verify the app's contact email (App settings → Basic), then submit App Review (§1, step 6). The app stays in development mode, open to Threads testers only, until it's approved.
+- [ ] **Database URLs:** change `sslmode=require` to `sslmode=verify-full` in `DATABASE_URL` and `DATABASE_URL_UNPOOLED` (Production and Preview). It's the same check `pg` does today, and it clears the "SSL modes" warning in the logs before `pg` 9 changes what `require` means.
 - [ ] Confirm which secret signs Meta's deauthorize and data-deletion callbacks (the one ⚠ left in `docs/PLAN.md` §2; everything else there was checked against Meta's docs).
