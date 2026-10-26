@@ -1,6 +1,6 @@
 import "server-only";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { CLASSIFIER_VERSION } from "@/lib/ai/classify-prompt";
+import { CLASSIFIER_VERSION } from "@/lib/ai/classify-questions";
 import { type ProfileDna, readDna } from "@/lib/ai/dna-prompt";
 import type { HookType, PostFeatures, PostFormat, Tone } from "@/lib/analysis/formats";
 import { db } from "@/lib/db";

@@ -59,6 +59,8 @@ async function runSync(profileId: string, kind: "initial" | "daily" | "manual", 
     // Enrichment (docs/PLAN.md §4c). It never fails the sync: when no model is
     // reachable or a call fails, whatever's left is picked up next time.
     let classified = 0;
+    await markStep(runId, "classify", { posts: listed.length, measured, days, classified });
+    await prepareTopics(profileId);
     const pending = await pendingLabels(profileId);
     for (let i = 0; i < pending.length; i += CLASSIFY_BATCH) {
       await markStep(runId, "classify", { posts: listed.length, measured, days, classified });
@@ -141,6 +143,12 @@ async function measureAccountDays(profileId: string, total: number, start: numbe
   "use step";
   const { recentDays, syncAccountDays } = await import("@/lib/sync/sync");
   return syncAccountDays(profileId, recentDays(total).slice(start, start + count)).catch(classify);
+}
+
+async function prepareTopics(profileId: string) {
+  "use step";
+  const { refreshTopics } = await import("@/lib/ai/classify");
+  return refreshTopics(profileId);
 }
 
 async function pendingLabels(profileId: string) {
