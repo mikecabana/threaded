@@ -1,7 +1,7 @@
 import "server-only";
 import { gateway, generateText, stepCountIs } from "ai";
-import { costUsd, SEARCH_USD } from "./cost";
-import { gatewayCostUsd, type ResolvedModel } from "./models";
+import { costUsd, reportedCostUsd, SEARCH_USD } from "./cost";
+import type { ResolvedModel } from "./models";
 import {
   MAX_SEARCHES,
   type Research,
@@ -56,12 +56,11 @@ export async function researchTopic(input: {
     const parts = result.steps.flatMap((step) => step.content);
     const research = readResearch(parts, result.text);
     const searches = parts.filter((part) => part.type === "tool-call").length;
-    const gatewayIds = result.steps.map(
-      (step) => (step.providerMetadata?.gateway as { generationId?: string } | undefined)?.generationId,
-    );
-    const cost =
-      (await gatewayCostUsd(resolved, gatewayIds)) ??
-      costUsd(resolved.entry, result.totalUsage.inputTokens ?? 0, result.totalUsage.outputTokens ?? 0) +
+    // The Gateway reports each step's cost, searches included; without it, tokens at catalog prices plus the fee.
+    const reported = result.steps.map((step) => reportedCostUsd(step.providerMetadata));
+    const cost = reported.every((usd) => usd !== null)
+      ? reported.reduce((sum: number, usd) => sum + (usd ?? 0), 0)
+      : costUsd(resolved.entry, result.totalUsage.inputTokens ?? 0, result.totalUsage.outputTokens ?? 0) +
         searches * SEARCH_USD;
     return { research, costUsd: cost, searches };
   } catch (error) {

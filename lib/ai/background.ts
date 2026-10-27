@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { threadsProfiles, workspaces } from "@/lib/db/schema";
 import { isAiConfigured, type ResolvedModel, resolveModel } from "./models";
+import { failureDetail } from "./structured";
 
 // Background AI (classification and Profile DNA) runs inside the sync
 // workflows. On credits it's on us, on the task's default model (docs/PLAN.md
@@ -37,5 +38,5 @@ export function logNoGateway(what: string) {
 
 /** Logs a failed background call without its payload (which can include post text). */
 export function logBackgroundFailure(what: string, profileId: string, error: unknown) {
-  console.error(`${what} failed for profile ${profileId}: ${error instanceof Error ? error.message : String(error)}`);
+  console.error(`${what} failed for profile ${profileId}: ${failureDetail(error)}`);
 }

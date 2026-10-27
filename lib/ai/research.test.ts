@@ -1,3 +1,4 @@
+import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CATALOG } from "./catalog";
 import { buildContext } from "./context";
@@ -150,7 +151,6 @@ describe("researchTopic", () => {
     entry: haiku,
     billing: "credits",
     providerOptions: { gateway: {} },
-    gateway: null,
   });
 
   it("searches, briefs and prices a specific topic", async () => {
@@ -162,6 +162,33 @@ describe("researchTopic", () => {
     ]);
     // Without the Gateway's figure: 2,500 + 120 tokens on the fast tier, plus one search.
     expect(run?.costUsd).toBeCloseTo(0.0025 + 0.0006 + SEARCH_USD, 6);
+  });
+
+  it("prices research by the Gateway's own figure when it reports one", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "s",
+            toolName: "web_search",
+            input: '{"query":"q"}',
+            providerExecuted: true,
+          },
+          { type: "tool-result", toolCallId: "s", toolName: "web_search", result: { results: [hit(1)] } },
+          { type: "text", text: "A brief." },
+        ],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 2500, noCache: 2500, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 100, text: 100, reasoning: undefined },
+        },
+        providerMetadata: { gateway: { cost: "0.0071", generationId: "gen_1" } },
+        warnings: [],
+      }),
+    });
+    const run = await researchTopic({ topic: "php2shell", author, resolved: { ...resolved(), model }, now });
+    expect(run?.costUsd).toBe(0.0071);
   });
 
   it("returns nothing when the call fails, so the batch goes on without it", async () => {

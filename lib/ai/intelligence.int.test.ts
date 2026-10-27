@@ -187,6 +187,19 @@ describe("post classification", () => {
     await classifyPosts(profileId, relabel);
     expect((await loadPostFeatures(profileId)).get("p1")?.topic).toBe("favourite");
   });
+
+  it("files posts labelled before the first topic list again once it's named", async () => {
+    // The first naming failed, so every post was labelled with no topic to pick.
+    await db().update(threadsProfiles).set({ topics: null }).where(eq(threadsProfiles.id, profileId));
+    await db().delete(postFeatures);
+    await classifyPosts(profileId, await pendingClassification(profileId));
+    expect([...(await loadPostFeatures(profileId)).values()].every((f) => f.topic === null)).toBe(true);
+
+    expect(await refreshTopics(profileId, now)).toEqual({ topics: 4, refreshed: true });
+    expect(await pendingClassification(profileId)).toHaveLength(26);
+    await classifyPosts(profileId, await pendingClassification(profileId));
+    expect((await loadPostFeatures(profileId)).get("p1")?.topic).toBe("favourite");
+  });
 });
 
 describe("Profile DNA", () => {

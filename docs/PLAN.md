@@ -166,7 +166,7 @@ The **top 5 posts by the active goal's score** become few-shot examples. The **b
 ### Why AI Gateway
 - **Any model as a string** (`provider/model`), so switching is a setting, not a deploy.
 - **BYOK is built in:** `createGateway({ apiKey: userKey })` routes a request through the user's own Gateway account, which pays for it.
-- **Exact cost per call:** `gateway.getGenerationInfo({ id })` returns `totalCost` in USD. That's what we bill from.
+- **Exact cost per call:** every response carries the Gateway's cost in USD as `providerMetadata.gateway.cost`. That's what we bill from. (`gateway.getGenerationInfo({ id })` has it too, but not until a moment after the call: asked straight away it answers "usage event not found".)
 - **Live catalog with pricing:** `gateway.getAvailableModels()` returns each model's pricing and type, so we can price the curated list.
 - **Fallbacks and attribution:** `providerOptions.gateway` takes `models` (fallback list), `order`/`only` (provider routing), and `user`/`tags` (who and what to attribute spend to).
 - **Spend reports:** `gateway.getSpendReport()` groups spend by user, tag or model. That feeds the margin dashboard.
@@ -246,7 +246,7 @@ return result.toTextStreamResponse();
 // Client: experimental_useObject({ api: '/api/generate', schema: SuggestionBatch })
 ```
 
-**How `actualCostUsd` works:** read the gateway generation id from `providerMetadata` and call `getGenerationInfo` for the exact cost. If that lookup fails, fall back to tokens × catalog price. An aborted stream settles on the partial usage.
+**How `actualCostUsd` works:** read the Gateway's cost from `providerMetadata.gateway.cost` (`reportedCostUsd` in `lib/ai/cost.ts`). If a response doesn't carry one, fall back to tokens × catalog price. An aborted stream settles on the partial usage.
 
 **Prompt context:**
 - Goal playbook
@@ -762,5 +762,9 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Tests: the eval harness on mock models; integration tests for adjustments (idempotent, never below zero, lots in step), margins (with and without the Gateway), catalog rules (defaults can't be switched off, one default per task, sync leaves the switch alone) and lookup; end to end, the 404 for non-staff, then margins, catalog and an adjustment as staff.
 
 **Web research in Studio (done, after Phase 2):** a topic that names something specific or recent is looked up on the web before Studio writes (§5), so "php2shell" means the exploit in the news rather than a tool the author built. Prompt `generate.v4` adds the brief and a standing rule against guessing what an unfamiliar name is. `research` is a catalog task (the fast model by default, switchable in `/admin`); each generation stores its queries, brief, sources and cost. Tests: reading searches and briefs, the prompt, costs and charging; integration tests for a researched batch, a broad theme that skips the search, a search that finds nothing, a failed search and no topic; end to end, a researched batch showing its sources and charge.
+
+**Reliability fixes (done):**
+- **Costs:** Studio billed from `getGenerationInfo`, which the Gateway can't answer straight after a call ("usage event not found"), so every batch fell back to token pricing. Batches and research now bill from the cost the Gateway sends with each response.
+- **Topic names:** on a real account the fast model's topic list sometimes couldn't be read ("could not parse the response"). JSON wrapped in a code block or a sentence is now unwrapped before giving up (topics and DNA), the list gets 2,000 output tokens instead of 1,000, and a failure logs how the reply ended and its shape, never its words. Posts labelled before the first list was named are filed again once it is; before, they stayed without a topic.
 
 **Phase 2 is complete.** Next on the roadmap (§13): Launch, Quebec readiness (monitoring and consent, then French, the Law 25 items, live Stripe Tax, the lawyer's review).

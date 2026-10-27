@@ -39,6 +39,17 @@ export function typicalCredits(entry: CatalogEntry, inputTokens: number, typical
   return creditsForCost(costUsd(entry, inputTokens, typicalOutputTokens), entry.markup, entry.minCredits);
 }
 
+/**
+ * What a call cost by the Gateway's own figure, which comes back with every
+ * response as `providerMetadata.gateway.cost` (searches included), or null
+ * when there isn't one (the test mock, a provider that didn't report it).
+ */
+export function reportedCostUsd(providerMetadata: unknown): number | null {
+  const cost = (providerMetadata as { gateway?: { cost?: unknown } } | undefined)?.gateway?.cost;
+  const usd = typeof cost === "string" || typeof cost === "number" ? Number(cost) : Number.NaN;
+  return Number.isFinite(usd) && usd >= 0 ? usd : null;
+}
+
 /** Credits for the cost the Gateway reported, never more than was reserved. */
 export function chargeCredits(entry: CatalogEntry, actualCostUsd: number, reserved: number): number {
   return Math.min(reserved, creditsForCost(actualCostUsd, entry.markup, entry.minCredits));
