@@ -24,10 +24,11 @@ import {
   maxCredits,
   outputTokenBudget,
   RESEARCH_BRIEF_TOKENS,
+  reportedCostUsd,
   researchCredits,
 } from "./cost";
 import { type ByokFailure, byokFailure } from "./errors";
-import { gatewayCostUsd, isAiConfigured, type ResolvedModel, resolveModel } from "./models";
+import { isAiConfigured, type ResolvedModel, resolveModel } from "./models";
 import { postProcess } from "./postprocess";
 import { buildInstructions, buildPrompt, PROMPT_VERSION } from "./prompt";
 import { type ResearchRun, researchTopic } from "./research";
@@ -41,15 +42,18 @@ const json = (status: number, body: Record<string, unknown>) =>
 type Usage = { inputTokens?: number; outputTokens?: number } | undefined;
 
 type Outcome =
-  | { kind: "ok"; output: SuggestionBatch | undefined; usage: Usage; generationId: string | undefined }
+  | {
+      kind: "ok";
+      output: SuggestionBatch | undefined;
+      usage: Usage;
+      generationId: string | undefined;
+      reportedCost: number | null;
+    }
   | { kind: "failed"; error?: ByokFailure | null };
 
-/** What the call cost in USD: the Gateway's figure when available, else tokens × catalog price. */
-async function actualCostUsd(resolved: ResolvedModel, gatewayGenerationId: string | undefined, usage: Usage) {
-  return (
-    (await gatewayCostUsd(resolved, [gatewayGenerationId])) ??
-    costUsd(resolved.entry, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0)
-  );
+/** What the call cost in USD: the Gateway's figure when it gave one, else tokens × catalog price. */
+function actualCostUsd(resolved: ResolvedModel, reported: number | null, usage: Usage) {
+  return reported ?? costUsd(resolved.entry, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0);
 }
 
 /** The model for a topic's web research, or null when the catalog has none (the batch goes ahead without it). */
@@ -224,7 +228,7 @@ export async function startGeneration(input: {
         return;
       }
       const ok = outcome as Extract<Outcome, { kind: "ok" }>;
-      const ideasCost = await actualCostUsd(resolved, ok.generationId, ok.usage);
+      const ideasCost = actualCostUsd(resolved, ok.reportedCost, ok.usage);
       const cost = ideasCost + (run?.costUsd ?? 0);
       const charged = hold
         ? chargeBatch({
@@ -291,6 +295,7 @@ export async function startGeneration(input: {
         output: event.output as SuggestionBatch | undefined,
         usage: event.totalUsage as Usage,
         generationId: gateway?.generationId,
+        reportedCost: reportedCostUsd(event.providerMetadata),
       });
     },
     onError: async ({ error }) => {

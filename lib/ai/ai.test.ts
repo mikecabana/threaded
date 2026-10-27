@@ -5,7 +5,7 @@ import { DEMO_PERSONAS } from "@/lib/demo/personas";
 import { creditsForCost } from "@/lib/pricing";
 import { type CatalogEntry, DEFAULT_CATALOG, pickModel, sameTierFallbacks } from "./catalog";
 import { buildContext, insightsFor, matchTopic, voiceStats } from "./context";
-import { chargeCredits, costUsd, maxCredits } from "./cost";
+import { chargeCredits, costUsd, maxCredits, reportedCostUsd } from "./cost";
 import { assembleDna, buildDnaPrompt } from "./dna-prompt";
 import { byokFailure, gatewayStatus } from "./errors";
 import { MOCK_SUGGESTIONS, mockDna } from "./mock-model";
@@ -47,6 +47,14 @@ describe("cost", () => {
     expect(reserve).toBe(creditsForCost(costUsd(sonnet, 2400, 2000), sonnet.markup));
     expect(chargeCredits(sonnet, 0.01, reserve)).toBe(2);
     expect(chargeCredits(sonnet, 100, reserve)).toBe(reserve);
+  });
+
+  it("reads the cost the Gateway reports with each response", () => {
+    expect(reportedCostUsd({ gateway: { cost: "0.0045405", generationId: "gen_1" } })).toBe(0.0045405);
+    expect(reportedCostUsd({ gateway: { cost: 0.002 } })).toBe(0.002);
+    for (const missing of [undefined, {}, { gateway: {} }, { gateway: { cost: "n/a" } }, { gateway: { cost: "-1" } }]) {
+      expect(reportedCostUsd(missing)).toBeNull();
+    }
   });
 });
 

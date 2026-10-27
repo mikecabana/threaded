@@ -40,8 +40,6 @@ export interface ResolvedModel {
   /** "byok" calls are billed to the user's own Gateway account; we charge nothing. */
   billing: "credits" | "byok";
   providerOptions: { gateway: Record<string, JSONValue> };
-  /** Gateway client used for cost lookups (null for the test mock). */
-  gateway: ReturnType<typeof createGateway> | null;
 }
 
 /**
@@ -70,31 +68,13 @@ export async function resolveModel(input: {
   if (mocked()) {
     const { createMockModel } = await import("./mock-model");
     const model = createMockModel(5, entry.modelId, { fail: process.env.AI_MOCK === "error", task: input.task });
-    return { model, entry, billing, providerOptions, gateway: null };
+    return { model, entry, billing, providerOptions };
   }
 
-  const gateway = gatewayFor(input.workspace, billing);
-  return { model: gateway(entry.modelId), entry, billing, providerOptions, gateway };
+  return { model: gatewayFor(input.workspace, billing)(entry.modelId), entry, billing, providerOptions };
 }
 
 const mocked = () => process.env.AI_MOCK === "1" || process.env.AI_MOCK === "error";
-
-/**
- * What calls cost in USD by the Gateway's own records (which include any web
- * searches they ran), or null when it can't say: the test mock, a missing
- * generation id, or a failed lookup.
- */
-export async function gatewayCostUsd(resolved: ResolvedModel, generationIds: (string | undefined)[]) {
-  const { gateway } = resolved;
-  if (!gateway || generationIds.length === 0 || generationIds.some((id) => !id)) return null;
-  try {
-    const infos = await Promise.all(generationIds.map((id) => gateway.getGenerationInfo({ id: id as string })));
-    return infos.reduce((sum, info) => sum + info.totalCost, 0);
-  } catch (error) {
-    console.warn("Gateway cost lookup failed; using token pricing.", error);
-    return null;
-  }
-}
 
 type WorkspaceKey = { id: string; byokKeyEnc: string | null };
 

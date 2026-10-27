@@ -1,5 +1,5 @@
 import "server-only";
-import { experimental_decide, generateText, type JSONValue, Output } from "ai";
+import { experimental_decide, generateText, type JSONValue } from "ai";
 import { and, count, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import type { PostFeatures } from "@/lib/analysis/formats";
 import { db } from "@/lib/db";
@@ -16,6 +16,7 @@ import {
   readAnswers,
 } from "./classify-questions";
 import { isAiConfigured, resolveDecisionModel } from "./models";
+import { objectOutput } from "./structured";
 import {
   buildTopicsPrompt,
   MIN_TOPIC_POSTS,
@@ -108,8 +109,8 @@ export async function refreshTopics(profileId: string, now = new Date()): Promis
       model: resolved.model,
       instructions: TOPICS_INSTRUCTIONS,
       prompt: buildTopicsPrompt({ bio: profile.biography ?? "", existing, posts: sample }),
-      output: Output.object({ schema: topicsSchema }),
-      maxOutputTokens: 1_000,
+      output: objectOutput({ schema: topicsSchema }),
+      maxOutputTokens: 2_000,
       providerOptions: resolved.providerOptions,
     });
     const list = readTopics(output, existing);
@@ -118,8 +119,9 @@ export async function refreshTopics(profileId: string, now = new Date()): Promis
       .update(threadsProfiles)
       .set({ topics: { list, updatedAt: now.toISOString() } })
       .where(eq(threadsProfiles.id, profileId));
-    if (current && list.length > existing.length) {
-      // Posts that fit no topic before get another chance against the new ones.
+    if (list.length > existing.length) {
+      // Posts that fit no topic before get another chance against the new ones,
+      // including posts labelled while the first list couldn't be named.
       await db()
         .delete(postFeatures)
         .where(

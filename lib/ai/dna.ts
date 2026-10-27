@@ -1,5 +1,5 @@
 import "server-only";
-import { generateText, Output } from "ai";
+import { generateText } from "ai";
 import { and, count, eq, sql } from "drizzle-orm";
 import { performanceFacts, topicStats } from "@/lib/analysis/facts";
 import { loadProfileDataset } from "@/lib/data/dataset";
@@ -19,6 +19,7 @@ import {
   MIN_DNA_POSTS,
   type ProfileDna,
 } from "./dna-prompt";
+import { objectOutput } from "./structured";
 
 const DAY_MS = 86_400_000;
 /** Slack so a weekly rebuild doesn't slip a day when the daily cron runs a little early. */
@@ -88,7 +89,7 @@ export async function buildDna(profileId: string, now = new Date()): Promise<Dna
         topics,
         samples: dnaSamples(written).map((p) => ({ text: p.text, features: features.get(p.id) })),
       }),
-      output: Output.object({ schema: dnaOutputSchema }),
+      output: objectOutput({ schema: dnaOutputSchema }),
       maxOutputTokens: 2_000,
       providerOptions: resolved.providerOptions,
     });
