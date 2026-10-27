@@ -79,6 +79,23 @@ export async function resolveModel(input: {
 
 const mocked = () => process.env.AI_MOCK === "1" || process.env.AI_MOCK === "error";
 
+/**
+ * What calls cost in USD by the Gateway's own records (which include any web
+ * searches they ran), or null when it can't say: the test mock, a missing
+ * generation id, or a failed lookup.
+ */
+export async function gatewayCostUsd(resolved: ResolvedModel, generationIds: (string | undefined)[]) {
+  const { gateway } = resolved;
+  if (!gateway || generationIds.length === 0 || generationIds.some((id) => !id)) return null;
+  try {
+    const infos = await Promise.all(generationIds.map((id) => gateway.getGenerationInfo({ id: id as string })));
+    return infos.reduce((sum, info) => sum + info.totalCost, 0);
+  } catch (error) {
+    console.warn("Gateway cost lookup failed; using token pricing.", error);
+    return null;
+  }
+}
+
 type WorkspaceKey = { id: string; byokKeyEnc: string | null };
 
 /** The Gateway client the workspace's AI runs through: its own key, or ours. */

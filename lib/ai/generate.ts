@@ -17,11 +17,20 @@ import { generations, suggestions, threadsProfiles, workspaces } from "@/lib/db/
 import { winningDrafts } from "@/lib/publishing/scorecard";
 import type { AccountIdentity } from "@/lib/session/identity";
 import { buildContext } from "./context";
-import { chargeCredits, costUsd, estimateTokens, maxCredits, outputTokenBudget } from "./cost";
+import {
+  chargeBatch,
+  costUsd,
+  estimateTokens,
+  maxCredits,
+  outputTokenBudget,
+  RESEARCH_BRIEF_TOKENS,
+  researchCredits,
+} from "./cost";
 import { type ByokFailure, byokFailure } from "./errors";
-import { isAiConfigured, type ResolvedModel, resolveModel } from "./models";
+import { gatewayCostUsd, isAiConfigured, type ResolvedModel, resolveModel } from "./models";
 import { postProcess } from "./postprocess";
 import { buildInstructions, buildPrompt, PROMPT_VERSION } from "./prompt";
+import { type ResearchRun, researchTopic } from "./research";
 import { type GenerateRequest, type SuggestionBatch, suggestionBatchSchema } from "./schemas";
 
 export const RATE_LIMIT = { windowMs: 10 * 60_000, max: 10 };
@@ -37,14 +46,20 @@ type Outcome =
 
 /** What the call cost in USD: the Gateway's figure when available, else tokens × catalog price. */
 async function actualCostUsd(resolved: ResolvedModel, gatewayGenerationId: string | undefined, usage: Usage) {
-  if (resolved.gateway && gatewayGenerationId) {
-    try {
-      return (await resolved.gateway.getGenerationInfo({ id: gatewayGenerationId })).totalCost;
-    } catch (error) {
-      console.warn("Gateway cost lookup failed; using token pricing.", error);
-    }
+  return (
+    (await gatewayCostUsd(resolved, [gatewayGenerationId])) ??
+    costUsd(resolved.entry, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0)
+  );
+}
+
+/** The model for a topic's web research, or null when the catalog has none (the batch goes ahead without it). */
+async function researchModel(workspace: typeof workspaces.$inferSelect): Promise<ResolvedModel | null> {
+  try {
+    return await resolveModel({ task: "research", workspace });
+  } catch (error) {
+    console.warn(`Web research skipped: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
   }
-  return costUsd(resolved.entry, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0);
 }
 
 /**
@@ -52,6 +67,9 @@ async function actualCostUsd(resolved: ResolvedModel, gatewayGenerationId: strin
  * streams the model's JSON as it's written; it closes only after the batch has
  * been post-processed, stored and billed, so the client can fetch the final
  * suggestions (with ids) as soon as the stream ends.
+ *
+ * With a topic, a web search may run first (./research.ts), and its brief
+ * goes into the prompt.
  *
  * Billing: the worst-case cost is reserved up front, and the actual cost is
  * charged only if at least one idea survives. Failures and cancellations are
@@ -88,6 +106,8 @@ export async function startGeneration(input: {
   const ownKey = workspace.billingMode === "byok" && workspace.byokKeyEnc !== null;
   if (!ownKey && !isAiConfigured()) return json(503, { error: "ai_unavailable" });
   const resolved = await resolveModel({ task: "generate", workspace, requestedModelId: request.modelId });
+  const topic = request.topic?.trim() || null;
+  const researcher = topic ? await researchModel(workspace) : null;
   const threadsProfile = {
     id: profile.id,
     username: profile.username,
@@ -114,7 +134,6 @@ export async function startGeneration(input: {
     winners,
   });
   const instructions = buildInstructions(request);
-  const prompt = buildPrompt(request, context);
   const maxOutputTokens = outputTokenBudget(request.count);
 
   const generationId = randomUUID();
@@ -132,7 +151,12 @@ export async function startGeneration(input: {
   let hold: Hold | null = null;
   if (resolved.billing === "credits") {
     try {
-      const needed = maxCredits(resolved.entry, estimateTokens(instructions + prompt), maxOutputTokens);
+      // The research brief isn't written yet, so the reserve allows for the longest one.
+      const inputTokens =
+        estimateTokens(instructions + buildPrompt(request, context)) + (researcher ? RESEARCH_BRIEF_TOKENS : 0);
+      const needed =
+        maxCredits(resolved.entry, inputTokens, maxOutputTokens) +
+        (researcher ? researchCredits(researcher.entry, "max") : 0);
       hold = await reserveCredits(workspace.id, needed, generationId);
     } catch (error) {
       await db().update(generations).set({ status: "failed" }).where(eq(generations.id, generationId));
@@ -144,6 +168,33 @@ export async function startGeneration(input: {
       throw error;
     }
   }
+
+  // Research runs before the stream starts: Studio says it's checking the web until the response arrives.
+  const run: ResearchRun | null =
+    researcher && topic
+      ? await researchTopic({
+          topic,
+          author: {
+            username: profile.username,
+            biography: profile.biography ?? "",
+            topics: profile.topics?.list.map((t) => t.name) ?? [],
+          },
+          resolved: researcher,
+          now,
+          signal: input.signal,
+        })
+      : null;
+  if (run && researcher) {
+    await db()
+      .update(generations)
+      .set({
+        research: { ...run.research, model: researcher.entry.modelId, searches: run.searches, costUsd: run.costUsd },
+      })
+      .where(eq(generations.id, generationId))
+      // Credits are on hold now: a failed write mustn't stop the batch that settles them.
+      .catch((error) => console.error(`Storing research for generation ${generationId} failed`, error));
+  }
+  const prompt = buildPrompt(request, context, run?.research);
 
   const pastPosts = dataset.posts.map((p) => p.text);
   let settled = false;
@@ -173,8 +224,17 @@ export async function startGeneration(input: {
         return;
       }
       const ok = outcome as Extract<Outcome, { kind: "ok" }>;
-      const cost = await actualCostUsd(resolved, ok.generationId, ok.usage);
-      const charged = hold ? chargeCredits(resolved.entry, cost, hold.amount) : 0;
+      const ideasCost = await actualCostUsd(resolved, ok.generationId, ok.usage);
+      const cost = ideasCost + (run?.costUsd ?? 0);
+      const charged = hold
+        ? chargeBatch({
+            entry: resolved.entry,
+            costUsd: ideasCost,
+            research:
+              run && researcher ? { entry: researcher.entry, costUsd: run.costUsd, searches: run.searches } : null,
+            reserved: hold.amount,
+          })
+        : 0;
       await db()
         .insert(suggestions)
         .values(

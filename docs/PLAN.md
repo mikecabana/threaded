@@ -177,7 +177,7 @@ The **top 5 posts by the active goal's score** become few-shot examples. The **b
 A `model_catalog` table, edited from `/admin`, holds for each model:
 - Gateway model id, label, provider
 - Tier: Fast, Balanced or Best
-- Which tasks it may run (`classify`, `dna`, `generate`, `critique`) and which tasks it's the default for
+- Which tasks it may run (`generate`, `research`, `classify`, `dna`, `critique`) and which tasks it's the default for
 - Our markup, minimum charge and enabled flag
 
 A nightly job syncs the table against `getAvailableModels()`. It refreshes base prices and auto-disables any model that has disappeared upstream.
@@ -190,7 +190,7 @@ A nightly job syncs the table against `getAvailableModels()`. It refreshes base 
 // lib/ai/models.ts
 import { createGateway } from '@ai-sdk/gateway';
 
-export type AiTask = 'classify' | 'dna' | 'generate' | 'critique';
+export type AiTask = 'generate' | 'research' | 'classify' | 'dna' | 'critique';
 const platformGateway = createGateway();          // OIDC on Vercel; AI_GATEWAY_API_KEY locally
 
 export async function resolveModel(task: AiTask, ws: Workspace, userPick?: string) {
@@ -255,6 +255,9 @@ return result.toTextStreamResponse();
 - Last 20 posts (so suggestions don't repeat them)
 - Timing stats
 - User steer: topic, a "spice" level from 0 to 3, length, emoji on/off, banned words
+- Web research on the topic, when it names something specific (below)
+
+**Web research** (`lib/ai/research.ts`): a model only knows what it was trained on, so a topic like a tool released or an exploit disclosed last week gets guessed at from the author's past posts. With a topic, the `research` task's model (the fast tier by default) first decides whether it needs the web: names, products, releases, vulnerabilities, events, news and anything it doesn't recognise do; broad themes ("morning routines") don't. If so, it searches through the Gateway's Perplexity Search tool (5 results, 512 tokens a page, at most two searches) and writes a brief of up to 120 words, facts and dates only. The brief goes into the prompt with rules: use the facts, add none, and don't claim the author made or did anything they don't say. A search that finds nothing tells the writer not to assume what the topic is. Studio shows the brief and its sources under the ideas. It's charged with the batch at the research model's markup, only when a search ran (about 2 credits: a few thousand tokens plus the $0.005 search), and the reserve covers the worst case. A failed search never fails the batch.
 
 **Post-processing:**
 - Enforce the limit with `threadsLength()`, trimming or regenerating as needed
@@ -618,7 +621,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | **0: Setup** | Meta app (Threads use case, testers, callbacks); **submit App Review early for basic + insights + publish**; Vercel + Neon + Upstash + AI Gateway + Stripe (test) + Resend; scaffold, design tokens, motion primitives, demo fixtures; Terms + Privacy pages | Demo account renders the Home shell |
 | **1: MVP** | OAuth + workspaces; initial sync; deterministic stats; goal picker; Studio with streaming; **curated catalog + model picker**; **credits wallet** (trial, Checkout top-ups, reserve/settle, auto-recharge); **BYOK** ($5/month plan); **post now + schedule + Queue**; rate limits | A tester connects, buys credits (test mode), generates, and has a scheduled post publish on time |
 | **2: Intelligence + polish** | LLM classification + Profile DNA, The Read + DNA reveal choreography, Insights page, daily cron (snapshots, token refresh), scorecard, evals harness, **admin margin dashboard**, **series via `reply_to_id`** | Daily loop runs unattended; margins visible per model |
-| **Launch: Quebec readiness** | **French** (Bill 96): site, app, Terms, Privacy and emails, with `fr-CA` as a first-class locale and AI output in the user's language; the Law 25 privacy items; live Stripe Tax; the lawyer's changes (SETUP.md §5) | Public sign-ups open, and everything a Quebec customer sees exists in French |
+| **Launch: Quebec readiness** | **Monitoring and consent:** Sentry (with post text and tokens scrubbed), Google Tag Manager behind Consent Mode, and a cookie banner shown where consent is required (Quebec, the EU, the UK and Switzerland, from Vercel's location headers), with the Privacy page updated. Then **French** (Bill 96): site, app, Terms, Privacy and emails, with `fr-CA` as a first-class locale and AI output in the user's language; the Law 25 privacy items; live Stripe Tax; the lawyer's changes (SETUP.md §5) | Public sign-ups open, and everything a Quebec customer sees exists in French |
 | **3: Grow** | Keyword-search trend radar, reply analysis, A/B variants, opt-in nightly "Today's plays", weekly digest email | |
 | **4: Agencies** | Multiple Threads profiles per workspace, team seats, email/Google login, optional subscription plans | |
 
@@ -758,4 +761,6 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
   - **Workspaces:** lookup by username, name, id, alert email or Stripe customer, then balance, lots, plan, profiles, people, the ledger and recent generations, and credit adjustments with a reason (written as `adjust` ledger rows with who made them; taking credits back never goes below zero, oldest lots first).
 - Tests: the eval harness on mock models; integration tests for adjustments (idempotent, never below zero, lots in step), margins (with and without the Gateway), catalog rules (defaults can't be switched off, one default per task, sync leaves the switch alone) and lookup; end to end, the 404 for non-staff, then margins, catalog and an adjustment as staff.
 
-**Phase 2 is complete.** Next on the roadmap (§13): Launch, Quebec readiness (French, the Law 25 items, live Stripe Tax, the lawyer's review).
+**Web research in Studio (done, after Phase 2):** a topic that names something specific or recent is looked up on the web before Studio writes (§5), so "php2shell" means the exploit in the news rather than a tool the author built. Prompt `generate.v4` adds the brief and a standing rule against guessing what an unfamiliar name is. `research` is a catalog task (the fast model by default, switchable in `/admin`); each generation stores its queries, brief, sources and cost. Tests: reading searches and briefs, the prompt, costs and charging; integration tests for a researched batch, a broad theme that skips the search, a search that finds nothing, a failed search and no topic; end to end, a researched batch showing its sources and charge.
+
+**Phase 2 is complete.** Next on the roadmap (§13): Launch, Quebec readiness (monitoring and consent, then French, the Law 25 items, live Stripe Tax, the lawyer's review).

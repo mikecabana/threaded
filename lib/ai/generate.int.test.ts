@@ -8,7 +8,7 @@ import { TRIAL_CREDITS } from "@/lib/pricing";
 import type { AccountIdentity } from "@/lib/session/identity";
 import { closeDatabase, resetDatabase } from "@/test/db";
 import { RATE_LIMIT, startGeneration } from "./generate";
-import { MOCK_SUGGESTIONS } from "./mock-model";
+import { MOCK_SUGGESTIONS, mockCalls } from "./mock-model";
 import { byokContext } from "./models";
 import { PROMPT_VERSION } from "./prompt";
 import { generateRequestSchema } from "./schemas";
@@ -186,5 +186,78 @@ describe("startGeneration", () => {
       );
     const { response } = await run();
     expect(response.status).toBe(429);
+  });
+});
+
+describe("web research", () => {
+  async function generation(id: string | null) {
+    const [row] = await db()
+      .select()
+      .from(generations)
+      .where(eq(generations.id, id as string));
+    return row;
+  }
+  const lastPrompt = (task: string) => mockCalls.filter((call) => call.task === task).at(-1)?.prompt ?? "";
+
+  it("looks up a specific topic, briefs the writer and charges for the search", async () => {
+    const { response, generationId } = await run({ topic: "php2shell" });
+    expect(response.status).toBe(200);
+    const row = await generation(generationId);
+    expect(row.status).toBe("done");
+    expect(row.research).toMatchObject({
+      version: "research.v1",
+      model: "anthropic/claude-haiku-5.5",
+      queries: ["php2shell news"],
+      searches: 1,
+      sources: [
+        { url: "https://news.example.com/php2shell", date: "2026-10-20" },
+        { url: "https://blog.example.org/php2shell-explained", date: "2026-10-21" },
+      ],
+    });
+    expect(row.research?.brief).toContain("security flaw disclosed on 2026-10-20");
+
+    // The researcher saw the author; the writer got the brief.
+    expect(lastPrompt("research")).toContain("@maya.builds: Building Tidy");
+    expect(lastPrompt("generate")).toContain('What\'s happening with "php2shell", from a web search today:');
+    expect(lastPrompt("generate")).toContain("security flaw disclosed on 2026-10-20");
+
+    // Ideas: 2 credits. Research: 2,500 + 120 tokens on the fast tier plus a $0.005 search, ×1.5 → 2 credits.
+    expect(row.creditsCharged).toBe(4);
+    expect(Number(row.costUsd)).toBeGreaterThan(0.005);
+    expect(await wallet()).toMatchObject({ balance: TRIAL_CREDITS - 4, reserved: 0 });
+
+    // Studio reads the sources back with the stored ideas.
+    const { generationResult } = await import("@/lib/data/suggestions");
+    const result = await generationResult(identity.profileId, generationId as string);
+    expect(result?.research?.sources).toHaveLength(2);
+    expect(result?.research).not.toHaveProperty("costUsd");
+  });
+
+  it("skips the search for a broad theme, and charges nothing for deciding", async () => {
+    const { generationId } = await run({ topic: "morning routines" });
+    const row = await generation(generationId);
+    expect(row.research).toMatchObject({ queries: [], brief: null, sources: [], searches: 0 });
+    expect(lastPrompt("generate")).not.toContain("web search");
+    expect(row.creditsCharged).toBe(2);
+  });
+
+  it("tells the writer when a search finds nothing reliable", async () => {
+    const { generationId } = await run({ topic: "zzz-unknown" });
+    const row = await generation(generationId);
+    expect(row.research).toMatchObject({ queries: ["zzz-unknown news"], brief: null, sources: [] });
+    expect(lastPrompt("generate")).toContain('A web search for "zzz-unknown" found nothing reliable');
+  });
+
+  it("writes the batch without research when the search fails", async () => {
+    const { generationId } = await run({ topic: "fail-search" });
+    const row = await generation(generationId);
+    expect(row).toMatchObject({ status: "done", research: null, creditsCharged: 2 });
+  });
+
+  it("doesn't search without a topic", async () => {
+    const before = mockCalls.filter((call) => call.task === "research").length;
+    const { generationId } = await run();
+    expect((await generation(generationId)).research).toBeNull();
+    expect(mockCalls.filter((call) => call.task === "research")).toHaveLength(before);
   });
 });

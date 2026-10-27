@@ -69,8 +69,8 @@ async function Catalog() {
       <section aria-labelledby="tasks">
         <SectionHeading id="tasks" title="Tasks">
           Each task runs on its default model. A task's list holds the catalog models that are switched on, offered by
-          the Gateway and offered for that task (under Models, below). Only Studio lets people pick from the list;
-          background tasks always use the default. On the own-key plan, everything runs on the workspace's key and
+          the Gateway and offered for that task (under Models, below). People pick from Studio ideas' list in Studio;
+          every other task always uses its default. On the own-key plan, everything runs on the workspace's key and
           nothing is charged in credits. Run <code>pnpm eval</code> before changing Studio's default.
         </SectionHeading>
         <div className="grid gap-3 md:grid-cols-2">
