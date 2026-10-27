@@ -178,6 +178,36 @@ logged instead of sent, and everything else works.
 People add an address in **Settings → Email alerts**. It's stored only after they open the
 confirmation link, and each alert goes out once per event (the `email_log` table).
 
+## Monitoring and cookies
+
+**Sentry** reports errors from the server, the proxy and the browser. Before anything leaves, tokens
+in URLs, request bodies, cookies, headers, the user and any row Postgres quotes in an error are
+removed, and console breadcrumbs are dropped (`lib/monitoring/scrub.ts`). Errors only: no tracing
+or session replay.
+
+1. Create a Sentry project (platform: Next.js). In its settings, under **Security & Privacy**, turn
+   on **Prevent Storing of IP Addresses**.
+2. In Vercel (Production and Preview), add `NEXT_PUBLIC_SENTRY_DSN` with the project's DSN.
+3. For readable stack traces, add `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` (an
+   organization token with source map upload) too; builds then upload source maps. Without the
+   token, builds skip that step.
+
+**Google Tag Manager** loads under Google's Consent Mode v2, and a cookie banner asks first where
+the law says to: Quebec (Law 25), the EU and EEA, the UK and Switzerland. Elsewhere optional cookies
+are on by default, and **Cookie settings** in the footer and on the Privacy page turns them off.
+Where consent is needed, Tag Manager doesn't load at all until the visitor allows analytics or
+advertising.
+
+1. Create a web container in Tag Manager and set up your tags (Google Analytics 4, ads) inside it.
+   They follow the consent signals (`analytics_storage`, `ad_storage`, `ad_user_data`,
+   `ad_personalization`) on their own.
+2. Add `GTM_ID` (`GTM-…`) in Vercel's Production environment. Without it there's no banner and no
+   Tag Manager.
+3. The visitor's location comes from Cloudflare when it's in front (Vercel only sees Cloudflare's
+   address then). For the province, turn on **Rules → Settings → Managed Transforms → Add visitor
+   location headers** in Cloudflare. Without it, Canadian visitors are asked, since Quebec can't
+   be told apart. When the location is unknown, visitors are asked too.
+
 ## Admin and evals
 
 **Admin (`/admin`)** has the margin view, the model catalog and workspace lookup. Only staff can
@@ -224,5 +254,5 @@ judge calls, roughly $0.50 on the default models.
 - [ ] **Live Stripe webhook:** a live-mode endpoint for `https://<production-host>/api/stripe/webhook` with the same six events (§3). Its signing secret, not the test endpoint's, goes in Production's `STRIPE_WEBHOOK_SECRET`.
 - [ ] **Meta:** verify the app's contact email (App settings → Basic), then submit App Review (§1, step 6). The app stays in development mode, open to Threads testers only, until it's approved.
 - [ ] **Database URLs:** change `sslmode=require` to `sslmode=verify-full` in `DATABASE_URL` and `DATABASE_URL_UNPOOLED` (Production and Preview). It's the same check `pg` does today, and it clears the "SSL modes" warning in the logs before `pg` 9 changes what `require` means.
-- [ ] **Monitoring and consent** (launch phase, `docs/PLAN.md` §13): create a Sentry project and a Google Tag Manager container, then add their keys in Vercel when that PR lands.
+- [ ] **Monitoring and cookies:** the Sentry project and Tag Manager container, their keys in Vercel, and Cloudflare's visitor location headers ([Monitoring and cookies](#monitoring-and-cookies)). The privacy impact assessment (Law 25, above) covers Sentry and Google too.
 - [ ] Confirm which secret signs Meta's deauthorize and data-deletion callbacks (the one ⚠ left in `docs/PLAN.md` §2; everything else there was checked against Meta's docs).

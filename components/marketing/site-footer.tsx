@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/brand/logo";
+import { CookieSettingsButton } from "@/components/consent/consent-manager";
 import { SITE } from "@/lib/site";
 
 export function SiteFooter() {
@@ -14,6 +15,7 @@ export function SiteFooter() {
           <Link href="/legal/privacy" className="hover:text-fg">
             Privacy
           </Link>
+          <CookieSettingsButton className="hover:text-fg" />
           <a href={`mailto:${SITE.contactEmail}`} className="hover:text-fg">
             Contact
           </a>
