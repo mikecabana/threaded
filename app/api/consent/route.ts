@@ -2,8 +2,9 @@ import { consentRequired, geoFrom } from "@/lib/consent/consent";
 import { env } from "@/lib/env";
 
 /**
- * What the cookie banner needs (components/consent): the Tag Manager container,
- * if there is one, and whether this visitor's location asks for consent first.
+ * What every page asks at load (consentBootScript in lib/consent/consent.ts):
+ * the Tag Manager container, if there is one, and whether this visitor's
+ * location asks for consent first, which sets Consent Mode's defaults.
  */
 export async function GET(request: Request) {
   return Response.json(

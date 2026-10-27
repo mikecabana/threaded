@@ -1,5 +1,15 @@
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
-import { CONSENT_KEY, consentRequired, consentSignals, geoFrom, readChoice, saveChoice } from "./consent";
+import {
+  CONSENT_KEY,
+  type ConsentConfig,
+  consentBootScript,
+  consentRequired,
+  consentSignals,
+  geoFrom,
+  readChoice,
+  saveChoice,
+} from "./consent";
 
 const headers = (values: Record<string, string>) => new Headers(values);
 
@@ -77,5 +87,86 @@ describe("the choice", () => {
     expect(readChoice(blocked)).toBeNull();
     expect(() => saveChoice(blocked, { analytics: false, advertising: false, at: "" })).not.toThrow();
     expect(readChoice(undefined)).toBeNull();
+  });
+});
+
+describe("the boot script on every page", () => {
+  /** Runs the inline script against a stand-in browser and returns what it did. */
+  async function boot(options: { api: unknown; stored?: string; storageThrows?: boolean; apiFails?: boolean }) {
+    const dataLayer: unknown[] = [];
+    const scripts: { src: string; async: boolean }[] = [];
+    const window: Record<string, unknown> = { dataLayer };
+    const fetchCalls: string[] = [];
+    runInNewContext(consentBootScript, {
+      window,
+      document: {
+        createElement: () => ({ src: "", async: false }),
+        head: { appendChild: (script: { src: string; async: boolean }) => scripts.push(script) },
+      },
+      localStorage: {
+        getItem: (key: string) => {
+          if (options.storageThrows) throw new Error("SecurityError");
+          return key === CONSENT_KEY ? (options.stored ?? null) : null;
+        },
+      },
+      fetch: (url: string) => {
+        fetchCalls.push(url);
+        return options.apiFails
+          ? Promise.reject(new Error("offline"))
+          : Promise.resolve({ ok: true, json: () => Promise.resolve(options.api) });
+      },
+      Date,
+      JSON,
+      String,
+      Promise,
+      encodeURIComponent,
+    });
+    const config = (await window.threadedConsent) as ConsentConfig | null;
+    const commands = dataLayer.map((entry) =>
+      typeof entry === "object" && entry && "length" in entry ? Array.from(entry as ArrayLike<unknown>) : entry,
+    );
+    return { config, commands, scripts, fetchCalls };
+  }
+
+  it("loads Tag Manager straight away, with consent denied where the law asks first", async () => {
+    const { config, commands, scripts, fetchCalls } = await boot({ api: { gtmId: "GTM-TEST1", required: true } });
+    expect(fetchCalls).toEqual(["/api/consent"]);
+    expect(commands[0]).toEqual(["consent", "default", consentSignals({ analytics: false, advertising: false })]);
+    expect(commands[1]).toEqual(["set", "ads_data_redaction", true]);
+    expect(commands[2]).toMatchObject({ event: "gtm.js" });
+    expect(scripts).toEqual([{ src: "https://www.googletagmanager.com/gtm.js?id=GTM-TEST1", async: true }]);
+    expect(config).toEqual({ gtmId: "GTM-TEST1", required: true, stored: null });
+  });
+
+  it("grants consent by default elsewhere", async () => {
+    const { commands } = await boot({ api: { gtmId: "GTM-TEST1", required: false } });
+    expect(commands[0]).toEqual(["consent", "default", consentSignals({ analytics: true, advertising: true })]);
+  });
+
+  it("uses a saved choice as the default on later visits, wherever the visitor is", async () => {
+    const saved = { analytics: true, advertising: false, at: "2026-10-27T03:00:00.000Z" };
+    for (const required of [true, false]) {
+      const { config, commands } = await boot({ api: { gtmId: "GTM-TEST1", required }, stored: JSON.stringify(saved) });
+      expect(commands[0]).toEqual(["consent", "default", consentSignals(saved)]);
+      // Reads storage exactly as the banner does.
+      expect(config?.stored).toEqual(readChoice({ getItem: () => JSON.stringify(saved) }));
+    }
+  });
+
+  it("falls back to the region when the saved choice is broken or storage is blocked", async () => {
+    const denied = ["consent", "default", consentSignals({ analytics: false, advertising: false })];
+    expect((await boot({ api: { gtmId: "G-1", required: true }, stored: "{not json" })).commands[0]).toEqual(denied);
+    expect((await boot({ api: { gtmId: "G-1", required: true }, storageThrows: true })).commands[0]).toEqual(denied);
+  });
+
+  it("does nothing without a container, or when the region can't be fetched", async () => {
+    for (const run of [
+      await boot({ api: { gtmId: null, required: true } }),
+      await boot({ api: null, apiFails: true }),
+    ]) {
+      expect(run.config).toBeNull();
+      expect(run.commands).toEqual([]);
+      expect(run.scripts).toEqual([]);
+    }
   });
 });

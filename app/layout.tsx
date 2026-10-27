@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { ConsentManager } from "@/components/consent/consent-manager";
 import { MotionProvider } from "@/components/motion/motion-provider";
+import { consentBootScript } from "@/lib/consent/consent";
 import { DEFAULT_GOAL } from "@/lib/goals";
 import { indexable, OPEN_GRAPH, siteUrl } from "@/lib/seo";
 import { SITE } from "@/lib/site";
@@ -47,6 +48,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: static, first-party preferences script */}
         <script dangerouslySetInnerHTML={{ __html: preferencesScript }} />
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: static, first-party consent defaults and Tag Manager loader */}
+        <script dangerouslySetInnerHTML={{ __html: consentBootScript }} />
       </head>
       <body className="min-h-full bg-bg text-fg">
         <MotionProvider>{children}</MotionProvider>
