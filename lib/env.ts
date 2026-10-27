@@ -33,6 +33,11 @@ const schema = z.object({
   /** Sender for alert emails, on a domain verified in Resend. Defaults to alerts@ the production domain. */
   EMAIL_FROM: optional,
   CRON_SECRET: optional,
+  /** Google Tag Manager container ("GTM-…"). Without it there are no optional cookies and no cookie banner. */
+  GTM_ID: z
+    .string()
+    .regex(/^GTM-[A-Z0-9]+$/)
+    .optional(),
   /** Comma-separated Threads user ids with access to /admin (as well as users.is_staff). */
   ADMIN_THREADS_USER_IDS: optional,
   DEMO_MODE: z.enum(["0", "1"]).optional(),

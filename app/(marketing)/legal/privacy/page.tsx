@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CookieSettingsButton } from "@/components/consent/consent-manager";
 import { LegalPage } from "@/components/marketing/legal-page";
 import { SITE } from "@/lib/site";
 
@@ -6,7 +7,7 @@ export const metadata: Metadata = { title: "Privacy Policy" };
 
 export default function PrivacyPage() {
   return (
-    <LegalPage title="Privacy Policy" updated="October 26, 2026">
+    <LegalPage title="Privacy Policy" updated="October 27, 2026">
       <section>
         <h2>What we collect</h2>
         <ul>
@@ -21,7 +22,9 @@ export default function PrivacyPage() {
             Stripe collects the email for your receipts when you pay.
           </li>
           <li>
-            <strong>Automatically:</strong> basic usage and device information needed to run and secure the service.
+            <strong>Automatically:</strong> basic usage and device information needed to run and secure the service,
+            error reports when something breaks, and, if you allow analytics cookies, how you use the site (see{" "}
+            <a href="#cookies">Cookies</a>).
           </li>
         </ul>
       </section>
@@ -57,8 +60,36 @@ export default function PrivacyPage() {
           <li>
             <strong>Stripe</strong> processes payments. We never see or store your full card number.
           </li>
+          <li>
+            <strong>Sentry</strong> receives error reports: what failed, where in our code, the page and your browser
+            type. We remove tokens, request contents, cookies and anything you wrote before they're sent, and Sentry is
+            set not to store your IP address.
+          </li>
+          <li>
+            <strong>Google</strong>, through Google Tag Manager, measures visits and our ads, only as far as your cookie
+            choices allow.
+          </li>
           <li>When the law requires it.</li>
         </ul>
+      </section>
+
+      <section id="cookies">
+        <h2>Cookies</h2>
+        <ul>
+          <li>
+            <strong>Needed to work:</strong> a cookie that keeps you signed in (or in the demo), and your theme and goal
+            saved in your browser. These are always on.
+          </li>
+          <li>
+            <strong>Optional:</strong> analytics cookies that count visits and show which pages help, and advertising
+            cookies that measure our ads, both from Google through Google Tag Manager. In Quebec, the European Union,
+            the United Kingdom and Switzerland they stay off until you turn them on. Elsewhere they're on by default.
+            You can change your choice at any time, and we keep it in your browser.
+          </li>
+        </ul>
+        <p className="mt-3">
+          <CookieSettingsButton className="text-fg underline underline-offset-2" />
+        </p>
       </section>
 
       <section>

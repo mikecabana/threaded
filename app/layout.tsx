@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { ConsentManager } from "@/components/consent/consent-manager";
 import { MotionProvider } from "@/components/motion/motion-provider";
 import { DEFAULT_GOAL } from "@/lib/goals";
 import { SITE } from "@/lib/site";
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full bg-bg text-fg">
         <MotionProvider>{children}</MotionProvider>
+        <ConsentManager />
       </body>
     </html>
   );
