@@ -1,8 +1,17 @@
+import type { Metadata } from "next";
 import { Hero, type HeroSample } from "@/components/marketing/hero";
-import { GoalCards, HowItWorks, Pricing } from "@/components/marketing/sections";
+import { Faq, Features, GoalCards, HowItWorks, Pricing } from "@/components/marketing/sections";
+import { landingStructuredData, StructuredData } from "@/components/marketing/structured-data";
 import { FORMAT_LABELS } from "@/lib/analysis/formats";
 import { DEMO_PERSONAS } from "@/lib/demo/personas";
 import { GOALS, type Goal } from "@/lib/goals";
+import { SITE } from "@/lib/site";
+
+// Open Graph text comes from the root layout; setting it here would drop the share image.
+export const metadata: Metadata = {
+  title: { absolute: SITE.title },
+  alternates: { canonical: "/" },
+};
 
 // The hero is illustrated with the "creator" demo persona's real sample copy.
 const persona = DEMO_PERSONAS.creator;
@@ -17,6 +26,7 @@ const samples = Object.fromEntries(
 export default function LandingPage() {
   return (
     <>
+      <StructuredData data={landingStructuredData()} />
       <Hero
         author={{ ...persona.profile, avatarHue: persona.avatarHue }}
         topPost={{
@@ -26,8 +36,10 @@ export default function LandingPage() {
         samples={samples}
       />
       <HowItWorks />
+      <Features />
       <GoalCards />
       <Pricing />
+      <Faq />
     </>
   );
 }

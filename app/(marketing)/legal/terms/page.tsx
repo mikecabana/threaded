@@ -1,13 +1,19 @@
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/marketing/legal-page";
 import { BYOK_PLATFORM_FEE_USD, TRIAL_CREDITS } from "@/lib/pricing";
+import { pageMetadata } from "@/lib/seo";
 import { SITE } from "@/lib/site";
 
-export const metadata: Metadata = { title: "Terms of Service" };
+export const metadata: Metadata = pageMetadata({
+  title: "Terms of Service",
+  description:
+    "The terms for using Threaded: your account and content, credits and payment, bringing your own AI key, acceptable use, and ending your account.",
+  path: "/legal/terms",
+});
 
 export default function TermsPage() {
   return (
-    <LegalPage title="Terms of Service" updated="October 20, 2026">
+    <LegalPage title="Terms of Service" updated={SITE.legalUpdated.terms}>
       <section>
         <h2>1. The service</h2>
         <p>

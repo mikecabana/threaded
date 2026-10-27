@@ -14,11 +14,17 @@ export function SiteHeader() {
           <a href="/#how" className="hover:text-fg">
             How it works
           </a>
+          <a href="/#features" className="hover:text-fg">
+            Features
+          </a>
           <a href="/#goals" className="hover:text-fg">
             Goals
           </a>
           <a href="/#pricing" className="hover:text-fg">
             Pricing
+          </a>
+          <a href="/#faq" className="hover:text-fg">
+            FAQ
           </a>
         </nav>
         <div className="ml-auto flex items-center gap-2">

@@ -65,7 +65,8 @@ export function Hero({
       <AccentAurora className="-z-10" />
       <div className="mx-auto grid max-w-6xl items-center gap-14 px-4 pt-16 pb-24 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
         <div>
-          <m.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={revealSpring}>
+          {/* The headline is the page's largest paint, so it's visible from the first frame, not faded in after hydration. */}
+          <div>
             <Badge variant="outline" className="mb-6">
               For Threads creators and brands
             </Badge>
@@ -77,7 +78,7 @@ export function Hero({
               Threaded reads your posts and insights, learns what your audience rewards, and writes ideas aimed at the
               goal you pick. Post or schedule them without leaving the app.
             </p>
-          </m.div>
+          </div>
 
           <m.div
             className="mt-8"

@@ -7,9 +7,15 @@ import { DemoButton } from "@/components/marketing/demo-button";
 import { Reveal, Stagger, StaggerItem } from "@/components/motion/reveal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { pageMetadata } from "@/lib/seo";
 import { isThreadsLoginEnabled } from "@/lib/threads/config";
 
-export const metadata: Metadata = { title: "Connect Threads" };
+export const metadata: Metadata = pageMetadata({
+  title: "Connect Threads",
+  description:
+    "Sign in with Threads to connect your account to Threaded. See exactly what it reads, and know it only posts when you press Post or schedule.",
+  path: "/connect",
+});
 
 const ACCESS: { icon: ReactNode; title: string; body: string; scope: string }[] = [
   {

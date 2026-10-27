@@ -1,13 +1,19 @@
 import type { Metadata } from "next";
 import { CookieSettingsButton } from "@/components/consent/consent-manager";
 import { LegalPage } from "@/components/marketing/legal-page";
+import { pageMetadata } from "@/lib/seo";
 import { SITE } from "@/lib/site";
 
-export const metadata: Metadata = { title: "Privacy Policy" };
+export const metadata: Metadata = pageMetadata({
+  title: "Privacy Policy",
+  description:
+    "What Threaded collects from your Threads account, how it's used to analyze your posts and write ideas, who we share it with, and how to delete your data.",
+  path: "/legal/privacy",
+});
 
 export default function PrivacyPage() {
   return (
-    <LegalPage title="Privacy Policy" updated="October 27, 2026">
+    <LegalPage title="Privacy Policy" updated={SITE.legalUpdated.privacy}>
       <section>
         <h2>What we collect</h2>
         <ul>

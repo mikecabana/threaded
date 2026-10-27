@@ -214,6 +214,26 @@ advertising.
    location headers** in Cloudflare. Without it, Canadian visitors are asked, since Quebec can't
    be told apart. When the location is unknown, visitors are asked too.
 
+## Search and sharing
+
+The app publishes what search engines and link previews need on its own: titles, descriptions and
+canonical URLs on the production domain, share images (`opengraph-image.tsx` next to each public
+page), `robots.txt`, `sitemap.xml`, a web manifest and schema.org data on the home page
+(`lib/seo.ts`). Signed-in pages are marked `noindex`, and previews turn every crawler away.
+
+1. **Google Search Console:** add a **Domain** property for your domain and verify it with the DNS
+   TXT record it gives you (add it in Cloudflare → DNS). Then submit
+   `https://<your-domain>/sitemap.xml` under Sitemaps.
+2. **Bing Webmaster Tools:** import the site from Search Console (this also covers DuckDuckGo and
+   Yahoo, which use Bing's index).
+3. **Cloudflare:** check `https://<your-domain>/robots.txt` after the first deploy. Cloudflare's
+   **Managed robots.txt** and AI bot settings can add to it or block crawlers. Leave Googlebot
+   and Bingbot allowed.
+4. **Share previews:** paste the home page into Meta's
+   [Sharing Debugger](https://developers.facebook.com/tools/debug/) and LinkedIn's
+   [Post Inspector](https://www.linkedin.com/post-inspector/) to check the image and refresh their
+   caches after a change.
+
 ## Admin and evals
 
 **Admin (`/admin`)** has the margin view, the model catalog and workspace lookup. Only staff can
@@ -261,4 +281,5 @@ judge calls, roughly $0.50 on the default models.
 - [ ] **Meta:** verify the app's contact email (App settings → Basic), then submit App Review (§1, step 6). The app stays in development mode, open to Threads testers only, until it's approved.
 - [ ] **Database URLs:** change `sslmode=require` to `sslmode=verify-full` in `DATABASE_URL` and `DATABASE_URL_UNPOOLED` (Production and Preview). It's the same check `pg` does today, and it clears the "SSL modes" warning in the logs before `pg` 9 changes what `require` means.
 - [ ] **Monitoring and cookies:** the Sentry project and Tag Manager container, their keys in Vercel, and Cloudflare's visitor location headers ([Monitoring and cookies](#monitoring-and-cookies)). The privacy impact assessment (Law 25, above) covers Sentry and Google too.
+- [ ] **Search:** verify the domain in Google Search Console and submit the sitemap, import it into Bing, and check `robots.txt` on the live site ([Search and sharing](#search-and-sharing)).
 - [ ] Confirm which secret signs Meta's deauthorize and data-deletion callbacks (the one ⚠ left in `docs/PLAN.md` §2; everything else there was checked against Meta's docs).

@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "@/components/brand/logo";
 import { AccentAurora } from "@/components/motion/accent-aurora";
+
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 /** First sign-in: no navigation, just the moment. */
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
