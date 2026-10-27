@@ -188,6 +188,11 @@ open it; everyone else gets a 404.
    Setting `users.is_staff` to true for a user works too.
 3. Redeploy, then use the **Admin** card in Settings.
 
+The catalog page lists each AI task with its default model, then the models themselves. A task's
+list holds the models switched on and offered for it, and only Studio lets people pick from it.
+Post labels run on Jev (`CLASSIFIER_MODEL` in `lib/ai/classify-questions.ts`), a decision model
+set in code; the catalog's default for that task names each account's topics and backs Jev up.
+
 Credit adjustments are written to the ledger with the reason and who made them. For a card
 refund, refund the payment in Stripe first, then take the credits back in the workspace's page.
 

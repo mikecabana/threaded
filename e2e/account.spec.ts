@@ -378,7 +378,9 @@ test("admin is invisible to everyone but staff, and staff can adjust credits", a
 
     await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Catalog" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Model catalog" })).toBeVisible();
-    await expect(page.getByRole("form", { name: "anthropic/claude-sonnet-5.5" })).toContainText("Default: generate");
+    await expect(page.getByRole("form", { name: "anthropic/claude-sonnet-5.5" })).toContainText(
+      "Default for Studio ideas",
+    );
 
     await page.goto("/admin/workspaces?q=mock.user");
     await page

@@ -1,13 +1,14 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import { SubmitButton } from "@/components/billing/submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { type AdminFormState, addModelAction, syncPricesAction, updateModelAction } from "@/lib/actions/admin";
+import { TASK_INFO, TASK_ORDER } from "@/lib/admin/tasks";
+import type { AiTask } from "@/lib/ai/catalog";
 import { cn } from "@/lib/utils";
 
-const TASKS = ["generate", "critique", "classify", "dna"] as const;
 const TIERS = ["fast", "balanced", "best"] as const;
 const field =
   "h-9 w-full min-w-0 rounded-lg border border-border-strong bg-surface-2 px-2.5 text-sm outline-none focus-visible:border-accent";
@@ -25,6 +26,8 @@ export interface CatalogModel {
   outputPrice: string | null;
   enabled: boolean;
   available: boolean;
+  /** What Studio charges for a typical batch of 5 ideas, when the model is offered there. */
+  typicalCredits: number | null;
 }
 
 const price = (perMillion: string | null) => (perMillion === null ? "price unknown" : `$${Number(perMillion)}`);
@@ -42,10 +45,10 @@ function TaskChecks({ name, selected }: { name: string; selected: string[] }) {
   return (
     <fieldset className="flex flex-wrap gap-3">
       <legend className="sr-only">Tasks</legend>
-      {TASKS.map((task) => (
+      {TASK_ORDER.map((task) => (
         <label key={task} className="inline-flex items-center gap-1.5 text-sm">
           <input type="checkbox" name={name} value={task} defaultChecked={selected.includes(task)} />
-          {task}
+          {TASK_INFO[task].name}
         </label>
       ))}
     </fieldset>
@@ -59,19 +62,22 @@ export function ModelForm({ model }: { model: CatalogModel }) {
     <Card className="p-4">
       <form action={action} className="space-y-3" aria-label={model.modelId}>
         <input type="hidden" name="modelId" value={model.modelId} />
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate font-mono text-sm">{model.modelId}</p>
-            <p className="text-subtle text-xs">
+            <h3 className="font-medium">{model.label}</h3>
+            <p className="truncate font-mono text-subtle text-xs">{model.modelId}</p>
+            <p className="mt-1 text-subtle text-xs">
               {model.provider} · {price(model.inputPrice)} in / {price(model.outputPrice)} out per million tokens
+              {model.typicalCredits !== null && ` · Studio: ≈${model.typicalCredits} cr for 5 ideas`}
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {model.defaultFor.map((task) => (
               <Badge key={task} variant="accent">
-                Default: {task}
+                Default for {TASK_INFO[task as AiTask]?.name ?? task}
               </Badge>
             ))}
+            {!model.enabled && <Badge variant="outline">Switched off</Badge>}
             {!model.available && <Badge variant="negative">Not offered by the Gateway</Badge>}
           </div>
         </div>
@@ -134,24 +140,12 @@ export function ModelForm({ model }: { model: CatalogModel }) {
 /** Adds a Gateway model to the catalog, switched off. */
 export function AddModelForm() {
   const [state, action] = useActionState<AdminFormState, FormData>(addModelAction, null);
-  const [open, setOpen] = useState(false);
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="justify-self-start text-accent text-sm hover:underline"
-      >
-        Add a model
-      </button>
-    );
-  }
   return (
     <Card className="p-4">
       <form action={action} className="space-y-3" aria-label="Add a model">
         <div className="grid gap-3 sm:grid-cols-4">
           <label className="grid gap-1 text-sm sm:col-span-2">
-            Gateway model id
+            Gateway model ID
             <input name="modelId" required placeholder="provider/model-name" className={cn(field, "font-mono")} />
           </label>
           <label className="grid gap-1 text-sm">

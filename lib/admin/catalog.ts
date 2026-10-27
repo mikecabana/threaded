@@ -5,6 +5,7 @@ import { AI_TASKS, type AiTask, seedCatalog } from "@/lib/ai/catalog";
 import { db } from "@/lib/db";
 import { modelCatalog } from "@/lib/db/schema";
 import { DEFAULT_MARKUP } from "@/lib/pricing";
+import { TASK_INFO, taskNames } from "./tasks";
 
 // Editing the model catalog from /admin: switch models on and off, set their
 // markup and minimum charge, which tasks they're offered for, and each task's
@@ -36,7 +37,7 @@ export const newModelSchema = z.object({
   modelId: z
     .string()
     .trim()
-    .regex(/^[a-z0-9-]+\/[a-z0-9._-]+$/i, "A Gateway model id, like provider/model-name"),
+    .regex(/^[a-z0-9-]+\/[a-z0-9._-]+$/i, "A Gateway model ID, like provider/model-name"),
   label: z.string().trim().min(1).max(60),
   provider: z.string().trim().min(1).max(40),
   tier: z.enum(["fast", "balanced", "best"]),
@@ -57,11 +58,11 @@ export async function updateModel(
   if (!row) return { ok: false, message: "That model isn't in the catalog." };
   const defaults = row.defaultFor as AiTask[];
   if (!update.enabled && defaults.length > 0) {
-    return { ok: false, message: `It's the default for ${defaults.join(", ")}. Make another model the default first.` };
+    return { ok: false, message: `It's the default for ${taskNames(defaults)}. Make another model the default first.` };
   }
   const dropped = defaults.filter((task) => !update.tasks.includes(task));
   if (dropped.length > 0) {
-    return { ok: false, message: `It's the default for ${dropped.join(", ")}, so it has to stay offered for it.` };
+    return { ok: false, message: `It's the default for ${taskNames(dropped)}, so it has to stay offered for it.` };
   }
   await db()
     .update(modelCatalog)
@@ -86,7 +87,8 @@ export async function setDefaultModel(
     const [row] = await tx.select().from(modelCatalog).where(eq(modelCatalog.modelId, modelId)).for("update");
     if (!row) return { ok: false as const, message: "That model isn't in the catalog." };
     if (!row.enabled || !row.available) return { ok: false as const, message: "Switch the model on first." };
-    if (!row.tasks.includes(task)) return { ok: false as const, message: `Offer it for ${task} first.` };
+    if (!row.tasks.includes(task))
+      return { ok: false as const, message: `Offer it for ${TASK_INFO[task].name} first.` };
     await tx
       .update(modelCatalog)
       .set({ defaultFor: sql`array_remove(${modelCatalog.defaultFor}, ${task})` })
