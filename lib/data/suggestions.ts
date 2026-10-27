@@ -68,17 +68,23 @@ export async function generationResult(profileId: string, generationId: string) 
       dropped: generations.dropped,
       creditsCharged: generations.creditsCharged,
       error: generations.error,
+      research: generations.research,
     })
     .from(generations)
     .where(and(eq(generations.id, generationId), eq(generations.profileId, profileId)));
   if (!generation) return null;
+  const { research, ...status } = generation;
   const rows = await db()
     .select(columns)
     .from(suggestions)
     .innerJoin(generations, eq(generations.id, suggestions.generationId))
     .where(eq(suggestions.generationId, generationId))
     .orderBy(desc(suggestions.goalFit));
-  return { ...generation, suggestions: rows.map(toStored) };
+  return {
+    ...status,
+    research: research ? { queries: research.queries, brief: research.brief, sources: research.sources } : null,
+    suggestions: rows.map(toStored),
+  };
 }
 
 /** Recent suggestions for the profile, best first. */

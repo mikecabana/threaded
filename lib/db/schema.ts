@@ -32,6 +32,17 @@ export interface ProfileTopics {
   updatedAt: string;
 }
 
+/** A generation's web research: what was searched, the brief, its sources and its cost. */
+export interface StoredResearch {
+  version: string;
+  model: string;
+  queries: string[];
+  brief: string | null;
+  sources: { title: string; url: string; date: string | null }[];
+  searches: number;
+  costUsd: number;
+}
+
 export interface BillingNotice {
   kind: "auto_recharge_failed" | "byok_ended";
   message: string;
@@ -298,7 +309,8 @@ export const userSettings = pgTable("user_settings", {
   userId: uuid("user_id")
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
-  modelPicks: jsonb("model_picks").$type<Partial<Record<"classify" | "dna" | "generate" | "critique", string>>>(),
+  modelPicks:
+    jsonb("model_picks").$type<Partial<Record<"generate" | "research" | "critique" | "classify" | "dna", string>>>(),
   voicePrefs: jsonb("voice_prefs").$type<{
     emoji?: "none" | "some" | "lots";
     casing?: "normal" | "lowercase";
@@ -331,6 +343,8 @@ export const generations = pgTable(
     dropped: integer("dropped").notNull().default(0),
     /** Why a failed generation failed, when the user can act on it (e.g. "byok_key_invalid"). */
     error: text("error"),
+    /** Web research on the topic before writing (lib/ai/research-prompt.ts), with what it cost. */
+    research: jsonb("research").$type<StoredResearch>(),
     createdAt: createdAt(),
   },
   (t) => [index("generations_profile_idx").on(t.profileId, t.createdAt)],

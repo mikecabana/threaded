@@ -4,13 +4,19 @@ import type { AiTask } from "@/lib/ai/catalog";
 // the catalog page and its client forms, so it stays free of server code.
 
 /** Display order: what people use, then background work, then what isn't built yet. */
-export const TASK_ORDER = ["generate", "classify", "dna", "critique"] as const satisfies readonly AiTask[];
+export const TASK_ORDER = ["generate", "research", "classify", "dna", "critique"] as const satisfies readonly AiTask[];
 
 export const TASK_INFO: Record<AiTask, { name: string; billing: "charged" | "on us" | "unused"; summary: string }> = {
   generate: {
     name: "Studio ideas",
     billing: "charged",
     summary: "Writes the ideas in Studio. People can pick any model in this list; the default is preselected.",
+  },
+  research: {
+    name: "Web research",
+    billing: "charged",
+    summary:
+      "Before Studio writes about a specific or recent topic, searches the web and sums up what it finds. Charged with the batch, only when it searches. Needs a model that can call tools.",
   },
   classify: {
     name: "Post labels",

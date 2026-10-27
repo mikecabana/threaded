@@ -9,7 +9,7 @@ import { DEFAULT_MARKUP } from "@/lib/pricing";
 // the database so prices and availability can change without a deploy; the
 // defaults below seed it (and stand in when there's no database, e.g. demo).
 
-export const AI_TASKS = ["generate", "critique", "classify", "dna"] as const;
+export const AI_TASKS = ["generate", "research", "critique", "classify", "dna"] as const;
 export type AiTask = (typeof AI_TASKS)[number];
 export type ModelTier = "fast" | "balanced" | "best";
 
@@ -39,8 +39,8 @@ export const DEFAULT_CATALOG: CatalogEntry[] = [
     label: "Claude Haiku 5.5",
     provider: "Anthropic",
     tier: "fast",
-    tasks: ["generate", "critique", "classify"],
-    defaultFor: ["classify", "critique"],
+    tasks: ["generate", "research", "critique", "classify"],
+    defaultFor: ["research", "classify", "critique"],
     markup: DEFAULT_MARKUP,
     minCredits: 1,
     inputPrice: 1,

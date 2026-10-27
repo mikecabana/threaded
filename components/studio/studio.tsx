@@ -1,7 +1,7 @@
 "use client";
 
 import { useObject } from "@ai-sdk/react";
-import { LoaderCircle, Sparkles, Square, TriangleAlert } from "lucide-react";
+import { Globe, LoaderCircle, Sparkles, Square, TriangleAlert } from "lucide-react";
 import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,11 +29,19 @@ export interface StudioModel {
 
 type Phase = "idle" | "streaming" | "finalizing" | "done" | "error";
 
+/** What a web search on the topic found (lib/ai/research-prompt.ts). */
+interface ResearchView {
+  queries: string[];
+  brief: string | null;
+  sources: { title: string; url: string; date: string | null }[];
+}
+
 interface Final {
   /** Streamed index → stored idea (account) or the streamed idea itself (demo). */
   byIndex: Map<number, { id: string | null; idea: IdeaView; status: string }>;
   dropped: number;
   charged: number;
+  research: ResearchView | null;
 }
 
 const ERRORS: Record<string, string> = {
@@ -67,6 +75,7 @@ export function Studio({
   models,
   initialModelId,
   voicePosts = null,
+  researchCredits = null,
 }: {
   author: PostAuthor;
   goal: Goal;
@@ -76,6 +85,8 @@ export function Studio({
   initialModelId: string;
   /** Posts the author's Profile DNA was learned from, once there is one. */
   voicePosts?: number | null;
+  /** Typical credits for a topic's web search; null when there's no research (demo, or no model for it). */
+  researchCredits?: number | null;
 }) {
   const router = useRouter();
   const composer = useComposer();
@@ -88,11 +99,14 @@ export function Studio({
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [final, setFinal] = useState<Final | null>(null);
   const [hidden, setHidden] = useState<Set<number>>(new Set());
+  /** The topic being looked up, until the response starts (the search runs before it). */
+  const [searching, setSearching] = useState<string | null>(null);
   const meta = useRef<{ generationId: string | null; demo: boolean }>({ generationId: null, demo: false });
   const results = useRef<HTMLElement>(null);
 
   const model = models.find((x) => x.modelId === modelId) ?? models[0];
-  const estimate = model?.credits[count === "5" ? 5 : 3] ?? 0;
+  const researches = !demo && researchCredits !== null && topic.trim() !== "";
+  const estimate = (model?.credits[count === "5" ? 5 : 3] ?? 0) + (researches ? (researchCredits ?? 0) : 0);
 
   async function finalize(streamed: IdeaView[]) {
     if (meta.current.demo || !meta.current.generationId) {
@@ -100,6 +114,7 @@ export function Studio({
         byIndex: new Map(streamed.map((idea, i) => [i, { id: null, idea, status: "new" }])),
         dropped: 0,
         charged: 0,
+        research: null,
       });
       setPhase("done");
       return;
@@ -113,6 +128,7 @@ export function Studio({
           dropped: number;
           creditsCharged: number;
           error: string | null;
+          research: ResearchView | null;
           suggestions: StoredSuggestion[];
         };
         if (result.status !== "running") {
@@ -125,7 +141,7 @@ export function Studio({
               byIndex.set(i, { id: stored.id, idea: stored, status: stored.status });
             }
           });
-          setFinal({ byIndex, dropped: result.dropped, charged: result.creditsCharged });
+          setFinal({ byIndex, dropped: result.dropped, charged: result.creditsCharged, research: result.research });
           setPhase(result.status === "done" ? "done" : "error");
           if (result.status !== "done") setErrorCode(result.error ?? "failed");
           // Refresh the header balance and Home's plays.
@@ -144,6 +160,7 @@ export function Studio({
     schema: suggestionBatchSchema,
     fetch: async (input, init) => {
       const response = await fetch(input, init);
+      setSearching(null);
       meta.current = {
         generationId: response.headers.get("x-generation-id"),
         demo: response.headers.get("x-threaded-demo") === "1",
@@ -173,6 +190,7 @@ export function Studio({
     setErrorCode(null);
     setFinal(null);
     setHidden(new Set());
+    setSearching(researches ? topic.trim() : null);
     const request: Partial<GenerateRequest> = {
       goal,
       spice,
@@ -242,16 +260,25 @@ export function Studio({
             )}
           </div>
 
-          <label className="block">
-            <span className="mb-1.5 block font-medium text-sm">Topic</span>
-            <input
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              maxLength={120}
-              placeholder="Anything in your niche, or leave blank"
-              className="h-10 w-full rounded-xl border border-border-strong bg-surface-2 px-3 text-sm outline-none placeholder:text-subtle focus-visible:border-accent"
-            />
-          </label>
+          <div>
+            <label className="block">
+              <span className="mb-1.5 block font-medium text-sm">Topic</span>
+              <input
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                maxLength={120}
+                placeholder="Anything in your niche, or leave blank"
+                aria-describedby={!demo && researchCredits !== null ? "topic-hint" : undefined}
+                className="h-10 w-full rounded-xl border border-border-strong bg-surface-2 px-3 text-sm outline-none placeholder:text-subtle focus-visible:border-accent"
+              />
+            </label>
+            {!demo && researchCredits !== null && (
+              <p id="topic-hint" className="mt-1.5 text-subtle text-xs leading-relaxed">
+                Name something specific, like a tool or this week's news, and Threaded checks the web first
+                {byok ? "." : ` (≈${researchCredits} cr).`}
+              </p>
+            )}
+          </div>
 
           <div>
             <span className="mb-1.5 block font-medium text-sm">Tone</span>
@@ -361,7 +388,8 @@ export function Studio({
 
         {phase === "streaming" && streamed.length === 0 && (
           <p className="mb-4 flex items-center gap-2 text-muted text-sm">
-            <LoaderCircle className="size-4 animate-spin" aria-hidden /> Reading your best posts…
+            <LoaderCircle className="size-4 animate-spin" aria-hidden />
+            {searching ? `Checking the web for “${searching}”…` : "Reading your best posts…"}
           </p>
         )}
 
@@ -403,6 +431,8 @@ export function Studio({
           </AnimatePresence>
         </div>
 
+        {final?.research && <ResearchNote research={final.research} />}
+
         {final && final.dropped > 0 && (
           <p className="mt-3 text-subtle text-xs">
             {final.dropped === 1 ? "1 idea was" : `${final.dropped} ideas were`} left out for repeating one of your
@@ -411,6 +441,57 @@ export function Studio({
         )}
       </section>
     </div>
+  );
+}
+
+const hostname = (url: string) => new URL(url).hostname.replace(/^www\./, "");
+
+function sourceDate(date: string | null): string | null {
+  if (!date) return null;
+  const parsed = new Date(date);
+  return Number.isNaN(parsed.getTime())
+    ? date
+    : parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+/** What the batch's web search found, so the ideas can be checked against it. */
+function ResearchNote({ research }: { research: ResearchView }) {
+  const query = research.queries[0];
+  if (!query) return null;
+  if (!research.brief) {
+    return (
+      <p className="mt-4 flex items-start gap-2 text-subtle text-xs">
+        <Globe className="mt-px size-3.5 shrink-0" aria-hidden />
+        Threaded searched the web for “{query}” but found nothing reliable, so these ideas don't assume what it is.
+      </p>
+    );
+  }
+  return (
+    <Card role="region" className="mt-4 p-4" aria-label="From the web">
+      <p className="flex items-center gap-2 font-medium text-sm">
+        <Globe className="size-4 text-accent" aria-hidden /> From a web search for “{query}”
+      </p>
+      <p className="mt-2 text-muted text-sm leading-relaxed">{research.brief}</p>
+      <ul className="mt-3 grid gap-1.5 text-sm">
+        {research.sources.map((source) => (
+          <li key={source.url} className="min-w-0">
+            <a
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="text-accent hover:underline"
+            >
+              {source.title}
+            </a>
+            <span className="text-subtle text-xs">
+              {" "}
+              · {hostname(source.url)}
+              {sourceDate(source.date) ? ` · ${sourceDate(source.date)}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

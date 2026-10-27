@@ -2,12 +2,14 @@ import { FORMAT_LABELS } from "@/lib/analysis/formats";
 import { GOAL_META } from "@/lib/goals";
 import type { GenerationContext } from "./context";
 import { PLAYBOOKS, SPICE_GUIDANCE } from "./playbooks";
+import type { Research } from "./research-prompt";
 import type { GenerateRequest } from "./schemas";
 
 // Versioned so every stored generation records which prompt produced it.
 // v2: the Profile DNA voice guide, labelled and topic-aware exemplars, and facts for the goal.
 // v3: drafts from Threaded that beat the author's usual are pinned among the exemplars.
-export const PROMPT_VERSION = "generate.v3";
+// v4: web research on the topic when it names something specific, and no guessing at unfamiliar names.
+export const PROMPT_VERSION = "generate.v4";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -27,6 +29,7 @@ export function buildInstructions(request: GenerateRequest): string {
     "- Anything that sounds like generic AI writing: 'unlock', 'game-changer', 'delve', em-dash pile-ups, 'Here's the thing'",
     "- Repeating or lightly rewording any of the author's existing posts",
     "- Inventing facts, numbers or experiences that would be dishonest for the author to post",
+    "- Guessing what an unfamiliar name or term is, or claiming the author made or did something with it: if nothing in the context explains it, keep it general",
     "",
     `Tone: ${SPICE_GUIDANCE[request.spice]}`,
     "",
@@ -48,7 +51,21 @@ function topicNote({ matchedTopic, onTopicExemplars }: GenerationContext): strin
     : ` They've written about ${matchedTopic} before, though not among their best posts for this goal.`;
 }
 
-export function buildPrompt(request: GenerateRequest, context: GenerationContext): string {
+/** What a web search on the topic found, for the writer (nothing when no search ran). */
+function researchLines(topic: string, research: Research | null | undefined): string[] {
+  if (!research || research.queries.length === 0) return [];
+  if (!research.brief) {
+    return [`A web search for "${topic}" found nothing reliable, so don't assume what it is.`, ""];
+  }
+  return [
+    `What's happening with "${topic}", from a web search today:`,
+    research.brief,
+    "Use these facts where they serve the goal, from the author's point of view and in their voice. Don't add facts beyond them, and don't claim the author made or did anything they don't say.",
+    "",
+  ];
+}
+
+export function buildPrompt(request: GenerateRequest, context: GenerationContext, research?: Research | null): string {
   const { profile, voice } = context;
   const lines: string[] = [
     `Author: ${profile.name} (@${profile.username})`,
@@ -105,6 +122,8 @@ export function buildPrompt(request: GenerateRequest, context: GenerationContext
     for (const text of context.recent) lines.push(`- """${text}"""`);
     lines.push("");
   }
+
+  if (request.topic) lines.push(...researchLines(request.topic, research));
 
   lines.push(
     `Write ${request.count} new post ideas.`,

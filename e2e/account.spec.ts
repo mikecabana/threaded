@@ -182,6 +182,33 @@ test("switches to the user's own AI key and back", async ({ page }) => {
   await expect(shown(page.getByText(/Your plan ends on/))).toBeVisible();
 });
 
+test("looks up a specific topic on the web before writing, and shows the sources", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/studio");
+  const generate = page.getByRole("button", { name: /Generate/ });
+  await expect(page.getByText("Threaded checks the web first (≈2 cr).")).toBeVisible();
+  const estimate = async () => Number((await generate.textContent())?.match(/≈(\d+) cr/)?.[1]);
+  const before = await estimate();
+  await page.getByLabel("Topic").fill("php2shell");
+  // The estimate now includes a search.
+  await expect(generate).toContainText(`≈${before + 2} cr`);
+  await generate.click();
+  // Scoped to the new batch: the idea saved earlier is listed under Saved ideas too.
+  const ideas = page.getByRole("region", { name: "Ideas", exact: true });
+  await expect(ideas.getByRole("button", { name: "Copy" })).toHaveCount(3, { timeout: 20_000 });
+
+  const found = ideas.getByRole("region", { name: "From the web" });
+  await expect(found).toContainText("From a web search for “php2shell news”");
+  await expect(found).toContainText("security flaw disclosed on 2026-10-20");
+  await expect(found.getByRole("link")).toHaveCount(2);
+  await expect(found.getByRole("link", { name: "php2shell: what happened this week" })).toHaveAttribute(
+    "href",
+    "https://news.example.com/php2shell",
+  );
+  // 2 credits for the ideas and 2 for the search.
+  await expect(balance(page, 2594)).toBeVisible();
+});
+
 test("shows a billing problem across the app until it's dismissed", async ({ page }) => {
   const pool = new Pool({ connectionString: databaseUrl });
   try {

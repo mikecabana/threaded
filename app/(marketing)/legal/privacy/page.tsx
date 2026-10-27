@@ -47,7 +47,8 @@ export default function PrivacyPage() {
           <li>
             <strong>AI providers, through Vercel AI Gateway:</strong> your posts and profile are sent to AI models to
             label your posts (format and topic) and learn your writing voice, and the relevant parts are sent to the
-            model you pick to generate suggestions.
+            model you pick to generate suggestions. When a Studio topic names something specific, a search query written
+            from that topic (never your posts) goes to a web search provider (Perplexity) through the same Gateway.
           </li>
           <li>
             <strong>Infrastructure providers:</strong> hosting (Vercel), database (Neon), caching (Upstash) and email

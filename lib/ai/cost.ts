@@ -43,3 +43,43 @@ export function typicalCredits(entry: CatalogEntry, inputTokens: number, typical
 export function chargeCredits(entry: CatalogEntry, actualCostUsd: number, reserved: number): number {
   return Math.min(reserved, creditsForCost(actualCostUsd, entry.markup, entry.minCredits));
 }
+
+// Web research before a batch (./research.ts): a few thousand tokens on the
+// research model plus the Gateway's search fee. It's charged with the batch,
+// with the research model's markup, and only when a search actually ran.
+
+/** One Gateway web search (Perplexity Search: $5 per 1,000 requests). */
+export const SEARCH_USD = 0.005;
+
+export const RESEARCH_USAGE = {
+  /** Planning figures for the estimate: one search, answered in the same call. */
+  typical: { inputTokens: 3000, outputTokens: 250, searches: 1 },
+  /** The worst case, for the reserve: every search and every step's tokens. */
+  max: { inputTokens: 12_000, outputTokens: 1200, searches: 2 },
+} as const;
+
+/**
+ * Credits for a finished batch: the ideas at the Studio model's price, plus
+ * the research at the research model's markup when a search ran. Never more
+ * than was reserved.
+ */
+export function chargeBatch(input: {
+  entry: CatalogEntry;
+  costUsd: number;
+  research?: { entry: CatalogEntry; costUsd: number; searches: number } | null;
+  reserved: number;
+}): number {
+  const { research } = input;
+  const ideas = creditsForCost(input.costUsd, input.entry.markup, input.entry.minCredits);
+  const searched = research && research.searches > 0 ? creditsForCost(research.costUsd, research.entry.markup, 0) : 0;
+  return Math.min(input.reserved, ideas + searched);
+}
+
+/** Prompt tokens a research brief can add to the batch's prompt. */
+export const RESEARCH_BRIEF_TOKENS = 400;
+
+export function researchCredits(entry: CatalogEntry, which: keyof typeof RESEARCH_USAGE): number {
+  const usage = RESEARCH_USAGE[which];
+  const cost = costUsd(entry, usage.inputTokens, usage.outputTokens) + usage.searches * SEARCH_USD;
+  return creditsForCost(cost, entry.markup, 0);
+}

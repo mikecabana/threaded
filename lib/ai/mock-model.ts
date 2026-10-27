@@ -167,6 +167,56 @@ export function mockDna(prompt: string): DnaOutput {
 }
 
 /**
+ * Web research (./research-prompt.ts), with the Gateway's search run inside
+ * the call as it is for real. Mock rules: a topic of plain lowercase words
+ * ("morning routines") is a broad theme and skips the search; one with "zzz"
+ * finds nothing reliable; one with "fail" makes the provider error.
+ */
+function mockResearch(prompt: string) {
+  const topic = prompt.match(/^Topic: (.+)$/m)?.[1]?.trim() ?? "";
+  if (/fail/i.test(topic)) throw new Error("Mock search failure");
+  if (/^[a-z ]+$/.test(topic) && topic.includes(" ")) return [{ type: "text" as const, text: "SKIP" }];
+  const slug = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const results = /zzz/i.test(topic)
+    ? []
+    : [
+        {
+          title: `${topic}: what happened this week`,
+          url: `https://news.example.com/${slug}`,
+          snippet: `Coverage of ${topic}.`,
+          date: "2026-10-20",
+        },
+        {
+          title: `Explainer: ${topic}`,
+          url: `https://blog.example.org/${slug}-explained`,
+          snippet: `What ${topic} is and why it matters.`,
+          date: "2026-10-21",
+        },
+      ];
+  return [
+    {
+      type: "tool-call" as const,
+      toolCallId: "search-1",
+      toolName: "web_search",
+      input: JSON.stringify({ query: `${topic} news` }),
+      providerExecuted: true,
+    },
+    {
+      type: "tool-result" as const,
+      toolCallId: "search-1",
+      toolName: "web_search",
+      result: { id: "mock-search", results },
+    },
+    {
+      type: "text" as const,
+      text: results.length
+        ? `${topic} is a security flaw disclosed on 2026-10-20 (mock brief). Patches shipped the next day.`
+        : "NOTHING RELIABLE FOUND",
+    },
+  ];
+}
+
+/**
  * `fail` makes the provider error before answering, to test refunds and
  * failure handling.
  */
@@ -185,6 +235,14 @@ export function createMockModel(
       const prompt = promptText(options.prompt as PromptMessage[]);
       record(task, prompt);
       if (fail) throw new Error("Mock provider failure");
+      if (task === "research") {
+        return {
+          content: mockResearch(prompt),
+          finishReason: { unified: "stop", raw: undefined },
+          usage: usage(2500, 120),
+          warnings: [],
+        };
+      }
       const answer =
         task === "dna"
           ? mockDna(prompt)
