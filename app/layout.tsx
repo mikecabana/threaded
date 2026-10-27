@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { ConsentManager } from "@/components/consent/consent-manager";
 import { MotionProvider } from "@/components/motion/motion-provider";
 import { DEFAULT_GOAL } from "@/lib/goals";
+import { indexable, OPEN_GRAPH, siteUrl } from "@/lib/seo";
 import { SITE } from "@/lib/site";
 import { preferencesScript } from "@/lib/theme";
 import "./globals.css";
@@ -17,9 +18,15 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: { default: `${SITE.name}: Threads growth companion`, template: `%s · ${SITE.name}` },
+  // Absolute URLs (canonicals, Open Graph images) resolve against production.
+  metadataBase: siteUrl(),
+  title: { default: SITE.title, template: `%s · ${SITE.name}` },
   description: SITE.description,
   applicationName: SITE.name,
+  openGraph: { ...OPEN_GRAPH, title: SITE.title, description: SITE.description, url: "/" },
+  twitter: { card: "summary_large_image" },
+  // Previews are for us, not search engines.
+  robots: indexable() ? undefined : { index: false, follow: false },
 };
 
 export const viewport: Viewport = {

@@ -1,9 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { BottomTabs, RailNav } from "@/components/app/nav-links";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { TopBar, TopBarSkeleton } from "@/components/app/top-bar";
 import { Logo } from "@/components/brand/logo";
+
+/** Signed-in pages stay out of search results (robots.txt also asks crawlers to skip them). */
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 /**
  * The navigation chrome is static and prerenders into the shell; anything that

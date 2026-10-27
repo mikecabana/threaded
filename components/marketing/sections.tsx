@@ -1,4 +1,16 @@
-import { Check, KeyRound, Link2, Send, Sparkles } from "lucide-react";
+import {
+  BellRing,
+  CalendarClock,
+  ChartLine,
+  Check,
+  ChevronDown,
+  Dna,
+  KeyRound,
+  Link2,
+  Send,
+  Sparkles,
+  Trophy,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { GoalIcon } from "@/components/goal/goal-icon";
 import { Reveal, Stagger, StaggerItem } from "@/components/motion/reveal";
@@ -7,6 +19,7 @@ import { TiltCard } from "@/components/motion/tilt-card";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { GOAL_META, GOALS } from "@/lib/goals";
+import { FAQS } from "@/lib/marketing/faq";
 import { BYOK_PLATFORM_FEE_USD, CREDIT_PACKS, creditsToUsd, TRIAL_CREDITS } from "@/lib/pricing";
 import { DemoButton } from "./demo-button";
 
@@ -60,6 +73,62 @@ export function HowItWorks() {
           </li>
         ))}
       </ol>
+    </section>
+  );
+}
+
+const FEATURES = [
+  {
+    icon: <Dna />,
+    title: "Profile DNA",
+    body: "Your voice, best formats, topics and posting hours, learned from your own Threads posts and backed by your numbers.",
+  },
+  {
+    icon: <ChartLine />,
+    title: "Threads analytics that explain themselves",
+    body: "Views, engagement and follower trends, with what's driving them called out in plain words, not just charts.",
+  },
+  {
+    icon: <Sparkles />,
+    title: "AI post ideas in your voice",
+    body: "Ideas for the goal you pick, each with its reasoning and a goal-fit score. Name a topic and Studio checks the web first.",
+  },
+  {
+    icon: <CalendarClock />,
+    title: "Post now or schedule",
+    body: "Publish to Threads from the app, or schedule for your best time slot. The Queue keeps track of what's going out.",
+  },
+  {
+    icon: <Trophy />,
+    title: "A scorecard for every idea",
+    body: "See how the ideas you posted did against your usual numbers. The winners teach the next batch.",
+  },
+  {
+    icon: <BellRing />,
+    title: "Alerts when it matters",
+    body: "An email if a scheduled post doesn't go out or your Threads connection is about to lapse. Nothing else.",
+  },
+];
+
+export function Features() {
+  return (
+    <section id="features" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
+      <SectionHeading eyebrow="Features" title="Everything you need to grow on Threads">
+        Analytics, ideas and scheduling in one place, all working from what your own audience responds to.
+      </SectionHeading>
+      <Stagger className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {FEATURES.map((feature) => (
+          <StaggerItem key={feature.title}>
+            <Card className="h-full p-6">
+              <span className="flex size-11 items-center justify-center rounded-xl bg-accent/15 text-accent [&_svg]:size-5">
+                {feature.icon}
+              </span>
+              <h3 className="mt-5 font-semibold text-lg">{feature.title}</h3>
+              <p className="mt-2 text-muted leading-relaxed">{feature.body}</p>
+            </Card>
+          </StaggerItem>
+        ))}
+      </Stagger>
     </section>
   );
 }
@@ -156,6 +225,30 @@ export function Pricing() {
           </Card>
         </StaggerItem>
       </Stagger>
+    </section>
+  );
+}
+
+export function Faq() {
+  return (
+    <section id="faq" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
+      <SectionHeading eyebrow="FAQ" title="Questions, answered" />
+      <Reveal className="mx-auto max-w-2xl">
+        <div className="divide-y divide-border border-border border-y">
+          {FAQS.map((faq) => (
+            <details key={faq.question} className="group py-5">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-lg [&::-webkit-details-marker]:hidden">
+                <h3>{faq.question}</h3>
+                <ChevronDown
+                  className="size-5 shrink-0 text-subtle transition-transform group-open:rotate-180"
+                  aria-hidden
+                />
+              </summary>
+              <p className="mt-3 text-muted leading-relaxed">{faq.answer}</p>
+            </details>
+          ))}
+        </div>
+      </Reveal>
     </section>
   );
 }
