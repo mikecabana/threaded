@@ -185,7 +185,12 @@ export function createMockModel(
       const prompt = promptText(options.prompt as PromptMessage[]);
       record(task, prompt);
       if (fail) throw new Error("Mock provider failure");
-      const answer = task === "dna" ? mockDna(prompt) : task === "classify" ? mockTopics(prompt) : { suggestions: [] };
+      const answer =
+        task === "dna"
+          ? mockDna(prompt)
+          : task === "classify"
+            ? mockTopics(prompt)
+            : { suggestions: MOCK_SUGGESTIONS.slice(0, count) };
       return {
         content: [{ type: "text", text: JSON.stringify(answer) }],
         finishReason: { unified: "stop", raw: undefined },
@@ -207,6 +212,36 @@ export function createMockModel(
             { type: "finish", finishReason: { unified: "stop", raw: undefined }, usage: usage(1200, 400) },
           ],
         }),
+      };
+    },
+  });
+}
+
+/**
+ * The evals' judge (lib/evals/eval.ts): grades every numbered idea in the
+ * prompt, a little lower for longer ones, so scores are deterministic.
+ */
+export function createMockJudgeModel(modelId = "mock/judge") {
+  return new MockLanguageModelV4({
+    provider: "mock",
+    modelId,
+    doGenerate: async (options) => {
+      const prompt = promptText(options.prompt as PromptMessage[]);
+      const ideas = [...prompt.matchAll(/^(\d+)\. """([\s\S]*?)"""$/gm)];
+      const answer = {
+        ideas: ideas.map(([, index, text]) => ({
+          index: Number(index),
+          voice: text.length > 200 ? 3 : 4,
+          goalFit: 4,
+          note: "Sounds like them.",
+        })),
+        summary: "A solid batch.",
+      };
+      return {
+        content: [{ type: "text", text: JSON.stringify(answer) }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: usage(2000, 200),
+        warnings: [],
       };
     },
   });

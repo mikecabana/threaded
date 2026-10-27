@@ -178,6 +178,39 @@ logged instead of sent, and everything else works.
 People add an address in **Settings → Email alerts**. It's stored only after they open the
 confirmation link, and each alert goes out once per event (the `email_log` table).
 
+## Admin and evals
+
+**Admin (`/admin`)** has the margin view, the model catalog and workspace lookup. Only staff can
+open it; everyone else gets a 404.
+
+1. Sign in, open **Settings**, and copy your **Threads user ID** from the account card.
+2. In Vercel, add `ADMIN_THREADS_USER_IDS` with that ID to Production (comma-separate several).
+   Setting `users.is_staff` to true for a user works too.
+3. Redeploy, then use the **Admin** card in Settings.
+
+The catalog page lists each AI task with its default model, then the models themselves. A task's
+list holds the models switched on and offered for it, and only Studio lets people pick from it.
+Post labels run on Jev (`CLASSIFIER_MODEL` in `lib/ai/classify-questions.ts`), a decision model
+set in code; the catalog's default for that task names each account's topics and backs Jev up.
+
+Credit adjustments are written to the ledger with the reason and who made them. For a card
+refund, refund the payment in Stripe first, then take the credits back in the workspace's page.
+
+**Evals (`pnpm eval`)** run the demo personas through Studio's prompt and grade the batches
+(`lib/evals/eval.ts`): voice and goal fit from a judge model, and length, repeats and cost
+measured directly. Run them locally with an AI Gateway key before switching a model on or making
+it a default:
+
+```bash
+AI_GATEWAY_API_KEY=… pnpm eval --model anthropic/claude-haiku-5.5,anthropic/claude-sonnet-5.5
+pnpm eval --mock    # the whole harness on stand-in models, no key needed
+```
+
+Options: `--judge <model>` (default: the catalog's best-tier model), `--personas creator,expert,brand`,
+`--goals followers,views,engagement`, `--count 5`. Each model's report is saved to
+`evals/results/` (not committed unless you choose to). A full run is 9 batches per model plus 9
+judge calls, roughly $0.50 on the default models.
+
 ## 5. Before launch
 
 - [ ] Replace `SITE.contactEmail` in `lib/site.ts` with the real support address.

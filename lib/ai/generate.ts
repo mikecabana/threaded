@@ -17,7 +17,7 @@ import { generations, suggestions, threadsProfiles, workspaces } from "@/lib/db/
 import { winningDrafts } from "@/lib/publishing/scorecard";
 import type { AccountIdentity } from "@/lib/session/identity";
 import { buildContext } from "./context";
-import { chargeCredits, costUsd, estimateTokens, maxCredits } from "./cost";
+import { chargeCredits, costUsd, estimateTokens, maxCredits, outputTokenBudget } from "./cost";
 import { type ByokFailure, byokFailure } from "./errors";
 import { isAiConfigured, type ResolvedModel, resolveModel } from "./models";
 import { postProcess } from "./postprocess";
@@ -25,8 +25,6 @@ import { buildInstructions, buildPrompt, PROMPT_VERSION } from "./prompt";
 import { type GenerateRequest, type SuggestionBatch, suggestionBatchSchema } from "./schemas";
 
 export const RATE_LIMIT = { windowMs: 10 * 60_000, max: 10 };
-const OUTPUT_TOKENS_BASE = 300;
-const OUTPUT_TOKENS_PER_IDEA = 350;
 
 const json = (status: number, body: Record<string, unknown>) =>
   Response.json(body, { status, headers: { "cache-control": "no-store" } });
@@ -117,7 +115,7 @@ export async function startGeneration(input: {
   });
   const instructions = buildInstructions(request);
   const prompt = buildPrompt(request, context);
-  const maxOutputTokens = OUTPUT_TOKENS_BASE + OUTPUT_TOKENS_PER_IDEA * request.count;
+  const maxOutputTokens = outputTokenBudget(request.count);
 
   const generationId = randomUUID();
   await db().insert(generations).values({

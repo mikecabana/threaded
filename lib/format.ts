@@ -45,3 +45,11 @@ export function formatDelta(delta: number, kind: "percent" | "points" | "absolut
       return `${sign}${compact.format(abs)}`;
   }
 }
+
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const usdSmall = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 4 });
+
+/** "$12.34"; amounts under a cent keep four decimals ("$0.0042"). */
+export function formatUsd(value: number): string {
+  return Math.abs(value) > 0 && Math.abs(value) < 0.01 ? usdSmall.format(value) : usd.format(value);
+}

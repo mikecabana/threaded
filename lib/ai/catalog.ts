@@ -90,7 +90,8 @@ function fromRow(row: typeof modelCatalog.$inferSelect): CatalogEntry {
     minCredits: row.minCredits,
     inputPrice: row.inputPrice === null ? (seed?.inputPrice ?? 15) : Number(row.inputPrice),
     outputPrice: row.outputPrice === null ? (seed?.outputPrice ?? 75) : Number(row.outputPrice),
-    enabled: row.enabled,
+    // Usable only when it's switched on in /admin and the Gateway still offers it.
+    enabled: row.enabled && row.available,
   };
 }
 
@@ -123,7 +124,7 @@ export function sameTierFallbacks(entries: CatalogEntry[], chosen: CatalogEntry)
   return entries.filter((m) => m.tier === chosen.tier && m.modelId !== chosen.modelId).map((m) => m.modelId);
 }
 
-async function seedCatalog(): Promise<void> {
+export async function seedCatalog(): Promise<void> {
   await db()
     .insert(modelCatalog)
     .values(
@@ -145,8 +146,9 @@ async function seedCatalog(): Promise<void> {
 }
 
 /**
- * Daily: refresh prices from the Gateway and disable catalog models it no
- * longer lists (re-enabling ones that return). Markups are never touched.
+ * Daily: refresh prices from the Gateway and mark catalog models it no longer
+ * lists as unavailable (and ones that return as available again). Whether a
+ * model is switched on, and its markup, are left to /admin.
  */
 export async function syncCatalogFromGateway(
   fetchModels: () => Promise<{ models: { id: string; pricing?: { input: string; output: string } | null }[] }>,
@@ -164,7 +166,7 @@ export async function syncCatalogFromGateway(
     await db()
       .update(modelCatalog)
       .set({
-        enabled: Boolean(model),
+        available: Boolean(model),
         inputPrice: perMillion(model?.pricing?.input) ?? row.inputPrice,
         outputPrice: perMillion(model?.pricing?.output) ?? row.outputPrice,
         syncedAt: new Date(),

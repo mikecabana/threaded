@@ -360,6 +360,46 @@ test("adds an alert email through the emailed link, then gets an email when a po
   await expect(card).not.toContainText("Alerts go to");
 });
 
+test("admin is invisible to everyone but staff, and staff can adjust credits", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/admin");
+  await expect(page.getByRole("heading", { name: "This thread doesn't exist" })).toBeVisible();
+  await page.goto("/settings");
+  await expect(page.getByRole("link", { name: /^Admin/ })).toHaveCount(0);
+
+  const pool = new Pool({ connectionString: databaseUrl });
+  try {
+    await pool.query("update users set is_staff = true where threads_user_id = '9001'");
+    await page.goto("/settings");
+    await page.getByRole("link", { name: /^Admin/ }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Margins" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Summary" })).toContainText("Studio revenue");
+    await expect(page.getByRole("table", { name: "Studio, by model" })).toBeVisible();
+
+    await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Catalog" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Model catalog" })).toBeVisible();
+    await expect(page.getByRole("form", { name: "anthropic/claude-sonnet-5.5" })).toContainText(
+      "Default for Studio ideas",
+    );
+
+    await page.goto("/admin/workspaces?q=mock.user");
+    await page
+      .getByRole("table", { name: /^Results for/ })
+      .getByRole("link")
+      .first()
+      .click();
+    const adjust = page.getByRole("form", { name: "Adjust credits" });
+    await adjust.getByLabel("Credits").fill("50");
+    await adjust.getByLabel("Reason").fill("Goodwill for the e2e test");
+    await adjust.getByRole("button", { name: "Apply" }).click();
+    await expect(adjust.getByRole("status")).toContainText("Done. The balance is now");
+    await expect(page.getByRole("table", { name: "Ledger, latest 50" })).toContainText("Goodwill for the e2e test");
+  } finally {
+    await pool.query("update users set is_staff = false where threads_user_id = '9001'");
+    await pool.end();
+  }
+});
+
 test("the publish sweeper rescues a post whose run was lost", async ({ request }) => {
   expect((await request.get("/api/cron/publish")).status()).toBe(401);
   const pool = new Pool({ connectionString: databaseUrl });

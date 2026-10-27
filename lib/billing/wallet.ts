@@ -40,6 +40,9 @@ export interface Grant {
   kind: "purchase" | "trial" | "adjust";
   /** Idempotency reference: the Checkout Session or invoice id, a hashed Threads id, etc. */
   ref: string;
+  /** For manual adjustments: why, and who. */
+  note?: string;
+  actorUserId?: string;
 }
 
 /**
@@ -56,6 +59,8 @@ export async function grantCredits(grant: Grant, tx?: Tx): Promise<boolean> {
       delta: grant.amount,
       kind: grant.kind,
       ref: grant.ref,
+      note: grant.note,
+      actorUserId: grant.actorUserId,
     })
     .onConflictDoNothing({ target: [creditLedger.kind, creditLedger.ref] })
     .returning({ id: creditLedger.id });
@@ -93,6 +98,48 @@ async function consumeLots(tx: Tx, workspaceId: string, amount: number) {
     left -= take;
   }
   if (left > 0) console.error(`Wallet ${workspaceId}: lots were ${left} credits short of a charge.`);
+}
+
+/**
+ * Takes credits back (a manual adjustment), oldest lots first. Never takes
+ * more than the spendable balance. Returns false if this ref was already
+ * applied, and throws InsufficientCreditsError if the balance is too low.
+ */
+export async function removeCredits(input: {
+  workspaceId: string;
+  amount: number;
+  ref: string;
+  note: string;
+  actorUserId: string;
+}): Promise<boolean> {
+  return db().transaction(async (tx) => {
+    const [wallet] = await tx
+      .select({ balance: wallets.balance })
+      .from(wallets)
+      .where(eq(wallets.workspaceId, input.workspaceId))
+      .for("update");
+    if (!wallet || wallet.balance < input.amount)
+      throw new InsufficientCreditsError(input.amount, wallet?.balance ?? 0);
+    const [ledger] = await tx
+      .insert(creditLedger)
+      .values({
+        workspaceId: input.workspaceId,
+        delta: -input.amount,
+        kind: "adjust",
+        ref: input.ref,
+        note: input.note,
+        actorUserId: input.actorUserId,
+      })
+      .onConflictDoNothing({ target: [creditLedger.kind, creditLedger.ref] })
+      .returning({ id: creditLedger.id });
+    if (!ledger) return false;
+    await consumeLots(tx, input.workspaceId, input.amount);
+    await tx
+      .update(wallets)
+      .set({ balance: sql`${wallets.balance} - ${input.amount}` })
+      .where(eq(wallets.workspaceId, input.workspaceId));
+    return true;
+  });
 }
 
 export async function getBalance(workspaceId: string): Promise<number> {

@@ -33,6 +33,8 @@ const schema = z.object({
   /** Sender for alert emails, on a domain verified in Resend. Defaults to alerts@ the production domain. */
   EMAIL_FROM: optional,
   CRON_SECRET: optional,
+  /** Comma-separated Threads user ids with access to /admin (as well as users.is_staff). */
+  ADMIN_THREADS_USER_IDS: optional,
   DEMO_MODE: z.enum(["0", "1"]).optional(),
   /** Test only: point the Threads client at a mock server (see e2e/mock-meta.mjs). */
   THREADS_GRAPH_URL: z.url().optional(),

@@ -18,6 +18,11 @@ export function costUsd(
   return (input * entry.inputPrice + output * entry.outputPrice) / 1_000_000;
 }
 
+/** Output tokens a batch of `count` ideas may use (also caps what's reserved). */
+export function outputTokenBudget(count: number): number {
+  return 300 + 350 * count;
+}
+
 /** Credits to reserve: the maximum the call could cost. */
 export function maxCredits(entry: CatalogEntry, inputTokens: number, maxOutputTokens: number): number {
   // 20% headroom on the input estimate, since it's a character-count guess.

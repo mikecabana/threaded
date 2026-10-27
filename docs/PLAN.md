@@ -365,14 +365,14 @@ demographics     profile_id, captured_at, breakdown (country|city|age|gender), d
 profile_dna      profile_id, version, data jsonb, model, generated_at
 
 -- AI
-model_catalog    model_id, label, provider, tier, tasks[], default_for[], markup, min_credits, input_price, output_price, enabled, synced_at
+model_catalog    model_id, label, provider, tier, tasks[], default_for[], markup, min_credits, input_price, output_price, enabled (admin), available (Gateway), synced_at
 user_settings    user_id, model_picks jsonb (per task), voice_prefs jsonb (emoji, casing, banned_words, spice_default)
 generations      id, profile_id, goal, model, prompt_version, steer jsonb, usage jsonb, gateway_generation_id, cost_usd, credits_charged, billing_mode, status, dropped, error, created_at
 suggestions      id, generation_id, text, format, hook, rationale, goal_fit, best_slot, status (new|saved|dismissed|scheduled|posted), posted_media_id, perf_vs_baseline
 
 -- billing
 wallets          workspace_id, balance, reserved
-credit_ledger    id, workspace_id, delta, kind, ref, generation_id, created_at   unique(kind, ref)
+credit_ledger    id, workspace_id, delta, kind, ref, generation_id, note, actor_user_id, created_at   unique(kind, ref)
 credit_lots      id, workspace_id, ledger_id, amount, remaining, created_at   ← spent oldest first; never expire
 
 -- publishing & jobs
@@ -750,4 +750,12 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - **Reconnect reminders:** Threads doesn't say whether a profile is private, so from day 60 of a grant the daily sync asks `debug_token` when data access ends (weekly while it's far off) and reminds in the last week. Meta documents `debug_token` for testers' tokens; if it refuses other users', there's no reminder, and the failed-post email still covers a lapsed connection.
 - Tests: the scorecard maths, matching and the summary line; integration tests for matching, scoring, winners, confirming an address, once-only alerts, provider failures, the failed-post, declined-recharge and lapsed-plan emails, and reconnect reminders; end to end, adding an address through the emailed link, and the scorecard on the Queue (demo sample included).
 
-**Next: Phase 2c, part 2:** the evals harness (`pnpm eval`, §11) and the admin margin dashboard (§6).
+**2c, part 2: evals and admin (done):**
+- **Evals** (`pnpm eval`, `lib/evals/eval.ts`): the three demo personas × three goals go through Studio's real context and prompt on the model being evaluated. Length (within 500 characters), repeats (trigram similarity to a past post or another idea) and ideas kept after post-processing are measured; voice and goal fit are graded 1–5 per idea by a judge model shown the author's real posts, and reported 0–100. Cost per batch uses the Gateway's live prices, so models not in the catalog yet can be compared too. Reports go to `evals/results/`; `--mock` runs the harness without a key.
+- **Admin** (`/admin`, staff only: `users.is_staff` or `ADMIN_THREADS_USER_IDS`; a 404 for everyone else, and every action re-checks):
+  - **Margins** over 7, 30 or 90 days: Studio revenue (credits charged) against each generation's Gateway cost, by model and by workspace; the Gateway's spend report for everything on our account, by model and by task tag (so background classification and DNA show up); credits sold, credits outstanding (owed), free credits given, and own-key plans.
+  - **Catalog:** markup (at least 1×), minimum credits, tier, tasks and on/off per model, each task's default, adding a Gateway model (switched off until evaluated), and refreshing prices now. The nightly sync now only marks models available or not; switching them on and off is the admin's.
+  - **Workspaces:** lookup by username, name, id, alert email or Stripe customer, then balance, lots, plan, profiles, people, the ledger and recent generations, and credit adjustments with a reason (written as `adjust` ledger rows with who made them; taking credits back never goes below zero, oldest lots first).
+- Tests: the eval harness on mock models; integration tests for adjustments (idempotent, never below zero, lots in step), margins (with and without the Gateway), catalog rules (defaults can't be switched off, one default per task, sync leaves the switch alone) and lookup; end to end, the 404 for non-staff, then margins, catalog and an adjustment as staff.
+
+**Phase 2 is complete.** Next on the roadmap (§13): Launch, Quebec readiness (French, the Law 25 items, live Stripe Tax, the lawyer's review).
