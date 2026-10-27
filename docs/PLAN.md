@@ -20,7 +20,7 @@ Implementation and UI/UX plan. Working name: **Threaded** (after the repo).
 | Expiry and refunds | Credits, purchased or free, **never expire**. **Not refundable** except where the law requires; failed generations are refunded automatically. |
 | Where is the business, and which currency? | **Quebec, Canada**, with a Canadian Stripe account. Prices stay in **USD** (AI costs are in USD); Stripe shows customers abroad a converted price at checkout. |
 | Sales tax? | **Stripe Tax**: GST/HST for Canada plus QST for Quebec, tax-exclusive prices. |
-| French? | Required for Quebec customers (Bill 96). **Before public launch** as its own phase (§13). Stripe already sends French receipts to French-speaking customers. |
+| French? | Required for Quebec customers (Bill 96). **Pinned until after launch** (Oct 27, 2026), then first on the list (§13); worth raising with the lawyer. Stripe already sends French receipts to French-speaking customers. |
 
 All commercial values live in `lib/pricing.ts`, so marketing, legal and billing stay in sync.
 
@@ -54,7 +54,8 @@ Everything below deploys to Vercel. Versions were current on npm in Oct 2026.
 Base URL: `https://graph.threads.net/v1.0` (still the current version per Meta's changelog; `graph.threads.com` also works since June 2025). Everything below was checked against Meta's developer docs on Oct 21, 2026, through Meta's developer-tools MCP. The one item still marked ⚠ isn't covered by the Threads docs.
 
 **Scopes requested at launch:** `threads_basic`, `threads_manage_insights`, `threads_content_publish`.
-**Added later:** `threads_read_replies` and `threads_manage_replies` (reply analysis), `threads_keyword_search` (trend radar). The app's use case also offers `threads_delete`, `threads_manage_mentions`, `threads_location_tagging`, `threads_share_to_instagram` and **Threads Trending Topics**, a candidate data source for the Phase 3 trend radar.
+**Opt-in:** `threads_keyword_search`, asked for once `THREADS_KEYWORD_SEARCH=1` (Studio's topic research, §5; later the trend radar). Threads refuses a sign-in that asks for a permission the app hasn't added, hence the switch.
+**Added later:** `threads_read_replies` and `threads_manage_replies` (reply analysis). The app's use case also offers `threads_delete`, `threads_manage_mentions`, `threads_location_tagging`, `threads_share_to_instagram` and **Threads Trending Topics**, a candidate data source for the Phase 3 trend radar.
 
 **Read endpoints**
 
@@ -68,6 +69,7 @@ Base URL: `https://graph.threads.net/v1.0` (still the current version per Meta's
 | Posts | `GET /me/threads?fields=id,text,timestamp,media_type,permalink,is_quote_post,topic_tag` with `since`/`until` and `limit` (max 100). Pages by the `after` cursor (the docs only promise cursors; we follow `paging.next` when present). |
 | Post metrics | `GET /{media-id}/insights?metric=views,likes,replies,reposts,quotes,shares` (`views` and `shares` are labelled "in development"; reposts of others return nothing) |
 | Account metrics | `GET /me/threads_insights?metric=views,likes,replies,reposts,quotes,clicks` with `since`/`until`: `views` is a daily series, `clicks` comes per link (`link_total_values`), the rest are totals. No data before **Apr 13, 2024** (we clamp). `followers_count` takes no date range, so it's a separate call. `follower_demographics` needs one `breakdown` (country, city, age or gender) and 100+ followers. |
+| Keyword search | `GET /keyword_search?q&search_type=TOP\|RECENT&search_mode=KEYWORD\|TAG&since&until&limit` (max 100) with `fields=id,text,media_type,permalink,timestamp,username,is_reply`. Public posts, but no engagement numbers for other people's. 2,200 queries per user per rolling 24 hours, across apps (searches that find nothing don't count). Until App Review approves `threads_keyword_search`, it only finds the user's own posts. |
 
 **Publish endpoints**
 
@@ -255,13 +257,15 @@ return result.toTextStreamResponse();
 - Last 20 posts (so suggestions don't repeat them)
 - Timing stats
 - User steer: topic, a "spice" level from 0 to 3, length, emoji on/off, banned words
-- Web research on the topic, when it names something specific (below)
+- Research on the topic: what recent popular Threads posts on it are saying, and the web when it names something specific (below)
 
-**Web research** (`lib/ai/research.ts`): a model only knows what it was trained on, so a topic like a tool released or an exploit disclosed last week gets guessed at from the author's past posts. With a topic, the `research` task's model (the fast tier by default) first decides whether it needs the web: names, products, releases, vulnerabilities, events, news and anything it doesn't recognise do; broad themes ("morning routines") don't. If so, it searches through the Gateway's Perplexity Search tool (5 results, 512 tokens a page, at most two searches) and writes a brief of up to 120 words, facts and dates only. The brief goes into the prompt with rules: use the facts, add none, and don't claim the author made or did anything they don't say. A search that finds nothing tells the writer not to assume what the topic is. Studio shows the brief and its sources under the ideas. It's charged with the batch at the research model's markup, only when a search ran (about 2 credits: a few thousand tokens plus the $0.005 search), and the reserve covers the worst case. A failed search never fails the batch.
+**Threads posts on the topic** (`lib/ai/threads-search.ts`): with keyword search granted, the topic is searched on Threads (top posts, last 14 days, 25 results). Replies and the author's own posts are dropped, and the best 15 go to the research model, each clipped to 300 characters. It sums up, in at most 80 words, the angles people take, the hooks and formats that keep coming up, what's overdone, and one angle nobody has taken; it describes, never quotes. The writer gets that summary with a rule to stand out from those posts and never copy or closely paraphrase them, and post-processing drops ideas too close to them, as it does for the author's own. Their text is only held in memory for the batch: the generation stores the summary and links (username, permalink, date). Studio shows the summary and the links under the ideas. On a broad theme the research call reads the posts without searching the web, and reading them is charged like a search (about 1 credit). A failed or ungranted search leaves the web research as it was.
+
+**Web research** (`lib/ai/research.ts`): a model only knows what it was trained on, so a topic like a tool released or an exploit disclosed last week gets guessed at from the author's past posts. With a topic, the `research` task's model (the fast tier by default) first decides whether it needs the web: names, products, releases, vulnerabilities, events, news and anything it doesn't recognise do; broad themes ("morning routines") don't. If so, it searches through the Gateway's Perplexity Search tool (5 results, 512 tokens a page, at most two searches) and writes a brief of up to 100 words, facts and dates only (the reply's FACTS part; the Threads summary is its THREADS part, `research.v2`). The brief goes into the prompt with rules: use the facts, add none, and don't claim the author made or did anything they don't say. A search that finds nothing tells the writer not to assume what the topic is. Studio shows the brief and its sources under the ideas. It's charged with the batch at the research model's markup, only when a search ran or Threads posts were read (about 2 credits: a few thousand tokens plus the $0.005 search), and the reserve covers the worst case. A failed search never fails the batch.
 
 **Post-processing:**
 - Enforce the limit with `threadsLength()`, trimming or regenerating as needed
-- Drop near-duplicates of past posts (trigram similarity)
+- Drop near-duplicates of past posts and of the Threads posts research read (trigram similarity)
 - Optionally run a `critique` pass that reranks the drafts. It's billed like any other call.
 
 **Prompts are versioned files** (`lib/ai/prompts/generate.v3.ts`). Each generation records `promptVersion`, `model` and `costUsd`.
@@ -621,7 +625,8 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | **0: Setup** | Meta app (Threads use case, testers, callbacks); **submit App Review early for basic + insights + publish**; Vercel + Neon + Upstash + AI Gateway + Stripe (test) + Resend; scaffold, design tokens, motion primitives, demo fixtures; Terms + Privacy pages | Demo account renders the Home shell |
 | **1: MVP** | OAuth + workspaces; initial sync; deterministic stats; goal picker; Studio with streaming; **curated catalog + model picker**; **credits wallet** (trial, Checkout top-ups, reserve/settle, auto-recharge); **BYOK** ($5/month plan); **post now + schedule + Queue**; rate limits | A tester connects, buys credits (test mode), generates, and has a scheduled post publish on time |
 | **2: Intelligence + polish** | LLM classification + Profile DNA, The Read + DNA reveal choreography, Insights page, daily cron (snapshots, token refresh), scorecard, evals harness, **admin margin dashboard**, **series via `reply_to_id`** | Daily loop runs unattended; margins visible per model |
-| **Launch: Quebec readiness** | **Monitoring and consent:** Sentry (with post text and tokens scrubbed), Google Tag Manager behind Consent Mode, and a cookie banner shown where consent is required (Quebec, the EU, the UK and Switzerland, from Cloudflare's or Vercel's location headers), with the Privacy page updated (done). Then **French** (Bill 96): site, app, Terms, Privacy and emails, with `fr-CA` as a first-class locale and AI output in the user's language; the Law 25 privacy items; live Stripe Tax; the lawyer's changes (SETUP.md §5) | Public sign-ups open, and everything a Quebec customer sees exists in French |
+| **Launch: Quebec readiness** | **Monitoring and consent:** Sentry (with post text and tokens scrubbed), Google Tag Manager behind Consent Mode, and a cookie banner shown where consent is required (Quebec, the EU, the UK and Switzerland, from Cloudflare's or Vercel's location headers), with the Privacy page updated (done). Then the Law 25 privacy items; live Stripe Tax; the lawyer's changes (SETUP.md §5) | Public sign-ups open |
+| **After launch: French** | **French** (Bill 96): site, app, Terms, Privacy and emails, with `fr-CA` as a first-class locale and AI output in the user's language. Pinned until after launch (Oct 27, 2026) | Everything a Quebec customer sees exists in French |
 | **3: Grow** | Keyword-search trend radar, reply analysis, A/B variants, opt-in nightly "Today's plays", weekly digest email | |
 | **4: Agencies** | Multiple Threads profiles per workspace, team seats, email/Google login, optional subscription plans | |
 
@@ -650,7 +655,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | Small or new accounts | Cold-start mode: playbook-led suggestions plus a low-confidence chip. Personal stats unlock at 10 or more posts. |
 | Token expiry / private profiles | Daily refresh. Grants on private profiles can't be extended past 90 days, so prompt a reconnect 7 days before. Scheduled posts pre-flight the token and alert early if it's invalid. |
 | Threads API changes | One typed client module, response validation with Zod, and fixtures in contract tests |
-| Quebec rules: French, privacy (Law 25), consumer protection | French before public launch (§13). Law 25 checklist and a lawyer's review of the Terms and the plan (SETUP.md §5). Credits never expire. |
+| Quebec rules: French, privacy (Law 25), consumer protection | French first thing after launch (§13); ask the lawyer about the gap. Law 25 checklist and a lawyer's review of the Terms and the plan (SETUP.md §5). Credits never expire. |
 
 ---
 
@@ -726,7 +731,8 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Meta: verify the app's contact email; submit App Review (screencasts, icon; business verification may be requested)
 - Stripe live mode: check that Tax shows Active, add the GST/HST and QST registrations once you have the numbers, and create the live webhook endpoint
 - A Resend account (Phase 2c emails)
-- Legal review of the Terms and Privacy drafts by a Quebec lawyer, the Law 25 items, and French before public launch
+- Legal review of the Terms and Privacy drafts by a Quebec lawyer, and the Law 25 items (French follows right after launch)
+- Keyword search: add `threads_keyword_search` to the Meta app, set `THREADS_KEYWORD_SEARCH=1`, reconnect, and include it in App Review (SETUP.md §1, step 7)
 
 ## 18. Phase 2 progress
 
@@ -773,4 +779,6 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Privacy: a Cookies section, and Sentry and Google among who we share with.
 - Tests: scrubbing, the location rules and stored choices; end to end, asking first and loading Tag Manager only after a yes, not asking elsewhere and turning cookies off, no banner without a container, and the location rules over HTTP.
 
-**Phase 2 is complete.** Next on the roadmap (§13): Launch, Quebec readiness (monitoring and consent, then French, the Law 25 items, live Stripe Tax, the lawyer's review).
+**Threads posts in Studio research (done):** with a topic, Studio also reads recent popular Threads posts on it (keyword search on the author's connection), and the research model sums up what they're saying and what's missing (§5). Prompt `generate.v5` passes that on with a rule to take a different angle and never copy them; ideas too close to those posts are dropped. Generations store the summary and links to the posts, never their text, and Studio shows both. Sign-in asks for `threads_keyword_search` only once `THREADS_KEYWORD_SEARCH=1`; connections from before show a reconnect link in Studio. Tests: reading the reply's two parts, picking posts (no replies, not the author's, no repeats), the prompt and charging; integration tests for a batch that read posts, a broad theme, a dropped echo, and a failed or ungranted search; end to end, the Threads card and its links.
+
+**Phase 2 is complete.** Next on the roadmap (§13): Launch, Quebec readiness (the Law 25 items, live Stripe Tax, the lawyer's review; monitoring and consent are done). French is pinned until after launch.

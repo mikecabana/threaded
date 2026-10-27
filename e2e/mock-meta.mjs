@@ -121,6 +121,28 @@ const server = createServer(async (req, res) => {
     });
     return json(res, 200, { id });
   }
+  if (url.pathname === "/v1.0/keyword_search") {
+    // Same shape as test/fake-threads.ts: two posts by others, a reply, one of the user's own.
+    const q = url.searchParams.get("q") ?? "";
+    if (/zzz/i.test(q)) return json(res, 200, { data: [] });
+    const post = (id, username, text, daysAgo, isReply = false) => ({
+      id,
+      text,
+      media_type: "TEXT_POST",
+      permalink: `https://www.threads.net/@${username}/post/${id.toUpperCase()}`,
+      timestamp: new Date(Date.now() - daysAgo * DAY_MS).toISOString(),
+      username,
+      is_reply: isReply,
+    });
+    return json(res, 200, {
+      data: [
+        post("kw1", "sec.daily", `${q} broke half the internet this week. Patch before the weekend.`, 1),
+        post("kw2", "ops.notes", `Hot take: ${q} is overblown if you keep your dependencies current.`, 2),
+        post("kw3", "random.dev", "@sec.daily same here, we patched yesterday", 1, true),
+        post("kw4", MOCK_PROFILE.username, `My own thoughts on ${q}`, 3),
+      ],
+    });
+  }
   if (url.pathname === "/v1.0/me/threads_publishing_limit") {
     return json(res, 200, {
       data: [{ quota_usage: published.length, config: { quota_total: 250, quota_duration: 86400 } }],

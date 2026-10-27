@@ -5,8 +5,18 @@ import { ThreadsApiError } from "./errors";
 // Threads OAuth: authorize → short-lived token (1h) → long-lived token (60d),
 // refreshed before it expires. Endpoints checked against Meta's docs (Oct 2026).
 
-/** Requested at sign-in. Read replies and keyword search come in a later phase. */
+/** Requested at sign-in. Read replies come in a later phase. */
 export const THREADS_SCOPES = ["threads_basic", "threads_manage_insights", "threads_content_publish"] as const;
+/** Lets Studio read public posts on a topic (lib/ai/threads-search.ts). */
+export const KEYWORD_SEARCH_SCOPE = "threads_keyword_search";
+
+/**
+ * The scopes sign-in asks for. Keyword search is opt-in (THREADS_KEYWORD_SEARCH):
+ * Threads refuses a sign-in that asks for a permission the app hasn't added.
+ */
+export function signInScopes(keywordSearch: boolean): string[] {
+  return keywordSearch ? [...THREADS_SCOPES, KEYWORD_SEARCH_SCOPE] : [...THREADS_SCOPES];
+}
 
 export function buildAuthorizeUrl(input: {
   appId: string;

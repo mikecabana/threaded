@@ -8,6 +8,7 @@ import { Studio, type StudioModel } from "@/components/studio/studio";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type CatalogEntry, catalogFor, DEFAULT_CATALOG, pickModel } from "@/lib/ai/catalog";
 import { researchCredits, TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS, typicalCredits } from "@/lib/ai/cost";
+import { threadsSearchStatus } from "@/lib/ai/threads-search";
 import { latestDna } from "@/lib/data/intelligence";
 import { getModelPick } from "@/lib/data/settings";
 import { listSuggestions } from "@/lib/data/suggestions";
@@ -27,7 +28,7 @@ function toStudioModel(entry: CatalogEntry): StudioModel {
   };
 }
 
-/** Typical credits for a topic's web search, or null when the catalog has no model for it. */
+/** Typical credits for a topic's research, or null when the catalog has no model for it. */
 async function researchEstimate(): Promise<number | null> {
   const entries = await catalogFor("research");
   return entries.length ? researchCredits(pickModel(entries, "research"), "typical") : null;
@@ -59,6 +60,7 @@ async function StudioContent() {
     : [];
   const dna = account ? await latestDna(account.profile.id) : null;
   const research = account ? await researchEstimate() : null;
+  const threadsSearch = account ? await threadsSearchStatus(account.profile.id) : "off";
 
   const composer = account ? composerConfig(account) : null;
   const content = (
@@ -74,6 +76,7 @@ async function StudioContent() {
         initialModelId={pickModel(entries, "generate", pick).modelId}
         voicePosts={dna?.dna.postsAnalyzed ?? null}
         researchCredits={research}
+        threadsSearch={threadsSearch}
       />
       <SavedIdeas author={viewer.profile} ideas={saved} />
     </>

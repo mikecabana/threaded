@@ -55,39 +55,46 @@ export function chargeCredits(entry: CatalogEntry, actualCostUsd: number, reserv
   return Math.min(reserved, creditsForCost(actualCostUsd, entry.markup, entry.minCredits));
 }
 
-// Web research before a batch (./research.ts): a few thousand tokens on the
-// research model plus the Gateway's search fee. It's charged with the batch,
-// with the research model's markup, and only when a search actually ran.
+// Research before a batch (./research.ts): a few thousand tokens on the
+// research model (Threads posts on the topic, and search results) plus the
+// Gateway's search fee. It's charged with the batch, with the research
+// model's markup, and only when it searched the web or read Threads posts.
 
 /** One Gateway web search (Perplexity Search: $5 per 1,000 requests). */
 export const SEARCH_USD = 0.005;
 
+/** The most a research call writes per step. */
+export const RESEARCH_OUTPUT_TOKENS = 500;
+
 export const RESEARCH_USAGE = {
-  /** Planning figures for the estimate: one search, answered in the same call. */
-  typical: { inputTokens: 3000, outputTokens: 250, searches: 1 },
+  /** Planning figures for the estimate: Threads posts and one search, answered in the same call. */
+  typical: { inputTokens: 4000, outputTokens: 350, searches: 1 },
   /** The worst case, for the reserve: every search and every step's tokens. */
-  max: { inputTokens: 12_000, outputTokens: 1200, searches: 2 },
+  max: { inputTokens: 16_000, outputTokens: 3 * RESEARCH_OUTPUT_TOKENS, searches: 2 },
 } as const;
 
 /**
  * Credits for a finished batch: the ideas at the Studio model's price, plus
- * the research at the research model's markup when a search ran. Never more
- * than was reserved.
+ * the research at the research model's markup when it searched or read
+ * Threads posts (a topic it skipped is free). Never more than was reserved.
  */
 export function chargeBatch(input: {
   entry: CatalogEntry;
   costUsd: number;
-  research?: { entry: CatalogEntry; costUsd: number; searches: number } | null;
+  research?: { entry: CatalogEntry; costUsd: number; searches: number; threadsPosts: number } | null;
   reserved: number;
 }): number {
   const { research } = input;
   const ideas = creditsForCost(input.costUsd, input.entry.markup, input.entry.minCredits);
-  const searched = research && research.searches > 0 ? creditsForCost(research.costUsd, research.entry.markup, 0) : 0;
-  return Math.min(input.reserved, ideas + searched);
+  const researched =
+    research && (research.searches > 0 || research.threadsPosts > 0)
+      ? creditsForCost(research.costUsd, research.entry.markup, 0)
+      : 0;
+  return Math.min(input.reserved, ideas + researched);
 }
 
-/** Prompt tokens a research brief can add to the batch's prompt. */
-export const RESEARCH_BRIEF_TOKENS = 400;
+/** Prompt tokens research can add to the batch's prompt: the brief and the Threads summary. */
+export const RESEARCH_BRIEF_TOKENS = 650;
 
 export function researchCredits(entry: CatalogEntry, which: keyof typeof RESEARCH_USAGE): number {
   const usage = RESEARCH_USAGE[which];

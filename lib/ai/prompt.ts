@@ -9,7 +9,8 @@ import type { GenerateRequest } from "./schemas";
 // v2: the Profile DNA voice guide, labelled and topic-aware exemplars, and facts for the goal.
 // v3: drafts from Threaded that beat the author's usual are pinned among the exemplars.
 // v4: web research on the topic when it names something specific, and no guessing at unfamiliar names.
-export const PROMPT_VERSION = "generate.v4";
+// v5: what recent popular Threads posts on the topic show, and an angle they're missing.
+export const PROMPT_VERSION = "generate.v5";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -53,16 +54,27 @@ function topicNote({ matchedTopic, onTopicExemplars }: GenerationContext): strin
 
 /** What a web search on the topic found, for the writer (nothing when no search ran). */
 function researchLines(topic: string, research: Research | null | undefined): string[] {
-  if (!research || research.queries.length === 0) return [];
-  if (!research.brief) {
-    return [`A web search for "${topic}" found nothing reliable, so don't assume what it is.`, ""];
+  if (!research) return [];
+  const lines: string[] = [];
+  if (research.brief) {
+    lines.push(
+      `What's happening with "${topic}", from a web search today:`,
+      research.brief,
+      "Use these facts where they serve the goal, from the author's point of view and in their voice. Don't add facts beyond them, and don't claim the author made or did anything they don't say.",
+      "",
+    );
+  } else if (research.queries.length > 0) {
+    lines.push(`A web search for "${topic}" found nothing reliable, so don't assume what it is.`, "");
   }
-  return [
-    `What's happening with "${topic}", from a web search today:`,
-    research.brief,
-    "Use these facts where they serve the goal, from the author's point of view and in their voice. Don't add facts beyond them, and don't claim the author made or did anything they don't say.",
-    "",
-  ];
+  if (research.conversation) {
+    lines.push(
+      `What recent popular Threads posts about "${topic}" are saying:`,
+      research.conversation,
+      "Stand out from them: take an angle they're missing, or the author's own experience, and avoid the overdone hooks. Never copy or closely paraphrase their posts.",
+      "",
+    );
+  }
+  return lines;
 }
 
 export function buildPrompt(request: GenerateRequest, context: GenerationContext, research?: Research | null): string {

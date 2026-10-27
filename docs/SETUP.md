@@ -45,18 +45,24 @@ If your machine already has a Chromium build, point Playwright at it with
 
 1. At [developers.facebook.com](https://developers.facebook.com/apps), create an app with the **Threads API** use case.
 2. In the Threads use case, add the permissions `threads_basic`, `threads_manage_insights` and `threads_content_publish`.
-   (`threads_read_replies` and `threads_keyword_search` come later.)
+   (`threads_keyword_search` is step 7; `threads_read_replies` comes later.)
 3. Under the use case's settings, set:
    - **Redirect callback URLs:** `https://<production-host>/api/auth/threads/callback`, plus one fixed dev URL if you sign in locally (an ngrok or cloudflared tunnel). `<production-host>` is your project's `vercel.app` URL until you add a domain (see [Domains and previews](#domains-and-preview-deployments)). Preview deployments don't need entries of their own: they sign in through this one.
    - **Deauthorize callback URL:** `https://<production-host>/api/threads/uninstall`
    - **Data Deletion Requests URL:** `https://<production-host>/api/threads/delete`
 4. Copy the **Threads** app ID and secret (from the Threads use case's settings, not the app's main ID and secret on the Basic settings page) into `THREADS_APP_ID` and `THREADS_APP_SECRET`. Threads tokens and user ids are scoped to that pair.
 5. **Testers:** under App roles, add your own Threads account (and any teammates) as Threads testers. Each tester accepts the invite in the Threads app (Settings → Account → Website permissions → Invites). Until App Review approves the permissions, only testers can connect.
-6. **App Review:** submit all three permissions. You'll need:
+6. **App Review:** submit all three permissions, plus `threads_keyword_search` once it's added (step 7). You'll need:
    - Privacy policy URL: `https://<your-domain>/legal/privacy` (have it reviewed first; see below)
    - An app icon and category
-   - A screencast for each permission. Record the demo flow, then a tester account connecting, the insights screens, and posting where the user **explicitly confirms** the post.
+   - A screencast for each permission. Record the demo flow, then a tester account connecting, the insights screens, and posting where the user **explicitly confirms** the post. For keyword search, show a topic in Studio and the "What people on Threads are saying" card under the ideas.
    - Business verification may be requested.
+7. **Keyword search** (Studio reads recent popular Threads posts on a topic before writing):
+   1. Add `threads_keyword_search` to the use case.
+   2. Then set `THREADS_KEYWORD_SEARCH=1` in Vercel (Production and Preview) and redeploy, so sign-in asks for it. Not before: Threads refuses a sign-in that asks for a permission the app hasn't added.
+   3. Reconnect your account once (Studio shows a "reconnect Threads" link under Topic). Everyone who connected before does the same.
+
+   Until App Review approves it, the search only finds your own posts, which Studio leaves out, so Studio stays on the web alone. Each batch with a topic uses one of the user's 2,200 keyword searches a day.
 
 ## 2. Vercel project
 

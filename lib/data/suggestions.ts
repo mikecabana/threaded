@@ -82,7 +82,15 @@ export async function generationResult(profileId: string, generationId: string) 
     .orderBy(desc(suggestions.goalFit));
   return {
     ...status,
-    research: research ? { queries: research.queries, brief: research.brief, sources: research.sources } : null,
+    research: research
+      ? {
+          queries: research.queries,
+          brief: research.brief,
+          sources: research.sources,
+          conversation: research.conversation ?? null,
+          threads: research.threads ?? [],
+        }
+      : null,
     suggestions: rows.map(toStored),
   };
 }

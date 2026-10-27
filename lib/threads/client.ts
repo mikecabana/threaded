@@ -63,6 +63,17 @@ const insightsSchema = z.object({ data: z.array(metricSchema) });
 
 const idSchema = z.object({ id: z.string() });
 
+const SEARCH_FIELDS = "id,text,media_type,permalink,timestamp,username,is_reply";
+const searchResultSchema = z.object({
+  id: z.string(),
+  text: z.string().nullish(),
+  media_type: z.string().nullish(),
+  permalink: z.string().nullish(),
+  timestamp: z.string().nullish(),
+  username: z.string().nullish(),
+  is_reply: z.boolean().nullish(),
+});
+
 const mediaSchema = z.object({ id: z.string(), permalink: z.string().nullish(), timestamp: z.string().nullish() });
 
 const containerStatusSchema = z.object({
@@ -109,6 +120,16 @@ export interface ContainerStatus {
   errorMessage: string | null;
 }
 
+/** A public post from keyword search. Threads shares no engagement numbers for other people's posts. */
+export interface SearchedPost {
+  id: string;
+  text: string;
+  username: string;
+  permalink: string | null;
+  timestamp: string | null;
+  isReply: boolean;
+}
+
 export interface ThreadsClientOptions {
   accessToken: string;
   fetch?: typeof fetch;
@@ -133,13 +154,14 @@ export function createThreadsClient({
     path: string,
     params: Record<string, string | number | undefined>,
     schema: T,
+    signal?: AbortSignal,
   ): Promise<z.infer<T>> {
     const url = new URL(path.startsWith("http") ? path : `${baseUrl}${path}`);
     for (const [key, value] of Object.entries(params))
       if (value !== undefined) url.searchParams.set(key, String(value));
     if (!url.searchParams.has("access_token")) url.searchParams.set("access_token", accessToken);
 
-    const response = await fetchImpl(url, { method, cache: "no-store" });
+    const response = await fetchImpl(url, { method, cache: "no-store", signal });
     const body: unknown = await response.json().catch(() => null);
     const failure = errorEnvelope.safeParse(body);
     if (!response.ok || failure.success) {
@@ -301,6 +323,47 @@ export function createThreadsClient({
     async getDataAccessExpiry(): Promise<Date | null> {
       const { data } = await call("GET", "/debug_token", { input_token: accessToken }, debugTokenSchema);
       return data.data_access_expires_at ? new Date(data.data_access_expires_at * 1000) : null;
+    },
+
+    /**
+     * Public posts matching a keyword (GET /keyword_search, threads_keyword_search).
+     * TOP is Threads' own popularity ranking. Until Meta approves the permission,
+     * it only finds the user's own posts.
+     */
+    async keywordSearch(input: {
+      query: string;
+      type?: "TOP" | "RECENT";
+      since?: Date;
+      limit?: number;
+      signal?: AbortSignal;
+    }): Promise<SearchedPost[]> {
+      const page = await call(
+        "GET",
+        "/keyword_search",
+        {
+          q: input.query,
+          search_type: input.type ?? "TOP",
+          since: input.since ? Math.floor(input.since.getTime() / 1000) : undefined,
+          limit: input.limit,
+          fields: SEARCH_FIELDS,
+        },
+        pageSchema(searchResultSchema),
+        input.signal,
+      );
+      return page.data.flatMap((p) =>
+        p.text?.trim() && p.username
+          ? [
+              {
+                id: p.id,
+                text: p.text,
+                username: p.username,
+                permalink: p.permalink ?? null,
+                timestamp: p.timestamp ?? null,
+                isReply: p.is_reply ?? false,
+              },
+            ]
+          : [],
+      );
     },
 
     /** Step 2 of publishing. Returns the published media id. */

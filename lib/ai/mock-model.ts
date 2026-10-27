@@ -166,16 +166,28 @@ export function mockDna(prompt: string): DnaOutput {
   };
 }
 
+/** What the mock researcher says about the Threads posts in its prompt, if there are any. */
+function mockThreadsSummary(prompt: string): string | null {
+  const posts = prompt.match(/^\[\d+\] @/gm)?.length ?? 0;
+  return posts
+    ? `${posts} posts (mock summary): most warn people to patch, a few call it overblown. Nobody says what it took to patch.`
+    : null;
+}
+
 /**
- * Web research (./research-prompt.ts), with the Gateway's search run inside
+ * Topic research (./research-prompt.ts), with the Gateway's search run inside
  * the call as it is for real. Mock rules: a topic of plain lowercase words
  * ("morning routines") is a broad theme and skips the search; one with "zzz"
- * finds nothing reliable; one with "fail" makes the provider error.
+ * finds nothing reliable; one with "fail" makes the provider error. Threads
+ * posts in the prompt get a summary.
  */
 function mockResearch(prompt: string) {
   const topic = prompt.match(/^Topic: (.+)$/m)?.[1]?.trim() ?? "";
+  const threads = mockThreadsSummary(prompt);
   if (/fail/i.test(topic)) throw new Error("Mock search failure");
-  if (/^[a-z ]+$/.test(topic) && topic.includes(" ")) return [{ type: "text" as const, text: "SKIP" }];
+  if (/^[a-z ]+$/.test(topic) && topic.includes(" ")) {
+    return [{ type: "text" as const, text: threads ? `THREADS: ${threads}` : "SKIP" }];
+  }
   const slug = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const results = /zzz/i.test(topic)
     ? []
@@ -209,9 +221,16 @@ function mockResearch(prompt: string) {
     },
     {
       type: "text" as const,
-      text: results.length
-        ? `${topic} is a security flaw disclosed on 2026-10-20 (mock brief). Patches shipped the next day.`
-        : "NOTHING RELIABLE FOUND",
+      text: [
+        `FACTS: ${
+          results.length
+            ? `${topic} is a security flaw disclosed on 2026-10-20 (mock brief). Patches shipped the next day.`
+            : "NOTHING RELIABLE FOUND"
+        }`,
+        threads ? `THREADS: ${threads}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
     },
   ];
 }

@@ -4,13 +4,14 @@ import { provisionThreadsAccount } from "@/lib/accounts/provision";
 import { relayOrigin } from "@/lib/auth/oauth-relay";
 import { OAUTH_COOKIE, verifyOAuthState } from "@/lib/auth/oauth-state";
 import { isPreviewOrigin } from "@/lib/deployment";
+import { env } from "@/lib/env";
 import { GOAL_COOKIE } from "@/lib/goals";
 import { startSession } from "@/lib/session/session";
 import { startSync } from "@/lib/sync/trigger";
 import { createThreadsClient } from "@/lib/threads/client";
 import { isThreadsLoginEnabled, threadsAppConfig } from "@/lib/threads/config";
 import { ThreadsApiError } from "@/lib/threads/errors";
-import { exchangeCode, exchangeForLongLived, THREADS_SCOPES } from "@/lib/threads/oauth";
+import { exchangeCode, exchangeForLongLived, signInScopes } from "@/lib/threads/oauth";
 
 function fail(request: NextRequest, reason: "denied" | "state" | "threads" | "unavailable") {
   return NextResponse.redirect(new URL(`/connect?error=${reason}`, request.url));
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
       profile,
       accessToken: long.accessToken,
       expiresAt: long.expiresAt,
-      scopes: THREADS_SCOPES,
+      scopes: signInScopes(env.THREADS_KEYWORD_SEARCH === "1"),
       timezone: state.tz,
     });
     await startSession(account.userId, request.headers.get("user-agent"));

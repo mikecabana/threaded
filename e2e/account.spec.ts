@@ -182,11 +182,11 @@ test("switches to the user's own AI key and back", async ({ page }) => {
   await expect(shown(page.getByText(/Your plan ends on/))).toBeVisible();
 });
 
-test("looks up a specific topic on the web before writing, and shows the sources", async ({ page }) => {
+test("looks up a topic on Threads and the web before writing, and shows what it found", async ({ page }) => {
   await signIn(page);
   await page.goto("/studio");
   const generate = page.getByRole("button", { name: /Generate/ });
-  await expect(page.getByText("Threaded checks the web first (≈2 cr).")).toBeVisible();
+  await expect(page.getByText("Threaded reads what's popular on Threads about it first")).toContainText("(≈2 cr).");
   const estimate = async () => Number((await generate.textContent())?.match(/≈(\d+) cr/)?.[1]);
   const before = await estimate();
   await page.getByLabel("Topic").fill("php2shell");
@@ -197,6 +197,18 @@ test("looks up a specific topic on the web before writing, and shows the sources
   const ideas = page.getByRole("region", { name: "Ideas", exact: true });
   await expect(ideas.getByRole("button", { name: "Copy" })).toHaveCount(3, { timeout: 20_000 });
 
+  // What recent popular posts on Threads are saying, with links to the two by other people.
+  const threads = ideas.getByRole("region", { name: "On Threads" });
+  await expect(threads).toContainText("2 posts (mock summary)");
+  await expect(threads).toContainText("From 2 recent popular posts:");
+  await expect(threads.getByRole("link", { name: /^@sec\.daily/ })).toHaveAttribute(
+    "href",
+    "https://www.threads.net/@sec.daily/post/KW1",
+  );
+  await expect(threads.getByRole("link", { name: /^@ops\.notes/ })).toBeVisible();
+  await expect(threads).not.toContainText("@mock.user");
+  await expect(threads).not.toContainText("@random.dev");
+
   const found = ideas.getByRole("region", { name: "From the web" });
   await expect(found).toContainText("From a web search for “php2shell news”");
   await expect(found).toContainText("security flaw disclosed on 2026-10-20");
@@ -205,7 +217,7 @@ test("looks up a specific topic on the web before writing, and shows the sources
     "href",
     "https://news.example.com/php2shell",
   );
-  // 2 credits for the ideas and 2 for the search.
+  // 2 credits for the ideas and 2 for the research.
   await expect(balance(page, 2594)).toBeVisible();
 });
 

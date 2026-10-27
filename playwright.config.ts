@@ -25,6 +25,8 @@ function appEnv(serverPort: number, overrides: Record<string, string> = {}): Rec
     CRON_SECRET: "test-cron-secret",
     // Studio generates with a deterministic mock model (lib/ai/mock-model.ts).
     AI_MOCK: "1",
+    // Sign-in asks for keyword search, so Studio reads the mock's Threads posts on a topic.
+    THREADS_KEYWORD_SEARCH: "1",
     // Payments and key checks run against e2e/mock-billing.mjs.
     STRIPE_SECRET_KEY: "sk_test_e2e",
     STRIPE_WEBHOOK_SECRET: "whsec_e2e",

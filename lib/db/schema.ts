@@ -32,13 +32,17 @@ export interface ProfileTopics {
   updatedAt: string;
 }
 
-/** A generation's web research: what was searched, the brief, its sources and its cost. */
+/** A generation's topic research: what was searched, the brief and its sources, what Threads is saying, and the cost. */
 export interface StoredResearch {
   version: string;
   model: string;
   queries: string[];
   brief: string | null;
   sources: { title: string; url: string; date: string | null }[];
+  /** What recent popular Threads posts on the topic show (research.v2). */
+  conversation?: string | null;
+  /** The Threads posts read, as links: other people's words aren't stored. */
+  threads?: { username: string; permalink: string | null; date: string | null }[];
   searches: number;
   costUsd: number;
 }
@@ -343,7 +347,7 @@ export const generations = pgTable(
     dropped: integer("dropped").notNull().default(0),
     /** Why a failed generation failed, when the user can act on it (e.g. "byok_key_invalid"). */
     error: text("error"),
-    /** Web research on the topic before writing (lib/ai/research-prompt.ts), with what it cost. */
+    /** Research on the topic before writing (lib/ai/research-prompt.ts), with what it cost. */
     research: jsonb("research").$type<StoredResearch>(),
     createdAt: createdAt(),
   },
