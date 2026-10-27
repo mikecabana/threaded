@@ -65,7 +65,8 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Infrastructure providers:</strong> hosting (Vercel), database (Neon), caching (Upstash) and email
-            (Resend), acting on our instructions.
+            (Resend), acting on our instructions. Vercel may also count visits and measure how fast pages load for us,
+            without cookies.
           </li>
           <li>
             <strong>Stripe</strong> processes payments. We never see or store your full card number.
@@ -76,8 +77,9 @@ export default function PrivacyPage() {
             set not to store your IP address.
           </li>
           <li>
-            <strong>Google</strong>, through Google Tag Manager, measures visits and our ads, only as far as your cookie
-            choices allow.
+            <strong>Google</strong> (Google Tag Manager and Google Analytics) measures visits, and advertising platforms
+            we may use, such as Google Ads and Reddit Ads, measure our ads. They only use cookies as far as your cookie
+            choices allow (see <a href="#cookies">Cookies</a>).
           </li>
           <li>When the law requires it.</li>
         </ul>
@@ -91,12 +93,25 @@ export default function PrivacyPage() {
             saved in your browser. These are always on.
           </li>
           <li>
-            <strong>Optional:</strong> analytics cookies that count visits and show which pages help, and advertising
-            cookies that measure our ads, both from Google through Google Tag Manager. In Quebec, the European Union,
-            the United Kingdom and Switzerland they stay off until you turn them on. Elsewhere they're on by default.
-            You can change your choice at any time, and we keep it in your browser.
+            <strong>Analytics (optional):</strong> Google Analytics, loaded through Google Tag Manager, counts visits
+            and shows which pages help.
+          </li>
+          <li>
+            <strong>Advertising (optional):</strong> if we advertise, platforms such as Google Ads and Reddit Ads
+            measure which ads bring people here and may show you relevant ads.
           </li>
         </ul>
+        <p className="mt-3">
+          In Quebec, the European Union, the United Kingdom and Switzerland, and when we can't tell where you are,
+          optional cookies are off until you turn them on. Google Tag Manager still loads, but until you do, Google's
+          tags set and read no cookies and send only limited signals without identifiers, such as that a page was viewed
+          and your consent choice. Elsewhere optional cookies are on by default. You can change your choice at any time;
+          we keep it in your browser and use it on your next visits.
+        </p>
+        <p className="mt-3">
+          Some measurement doesn't use cookies at all: Vercel's visit and page speed figures, if we turn them on, and
+          the error reports Sentry receives (see above).
+        </p>
         <p className="mt-3">
           <CookieSettingsButton className="text-fg underline underline-offset-2" />
         </p>

@@ -1,8 +1,8 @@
 import { expect, type Page, test } from "@playwright/test";
 
-// The cookie banner and Google Tag Manager (components/consent). The app's
-// answer about the container and the visitor's location is stubbed, and so is
-// Google's script, so no request leaves for Google.
+// The cookie banner and Google Tag Manager (lib/consent, components/consent).
+// The app's answer about the container and the visitor's location is stubbed,
+// and so is Google's script, so no request leaves for Google.
 
 async function stub(page: Page, config: { gtmId: string | null; required: boolean }) {
   const loads: string[] = [];
@@ -22,37 +22,53 @@ const consentCommands = (page: Page) =>
       .filter((args) => args[0] === "consent"),
   );
 
-test("asks first where the law says to, and loads Tag Manager only after a yes", async ({ page }) => {
+const signals = (analytics: boolean, advertising: boolean) => ({
+  analytics_storage: analytics ? "granted" : "denied",
+  ad_storage: advertising ? "granted" : "denied",
+  ad_user_data: advertising ? "granted" : "denied",
+  ad_personalization: advertising ? "granted" : "denied",
+});
+
+const GTM = "https://www.googletagmanager.com/gtm.js?id=GTM-TEST1";
+
+test("where the law asks first, Tag Manager loads with consent denied until the visitor says yes", async ({ page }) => {
   const loads = await stub(page, { gtmId: "GTM-TEST1", required: true });
   await page.goto("/");
+  // Tag Manager starts on arrival, with everything denied by default.
+  await expect.poll(() => loads).toEqual([GTM]);
+  expect(await consentCommands(page)).toEqual([["consent", "default", signals(false, false)]]);
   const banner = page.getByRole("region", { name: "Cookie choices" });
-  await expect(banner).toContainText("Those cookies stay off unless you turn them on.");
+  await expect(banner).toContainText("They stay off unless you turn them on.");
+  // The banner names no tools.
+  await expect(banner).not.toContainText(/Google|Tag Manager|Analytics 4|Sentry|Vercel/);
 
   await banner.getByRole("button", { name: "Decline" }).click();
   await expect(banner).toBeHidden();
+  expect((await consentCommands(page)).at(-1)).toEqual(["consent", "update", signals(false, false)]);
+
+  // Next visit: the saved choice is the default, and nobody asks again.
   await page.reload();
+  await expect.poll(() => loads).toHaveLength(2);
   await expect(page.getByRole("contentinfo")).toBeVisible();
   await expect(banner).toBeHidden();
-  expect(loads).toEqual([]);
+  expect(await consentCommands(page)).toEqual([["consent", "default", signals(false, false)]]);
 
-  // Changing your mind from the footer.
+  // Changing your mind from the footer updates consent and the saved default.
   await page.getByRole("contentinfo").getByRole("button", { name: "Cookie settings" }).click();
   await banner.getByLabel(/Analytics/).check();
   await banner.getByRole("button", { name: "Save choices" }).click();
-  await expect.poll(() => loads).toEqual(["https://www.googletagmanager.com/gtm.js?id=GTM-TEST1"]);
-  expect(await consentCommands(page)).toEqual([
-    [
-      "consent",
-      "default",
-      { analytics_storage: "granted", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" },
-    ],
-  ]);
+  expect((await consentCommands(page)).at(-1)).toEqual(["consent", "update", signals(true, false)]);
+  await page.reload();
+  await expect.poll(() => consentCommands(page)).toEqual([["consent", "default", signals(true, false)]]);
 });
 
-test("doesn't ask elsewhere, and turning cookies off updates consent", async ({ page }) => {
+test("elsewhere consent is granted by default, nobody is asked, and turning cookies off updates it", async ({
+  page,
+}) => {
   const loads = await stub(page, { gtmId: "GTM-TEST1", required: false });
   await page.goto("/");
-  await expect.poll(() => loads).toHaveLength(1);
+  await expect.poll(() => loads).toEqual([GTM]);
+  expect(await consentCommands(page)).toEqual([["consent", "default", signals(true, true)]]);
   await expect(page.getByRole("region", { name: "Cookie choices" })).toBeHidden();
 
   await page.getByRole("contentinfo").getByRole("button", { name: "Cookie settings" }).click();
@@ -61,15 +77,13 @@ test("doesn't ask elsewhere, and turning cookies off updates consent", async ({ 
   await banner.getByLabel(/Analytics/).uncheck();
   await banner.getByLabel(/Advertising/).uncheck();
   await banner.getByRole("button", { name: "Save choices" }).click();
-  const commands = await consentCommands(page);
-  expect(commands.at(-1)).toEqual([
-    "consent",
-    "update",
-    { analytics_storage: "denied", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" },
-  ]);
+  expect((await consentCommands(page)).at(-1)).toEqual(["consent", "update", signals(false, false)]);
+
+  await page.reload();
+  await expect.poll(() => consentCommands(page)).toEqual([["consent", "default", signals(false, false)]]);
 });
 
-test("without a container there's no banner, and Cookie settings explains why", async ({ page }) => {
+test("without a container there's no Tag Manager or banner, and Cookie settings explains why", async ({ page }) => {
   const loads = await stub(page, { gtmId: null, required: true });
   await page.goto("/");
   await expect(page.getByRole("contentinfo")).toBeVisible();

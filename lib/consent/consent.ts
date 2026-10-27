@@ -1,8 +1,10 @@
 // Cookie consent (docs/PLAN.md §13). Threaded's own cookies only keep people
-// signed in, so they need no consent; the optional ones come from Google Tag
-// Manager (analytics and advertising). Where the law asks first (Quebec under
-// Law 25, the EU/EEA, the UK and Switzerland) they stay off until the visitor
-// says yes; elsewhere they're on, and "Cookie settings" turns them off. This
+// signed in, so they need no consent; the optional ones (analytics and
+// advertising) are set by tags in Google Tag Manager, which loads on every
+// page under Google's Consent Mode v2. Where the law asks first (Quebec under
+// Law 25, the EU/EEA, the UK and Switzerland) consent defaults to denied until
+// the visitor says yes; elsewhere it defaults to granted, and "Cookie
+// settings" turns it off. A saved choice is the default on later visits. This
 // module is shared by the server (the region) and the browser (the choice).
 
 // The EU and EEA, then the UK and Switzerland.
@@ -82,3 +84,44 @@ export function saveChoice(storage: Pick<Storage, "setItem"> | undefined, choice
     // Blocked storage: the choice holds for this page, and the banner asks again next time.
   }
 }
+
+/** What the page learns at load: the container, whether to ask first, and any saved choice. */
+export interface ConsentConfig {
+  gtmId: string;
+  required: boolean;
+  stored: ConsentChoice | null;
+}
+
+declare global {
+  interface Window {
+    dataLayer?: unknown[];
+    /** Set by consentBootScript; resolves once consent defaults are in and Tag Manager is loading. */
+    threadedConsent?: Promise<ConsentConfig | null>;
+  }
+}
+
+/**
+ * Runs inline in <head> on every page, before anything else can load tags:
+ * asks /api/consent for the container and whether this visitor's region needs
+ * consent first, sets Consent Mode's defaults (the saved choice if there is
+ * one, else denied where consent is needed and granted elsewhere), then loads
+ * Tag Manager. The banner (components/consent) only ever updates consent.
+ * Mirrors readChoice and consentSignals; consent.test.ts checks they agree.
+ */
+export const consentBootScript = `(function(){
+var w=window,d=document;
+w.dataLayer=w.dataLayer||[];
+function gtag(){w.dataLayer.push(arguments)}
+function signals(c){var ads=c.advertising?"granted":"denied";return{analytics_storage:c.analytics?"granted":"denied",ad_storage:ads,ad_user_data:ads,ad_personalization:ads}}
+var stored=null;
+try{var s=JSON.parse(localStorage.getItem(${JSON.stringify(CONSENT_KEY)})||"null");if(s&&typeof s.analytics==="boolean"&&typeof s.advertising==="boolean")stored={analytics:s.analytics,advertising:s.advertising,at:String(s.at||"")}}catch(e){}
+w.threadedConsent=fetch("/api/consent",{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(c){
+if(!c||!c.gtmId)return null;
+var allowed=!c.required;
+gtag("consent","default",signals(stored||{analytics:allowed,advertising:allowed}));
+gtag("set","ads_data_redaction",true);
+w.dataLayer.push({"gtm.start":Date.now(),event:"gtm.js"});
+var t=d.createElement("script");t.async=true;t.src="https://www.googletagmanager.com/gtm.js?id="+encodeURIComponent(c.gtmId);d.head.appendChild(t);
+return{gtmId:c.gtmId,required:!!c.required,stored:stored};
+}).catch(function(){return null});
+})()`;

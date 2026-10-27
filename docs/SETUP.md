@@ -198,18 +198,26 @@ or session replay.
    organization token with source map upload) too; builds then upload source maps. Without the
    token, builds skip that step.
 
-**Google Tag Manager** loads under Google's Consent Mode v2, and a cookie banner asks first where
-the law says to: Quebec (Law 25), the EU and EEA, the UK and Switzerland. Elsewhere optional cookies
-are on by default, and **Cookie settings** in the footer and on the Privacy page turns them off.
-Where consent is needed, Tag Manager doesn't load at all until the visitor allows analytics or
-advertising.
+**Google Tag Manager** loads on every page under Google's Consent Mode v2 (`consentBootScript` in
+`lib/consent/consent.ts`). Before it loads, consent defaults are set by region: denied where the law
+asks first (Quebec under Law 25, the EU and EEA, the UK and Switzerland, and anywhere the location is
+unknown), granted elsewhere. There, a banner asks; the answer updates consent and is saved in the
+browser, and on later visits the saved choice is the default instead. **Cookie settings** in the
+footer and on the Privacy page reopens the choices. The banner names no tools; the Privacy page does
+(Google Analytics and Tag Manager, Sentry, Vercel, and ad platforms such as Google Ads or Reddit Ads).
 
-1. Create a web container in Tag Manager and set up your tags (Google Analytics 4, ads) inside it.
-   They follow the consent signals (`analytics_storage`, `ad_storage`, `ad_user_data`,
-   `ad_personalization`) on their own.
-2. Add `GTM_ID` (`GTM-…`) in Vercel's Production environment. Without it there's no banner and no
+1. Create a web container in Tag Manager and set up your tags inside it (Google Analytics 4 now,
+   ad platforms later). Google's own tags follow the consent signals (`analytics_storage`,
+   `ad_storage`, `ad_user_data`, `ad_personalization`) on their own. Tags without built-in consent
+   support, such as the Reddit pixel, need **Advanced Settings → Consent Settings → Require
+   additional consent** set to `ad_storage`, or they'd fire regardless. Check them all under
+   Tag Manager's **Consent Overview**.
+2. While consent is denied, Google's tags still send cookieless pings (Consent Mode's "advanced"
+   mode). That's what the Privacy page describes; if your lawyer prefers nothing at all to reach
+   Google before a yes, say so and the loader can wait for the choice in those regions instead.
+3. Add `GTM_ID` (`GTM-…`) in Vercel's Production environment. Without it there's no banner and no
    Tag Manager.
-3. The visitor's location comes from Cloudflare when it's in front (Vercel only sees Cloudflare's
+4. The visitor's location comes from Cloudflare when it's in front (Vercel only sees Cloudflare's
    address then). For the province, turn on **Rules → Settings → Managed Transforms → Add visitor
    location headers** in Cloudflare. Without it, Canadian visitors are asked, since Quebec can't
    be told apart. When the location is unknown, visitors are asked too.
