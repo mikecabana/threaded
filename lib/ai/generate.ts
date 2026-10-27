@@ -33,6 +33,7 @@ import { postProcess } from "./postprocess";
 import { buildInstructions, buildPrompt, PROMPT_VERSION } from "./prompt";
 import { type ResearchRun, researchTopic } from "./research";
 import { type GenerateRequest, type SuggestionBatch, suggestionBatchSchema } from "./schemas";
+import { topicPosts } from "./threads-search";
 
 export const RATE_LIMIT = { windowMs: 10 * 60_000, max: 10 };
 
@@ -56,12 +57,12 @@ function actualCostUsd(resolved: ResolvedModel, reported: number | null, usage: 
   return reported ?? costUsd(resolved.entry, usage?.inputTokens ?? 0, usage?.outputTokens ?? 0);
 }
 
-/** The model for a topic's web research, or null when the catalog has none (the batch goes ahead without it). */
+/** The model for a topic's research, or null when the catalog has none (the batch goes ahead without it). */
 async function researchModel(workspace: typeof workspaces.$inferSelect): Promise<ResolvedModel | null> {
   try {
     return await resolveModel({ task: "research", workspace });
   } catch (error) {
-    console.warn(`Web research skipped: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`Topic research skipped: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
@@ -72,8 +73,10 @@ async function researchModel(workspace: typeof workspaces.$inferSelect): Promise
  * been post-processed, stored and billed, so the client can fetch the final
  * suggestions (with ids) as soon as the stream ends.
  *
- * With a topic, a web search may run first (./research.ts), and its brief
- * goes into the prompt.
+ * With a topic, research runs first (./research.ts): recent popular Threads
+ * posts on it (./threads-search.ts) and, when it names something specific, a
+ * web search. What they show goes into the prompt, and the ideas mustn't
+ * repeat those posts any more than the author's own.
  *
  * Billing: the worst-case cost is reserved up front, and the actual cost is
  * charged only if at least one idea survives. Failures and cancellations are
@@ -173,11 +176,16 @@ export async function startGeneration(input: {
     }
   }
 
-  // Research runs before the stream starts: Studio says it's checking the web until the response arrives.
+  // Research runs before the stream starts: Studio says it's looking the topic up until the response arrives.
+  const theirPosts =
+    researcher && topic
+      ? await topicPosts({ profileId: profile.id, username: profile.username, topic, now, signal: input.signal })
+      : [];
   const run: ResearchRun | null =
     researcher && topic
       ? await researchTopic({
           topic,
+          posts: theirPosts,
           author: {
             username: profile.username,
             biography: profile.biography ?? "",
@@ -200,7 +208,8 @@ export async function startGeneration(input: {
   }
   const prompt = buildPrompt(request, context, run?.research);
 
-  const pastPosts = dataset.posts.map((p) => p.text);
+  // Their posts are only held here, to drop ideas that echo them.
+  const pastPosts = [...dataset.posts.map((p) => p.text), ...theirPosts.map((p) => p.text)];
   let settled = false;
   let markDone!: () => void;
   const done = new Promise<void>((resolve) => {
@@ -235,7 +244,14 @@ export async function startGeneration(input: {
             entry: resolved.entry,
             costUsd: ideasCost,
             research:
-              run && researcher ? { entry: researcher.entry, costUsd: run.costUsd, searches: run.searches } : null,
+              run && researcher
+                ? {
+                    entry: researcher.entry,
+                    costUsd: run.costUsd,
+                    searches: run.searches,
+                    threadsPosts: run.threadsPosts,
+                  }
+                : null,
             reserved: hold.amount,
           })
         : 0;

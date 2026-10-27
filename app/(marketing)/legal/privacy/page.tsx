@@ -14,7 +14,9 @@ export default function PrivacyPage() {
           <li>
             <strong>From Threads, with your permission:</strong> your profile (username, name, bio, picture), your
             posts, and their insights (views, likes, replies, reposts, quotes, shares, follower counts and, where
-            available, audience demographics).
+            available, audience demographics). When you give Studio a topic and have allowed keyword search, we also
+            search public Threads posts on that topic through your connection. We read them only while writing your
+            ideas, and keep links to them, never their text.
           </li>
           <li>
             <strong>From you:</strong> your goal and voice preferences, drafts, saved and scheduled posts, and, if you
@@ -52,6 +54,8 @@ export default function PrivacyPage() {
             label your posts (format and topic) and learn your writing voice, and the relevant parts are sent to the
             model you pick to generate suggestions. When a Studio topic names something specific, a search query written
             from that topic (never your posts) goes to a web search provider (Perplexity) through the same Gateway.
+            Public Threads posts found on your topic go to an AI model through the Gateway to sum up what people are
+            saying.
           </li>
           <li>
             <strong>Infrastructure providers:</strong> hosting (Vercel), database (Neon), caching (Upstash) and email

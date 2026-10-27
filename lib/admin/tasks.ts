@@ -13,10 +13,10 @@ export const TASK_INFO: Record<AiTask, { name: string; billing: "charged" | "on 
     summary: "Writes the ideas in Studio. People can pick any model in this list; the default is preselected.",
   },
   research: {
-    name: "Web research",
+    name: "Topic research",
     billing: "charged",
     summary:
-      "Before Studio writes about a specific or recent topic, searches the web and sums up what it finds. Charged with the batch, only when it searches. Needs a model that can call tools.",
+      "Before Studio writes about a topic, sums up what popular Threads posts on it are saying and, for a specific or recent topic, searches the web. Charged with the batch, only when it searches or reads posts. Needs a model that can call tools.",
   },
   classify: {
     name: "Post labels",

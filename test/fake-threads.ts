@@ -21,6 +21,8 @@ export interface FakeThreadsOptions {
   pageSize?: number;
   /** What /debug_token says about data access (Unix seconds); omit for an error. */
   dataAccessExpiresAt?: number;
+  /** More keyword-search results, after the usual ones. */
+  searchExtra?: { username: string; text: string }[];
   /** Publishing behaviour (see the publishing routes below). */
   publishing?: {
     quotaUsed?: number;
@@ -38,6 +40,30 @@ export interface FakePublished {
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+/**
+ * Keyword search: two posts by other people, a reply, and one of the user's
+ * own (which Studio leaves out). A query with "zzz" finds nothing.
+ */
+export function searchResults(query: string, ownUsername: string) {
+  if (!query || /zzz/i.test(query)) return [];
+  const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+  const post = (id: string, username: string, text: string, ago: number, isReply = false) => ({
+    id,
+    text,
+    media_type: "TEXT_POST",
+    permalink: `https://www.threads.net/@${username}/post/${id.toUpperCase()}`,
+    timestamp: day(ago),
+    username,
+    is_reply: isReply,
+  });
+  return [
+    post("kw1", "sec.daily", `${query} broke half the internet this week. Patch before the weekend.`, 1),
+    post("kw2", "ops.notes", `Hot take: ${query} is overblown if you keep your dependencies current.`, 2),
+    post("kw3", "random.dev", "@sec.daily same here, we patched yesterday", 1, true),
+    post("kw4", ownUsername, `My own thoughts on ${query}`, 3),
+  ];
 }
 
 export function installFakeThreads(options: FakeThreadsOptions) {
@@ -149,6 +175,11 @@ export function installFakeThreads(options: FakeThreadsOptions) {
           { name: "clicks", link_total_values: [{ value: 3, link_url: "https://example.com" }] },
         ],
       });
+    }
+    if (path === "/keyword_search") {
+      const query = url.searchParams.get("q") ?? "";
+      const extra = (options.searchExtra ?? []).map((p, i) => ({ id: `kx${i}`, ...p, is_reply: false }));
+      return json({ data: [...searchResults(query, "maya.builds"), ...extra] });
     }
     const insights = path.match(/^\/([^/]+)\/insights$/);
     if (insights) {

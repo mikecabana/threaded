@@ -3,10 +3,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { provisionThreadsAccount } from "@/lib/accounts/provision";
 import { encryptSecret } from "@/lib/crypto/secrets";
 import { db } from "@/lib/db";
-import { creditLedger, generations, posts, suggestions, wallets, workspaces } from "@/lib/db/schema";
+import { creditLedger, generations, posts, suggestions, threadsTokens, wallets, workspaces } from "@/lib/db/schema";
 import { TRIAL_CREDITS } from "@/lib/pricing";
 import type { AccountIdentity } from "@/lib/session/identity";
+import { KEYWORD_SEARCH_SCOPE } from "@/lib/threads/oauth";
 import { closeDatabase, resetDatabase } from "@/test/db";
+import { installFakeThreads } from "@/test/fake-threads";
 import { RATE_LIMIT, startGeneration } from "./generate";
 import { MOCK_SUGGESTIONS, mockCalls } from "./mock-model";
 import { byokContext } from "./models";
@@ -205,7 +207,7 @@ describe("web research", () => {
     const row = await generation(generationId);
     expect(row.status).toBe("done");
     expect(row.research).toMatchObject({
-      version: "research.v1",
+      version: "research.v2",
       model: "anthropic/claude-haiku-5.5",
       queries: ["php2shell news"],
       searches: 1,
@@ -259,5 +261,107 @@ describe("web research", () => {
     const { generationId } = await run();
     expect((await generation(generationId)).research).toBeNull();
     expect(mockCalls.filter((call) => call.task === "research")).toHaveLength(before);
+  });
+});
+
+describe("Threads posts on the topic", () => {
+  let restore: (() => void) | undefined;
+  let calls: URL[] = [];
+  const lastPrompt = (task: string) => mockCalls.filter((call) => call.task === task).at(-1)?.prompt ?? "";
+  const search = () => calls.filter((url) => url.pathname.endsWith("/keyword_search"));
+  async function grant(scopes: string[]) {
+    await db().update(threadsTokens).set({ scopes }).where(eq(threadsTokens.profileId, identity.profileId));
+  }
+  async function generation(id: string | null) {
+    const [row] = await db()
+      .select()
+      .from(generations)
+      .where(eq(generations.id, id as string));
+    return row;
+  }
+
+  beforeEach(async () => {
+    await grant(["threads_basic", KEYWORD_SEARCH_SCOPE]);
+    ({ restore, calls } = installFakeThreads({ posts: [] }));
+  });
+  afterEach(async () => {
+    restore?.();
+    await grant(["threads_basic"]);
+  });
+
+  it("reads recent top posts by other people, and tells the writer what they're missing", async () => {
+    const { generationId } = await run({ topic: "php2shell" });
+    const [url] = search();
+    expect(url.searchParams.get("q")).toBe("php2shell");
+    expect(url.searchParams.get("search_type")).toBe("TOP");
+    expect(Number(url.searchParams.get("since"))).toBeGreaterThan(Date.now() / 1000 - 15 * 86_400);
+
+    // The researcher read the two posts by other people: not the reply, not the author's own.
+    const researched = lastPrompt("research");
+    expect(researched).toContain("[1] @sec.daily");
+    expect(researched).toContain("[2] @ops.notes");
+    expect(researched).not.toContain("@random.dev");
+    expect(researched).not.toContain("My own thoughts");
+
+    const row = await generation(generationId);
+    expect(row.research).toMatchObject({
+      version: "research.v2",
+      searches: 1,
+      conversation: expect.stringContaining("2 posts (mock summary)"),
+      threads: [
+        { username: "sec.daily", permalink: "https://www.threads.net/@sec.daily/post/KW1" },
+        { username: "ops.notes", permalink: "https://www.threads.net/@ops.notes/post/KW2" },
+      ],
+    });
+    // Their words are read, never stored or passed to the writer.
+    expect(JSON.stringify(row.research)).not.toContain("broke half the internet");
+    expect(lastPrompt("generate")).not.toContain("broke half the internet");
+    expect(lastPrompt("generate")).toContain('What recent popular Threads posts about "php2shell" are saying:');
+    expect(lastPrompt("generate")).toContain("security flaw disclosed on 2026-10-20");
+
+    const { generationResult } = await import("@/lib/data/suggestions");
+    const result = await generationResult(identity.profileId, generationId as string);
+    expect(result?.research?.conversation).toContain("mock summary");
+    expect(result?.research?.threads).toHaveLength(2);
+  });
+
+  it("reads posts on a broad theme too, and charges for reading them", async () => {
+    const { generationId } = await run({ topic: "morning routines" });
+    const row = await generation(generationId);
+    expect(row.research).toMatchObject({ queries: [], brief: null, searches: 0 });
+    expect(row.research?.conversation).toContain("mock summary");
+    expect(lastPrompt("generate")).not.toContain("web search");
+    // Ideas: 2 credits. Research: 2,500 + 120 tokens on the fast tier, ×1.5 → 1 credit.
+    expect(row.creditsCharged).toBe(3);
+  });
+
+  it("drops an idea that repeats a post on Threads", async () => {
+    restore?.();
+    ({ restore, calls } = installFakeThreads({
+      posts: [],
+      searchExtra: [{ username: "fast.copier", text: MOCK_SUGGESTIONS[0].text }],
+    }));
+    const { generationId } = await run({ topic: "php2shell" });
+    const row = await generation(generationId);
+    expect(row.dropped).toBe(1);
+    const kept = await db()
+      .select()
+      .from(suggestions)
+      .where(eq(suggestions.generationId, generationId as string));
+    expect(kept.map((s) => s.text)).not.toContain(MOCK_SUGGESTIONS[0].text);
+  });
+
+  it("goes on with the web alone when Threads search fails or wasn't granted", async () => {
+    restore?.();
+    ({ restore, calls } = installFakeThreads({ posts: [], authFailures: ["/keyword_search"] }));
+    const failed = await generation((await run({ topic: "php2shell" })).generationId);
+    expect(failed).toMatchObject({ status: "done", creditsCharged: 4 });
+    expect(failed.research).toMatchObject({ searches: 1, conversation: null, threads: [] });
+    expect(search()).toHaveLength(1);
+
+    await grant(["threads_basic"]);
+    const ungranted = await generation((await run({ topic: "php2shell" })).generationId);
+    expect(ungranted.research).toMatchObject({ searches: 1, conversation: null, threads: [] });
+    expect(search()).toHaveLength(1);
   });
 });

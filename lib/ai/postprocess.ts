@@ -2,7 +2,8 @@ import { THREADS_MAX_LENGTH, THREADS_MAX_LINKS, threadsLength, threadsLinkCount 
 import type { Suggestion } from "./schemas";
 
 // Model output is a draft: enforce what the schema can't (length, ranges) and
-// drop ideas that repeat the author's own posts or each other.
+// drop ideas that repeat the author's own posts, the Threads posts research
+// read on the topic, or each other.
 
 export type DropReason = "too_long" | "too_many_links" | "duplicate" | "empty";
 

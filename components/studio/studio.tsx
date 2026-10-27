@@ -1,7 +1,7 @@
 "use client";
 
 import { useObject } from "@ai-sdk/react";
-import { Globe, LoaderCircle, Sparkles, Square, TriangleAlert } from "lucide-react";
+import { AtSign, Globe, LoaderCircle, Sparkles, Square, TriangleAlert } from "lucide-react";
 import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,11 +29,13 @@ export interface StudioModel {
 
 type Phase = "idle" | "streaming" | "finalizing" | "done" | "error";
 
-/** What a web search on the topic found (lib/ai/research-prompt.ts). */
+/** What research on the topic found on the web and on Threads (lib/ai/research-prompt.ts). */
 interface ResearchView {
   queries: string[];
   brief: string | null;
   sources: { title: string; url: string; date: string | null }[];
+  conversation: string | null;
+  threads: { username: string; permalink: string | null; date: string | null }[];
 }
 
 interface Final {
@@ -76,6 +78,7 @@ export function Studio({
   initialModelId,
   voicePosts = null,
   researchCredits = null,
+  threadsSearch = "off",
 }: {
   author: PostAuthor;
   goal: Goal;
@@ -85,8 +88,10 @@ export function Studio({
   initialModelId: string;
   /** Posts the author's Profile DNA was learned from, once there is one. */
   voicePosts?: number | null;
-  /** Typical credits for a topic's web search; null when there's no research (demo, or no model for it). */
+  /** Typical credits for a topic's research; null when there's no research (demo, or no model for it). */
   researchCredits?: number | null;
+  /** Whether research also reads Threads posts on the topic, or would after reconnecting (lib/ai/threads-search.ts). */
+  threadsSearch?: "on" | "reconnect" | "off";
 }) {
   const router = useRouter();
   const composer = useComposer();
@@ -274,8 +279,20 @@ export function Studio({
             </label>
             {!demo && researchCredits !== null && (
               <p id="topic-hint" className="mt-1.5 text-subtle text-xs leading-relaxed">
-                Name something specific, like a tool or this week's news, and Threaded checks the web first
+                {threadsSearch === "on"
+                  ? "Threaded reads what's popular on Threads about it first, and checks the web when you name something specific, like a tool or this week's news"
+                  : "Name something specific, like a tool or this week's news, and Threaded checks the web first"}
                 {byok ? "." : ` (≈${researchCredits} cr).`}
+                {threadsSearch === "reconnect" && (
+                  <>
+                    {" "}
+                    To read what's popular on Threads about it too,{" "}
+                    <a href="/api/auth/threads/start" className="text-accent underline underline-offset-2">
+                      reconnect Threads
+                    </a>
+                    .
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -389,7 +406,11 @@ export function Studio({
         {phase === "streaming" && streamed.length === 0 && (
           <p className="mb-4 flex items-center gap-2 text-muted text-sm">
             <LoaderCircle className="size-4 animate-spin" aria-hidden />
-            {searching ? `Checking the web for “${searching}”…` : "Reading your best posts…"}
+            {searching
+              ? threadsSearch === "on"
+                ? `Looking up “${searching}” on Threads and the web…`
+                : `Checking the web for “${searching}”…`
+              : "Reading your best posts…"}
           </p>
         )}
 
@@ -431,12 +452,13 @@ export function Studio({
           </AnimatePresence>
         </div>
 
+        {final?.research && <ThreadsNote research={final.research} />}
         {final?.research && <ResearchNote research={final.research} />}
 
         {final && final.dropped > 0 && (
           <p className="mt-3 text-subtle text-xs">
-            {final.dropped === 1 ? "1 idea was" : `${final.dropped} ideas were`} left out for repeating one of your
-            posts or running too long.
+            {final.dropped === 1 ? "1 idea was" : `${final.dropped} ideas were`} left out for repeating a post (yours or
+            one on Threads) or running too long.
           </p>
         )}
       </section>
@@ -452,6 +474,45 @@ function sourceDate(date: string | null): string | null {
   return Number.isNaN(parsed.getTime())
     ? date
     : parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+/** What popular Threads posts on the topic are saying, with links to the posts it read. */
+function ThreadsNote({ research }: { research: ResearchView }) {
+  if (!research.conversation) return null;
+  return (
+    <Card role="region" className="mt-4 p-4" aria-label="On Threads">
+      <p className="flex items-center gap-2 font-medium text-sm">
+        <AtSign className="size-4 text-accent" aria-hidden /> What people on Threads are saying
+      </p>
+      <p className="mt-2 text-muted text-sm leading-relaxed">{research.conversation}</p>
+      <p className="mt-3 text-subtle text-xs">
+        From{" "}
+        {research.threads.length === 1 ? "1 recent popular post" : `${research.threads.length} recent popular posts`}:
+      </p>
+      <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+        {research.threads.map((post, i) => {
+          const label = `@${post.username}${sourceDate(post.date) ? ` · ${sourceDate(post.date)}` : ""}`;
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a username can appear twice, and a post may have no link
+            <li key={i} className="min-w-0">
+              {post.permalink?.startsWith("https://") ? (
+                <a
+                  href={post.permalink}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="text-accent hover:underline"
+                >
+                  {label}
+                </a>
+              ) : (
+                <span className="text-subtle">{label}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
 }
 
 /** What the batch's web search found, so the ideas can be checked against it. */

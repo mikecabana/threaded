@@ -3,8 +3,9 @@ import { relayState } from "@/lib/auth/oauth-relay";
 import { createOAuthState, OAUTH_COOKIE, OAUTH_COOKIE_MAX_AGE } from "@/lib/auth/oauth-state";
 import { randomToken } from "@/lib/crypto/sign";
 import { isPreviewOrigin } from "@/lib/deployment";
+import { env } from "@/lib/env";
 import { isThreadsLoginEnabled, threadsAppConfig } from "@/lib/threads/config";
-import { buildAuthorizeUrl } from "@/lib/threads/oauth";
+import { buildAuthorizeUrl, signInScopes } from "@/lib/threads/oauth";
 
 /**
  * Starts Threads sign-in: sets the state cookie and sends the browser to Meta.
@@ -23,7 +24,8 @@ export function GET(request: NextRequest) {
   const nonce = randomToken(24);
   const { cookie, state } = createOAuthState(tz, relay ? relayState(nonce, here, appSecret) : nonce);
 
-  const response = NextResponse.redirect(buildAuthorizeUrl({ appId, redirectUri, state }));
+  const scopes = signInScopes(env.THREADS_KEYWORD_SEARCH === "1");
+  const response = NextResponse.redirect(buildAuthorizeUrl({ appId, redirectUri, state, scopes }));
   response.cookies.set(OAUTH_COOKIE, cookie, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

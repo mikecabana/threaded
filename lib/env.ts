@@ -33,6 +33,11 @@ const schema = z.object({
   /** Sender for alert emails, on a domain verified in Resend. Defaults to alerts@ the production domain. */
   EMAIL_FROM: optional,
   CRON_SECRET: optional,
+  /**
+   * "1" asks for threads_keyword_search at sign-in, so Studio can read public posts on a topic.
+   * Add the permission to the Meta app first: Threads refuses sign-ins that ask for one it hasn't.
+   */
+  THREADS_KEYWORD_SEARCH: z.enum(["0", "1", ""]).optional(),
   /** Google Tag Manager container ("GTM-…"). Without it there are no optional cookies and no cookie banner. */
   GTM_ID: z
     .string()
