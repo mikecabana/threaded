@@ -103,6 +103,7 @@ describe("the home page's structured data", () => {
     const cost = FAQS.find((f) => f.question === "How much does it cost?")?.answer ?? "";
     expect(cost).toContain("$1 of free credits");
     expect(cost).toContain("$5, $20 or $50 packs");
+    expect(cost).toContain("$9 a month for 1,200 credits");
     expect(cost).toContain(`$${BYOK_PLATFORM_FEE_USD} monthly platform fee`);
   });
 });

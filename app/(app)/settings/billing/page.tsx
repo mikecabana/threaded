@@ -7,6 +7,7 @@ import { AutoRechargeForm } from "@/components/billing/auto-recharge-form";
 import { BalanceCard } from "@/components/billing/balance-card";
 import { CheckoutBanner } from "@/components/billing/checkout-banner";
 import { CreditPacks } from "@/components/billing/credit-packs";
+import { MonthlyPlanCard } from "@/components/billing/monthly-plan-card";
 import { ManagePlanButton, OwnKeyCard } from "@/components/billing/own-key-card";
 import { Reveal } from "@/components/motion/reveal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +15,7 @@ import { catalogFor, DEFAULT_CATALOG, pickModel } from "@/lib/ai/catalog";
 import { TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS, typicalCredits } from "@/lib/ai/cost";
 import { DEFAULT_AUTO_RECHARGE } from "@/lib/billing/auto-recharge";
 import { isStripeConfigured, savedCard } from "@/lib/billing/stripe";
+import { isLivePlan } from "@/lib/billing/subscription";
 import { billingActivity, billingOverview } from "@/lib/data/billing";
 import { type AccountViewer, requireViewer, type Viewer } from "@/lib/session/viewer";
 
@@ -27,7 +29,7 @@ export default function BillingPage(props: PageProps<"/settings/billing">) {
           <ChevronLeft className="size-4" aria-hidden /> Settings
         </Link>
         <h1 className="mt-2 font-semibold text-2xl tracking-tight sm:text-3xl">Billing</h1>
-        <p className="mt-1 text-muted">Pay as you go with credits, or bring your own AI Gateway key.</p>
+        <p className="mt-1 text-muted">Credits every month, credits as you go, or your own AI Gateway key.</p>
       </Reveal>
       <Suspense fallback={<BillingSkeleton />}>
         <BillingContent searchParams={props.searchParams} />
@@ -57,6 +59,12 @@ async function BillingContent({ searchParams }: { searchParams: PageProps<"/sett
     return (
       <>
         <BalanceCard credits={viewer.credits} mode="credits" batchCredits={perBatch} autoRecharge={null} />
+        <MonthlyPlanCard
+          plan={null}
+          batchCredits={perBatch}
+          formatDate={formatDate}
+          unavailable="This is a demo account. Connect your Threads account to start a plan."
+        />
         <CreditPacks
           batchCredits={perBatch}
           unavailable="This is a demo account. Connect your Threads account to buy credits; new accounts start with 100 free."
@@ -100,7 +108,9 @@ async function AccountBilling({
         mode={overview.mode}
         batchCredits={perBatch}
         autoRecharge={overview.autoRecharge}
+        monthlyPlan={overview.plan?.kind === "monthly" && isLivePlan(overview.plan.status)}
       />
+      <MonthlyPlanCard plan={overview.plan} batchCredits={perBatch} formatDate={formatDate} unavailable={unavailable} />
       <CreditPacks
         batchCredits={perBatch}
         unavailable={unavailable}

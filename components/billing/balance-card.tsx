@@ -10,9 +10,12 @@ export function BalanceCard({
   mode,
   batchCredits,
   autoRecharge,
+  monthlyPlan = false,
 }: {
   credits: number;
   mode: "credits" | "byok";
+  /** Credits come from the Monthly plan, not only packs. */
+  monthlyPlan?: boolean;
   /** Typical credits for a batch of three ideas on the default model. */
   batchCredits: number;
   autoRecharge: AutoRechargeSettings | null;
@@ -42,6 +45,8 @@ export function BalanceCard({
         <div className="flex flex-col items-start gap-2 text-sm sm:items-end">
           {mode === "byok" ? (
             <Badge variant="accent">Running on your own key</Badge>
+          ) : monthlyPlan ? (
+            <Badge variant="accent">Monthly plan</Badge>
           ) : (
             <Badge variant="outline">Pay as you go</Badge>
           )}

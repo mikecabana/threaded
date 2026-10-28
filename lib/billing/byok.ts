@@ -5,7 +5,7 @@ import { byokContext, gatewayWithKey } from "@/lib/ai/models";
 import { decryptSecret, encryptSecret } from "@/lib/crypto/secrets";
 import { db } from "@/lib/db";
 import { workspaces } from "@/lib/db/schema";
-import { isLivePlan, setPlanCancellation } from "./subscription";
+import { isLivePlan, runningPlan, setPlanCancellation } from "./subscription";
 
 // Bring your own Vercel AI Gateway key (docs/PLAN.md §6). The key is checked
 // against the Gateway, stored encrypted (bound to the workspace), and only
@@ -38,14 +38,27 @@ export async function savedKeyBalance(workspaceId: string): Promise<number | nul
 /**
  * Saves a checked key. If the plan is already live (or was set to end), the
  * workspace switches to the key right away; otherwise it needs the plan first.
+ * With the Monthly plan running, nothing is saved: one plan at a time.
  */
-export async function storeByokKey(workspaceId: string, apiKey: string): Promise<"active" | "needs_plan"> {
+export async function storeByokKey(
+  workspaceId: string,
+  apiKey: string,
+): Promise<"active" | "needs_plan" | "monthly_plan"> {
+  if ((await runningPlan(workspaceId))?.kind === "monthly") return "monthly_plan";
   const [workspace] = await db()
     .update(workspaces)
     .set({ byokKeyEnc: encryptSecret(apiKey, byokContext(workspaceId)), byokKeyLast4: apiKey.slice(-4) })
     .where(eq(workspaces.id, workspaceId))
-    .returning({ subscriptionId: workspaces.stripeSubscriptionId, status: workspaces.subscriptionStatus });
-  if (!workspace?.subscriptionId || !isLivePlan(workspace.status)) return "needs_plan";
+    .returning({
+      subscriptionId: workspaces.stripeSubscriptionId,
+      status: workspaces.subscriptionStatus,
+      kind: workspaces.planKind,
+    });
+  // A Monthly plan winding down isn't the own-key plan: resuming it here would
+  // keep the Monthly plan going. The own-key plan starts fresh instead.
+  if (!workspace?.subscriptionId || !isLivePlan(workspace.status) || workspace.kind === "monthly") {
+    return "needs_plan";
+  }
   await setPlanCancellation(workspace.subscriptionId, false);
   return "active";
 }
@@ -56,8 +69,13 @@ export async function switchToCredits(workspaceId: string): Promise<void> {
     .update(workspaces)
     .set({ billingMode: "credits", byokKeyEnc: null, byokKeyLast4: null })
     .where(eq(workspaces.id, workspaceId))
-    .returning({ subscriptionId: workspaces.stripeSubscriptionId, status: workspaces.subscriptionStatus });
-  if (workspace?.subscriptionId && isLivePlan(workspace.status)) {
+    .returning({
+      subscriptionId: workspaces.stripeSubscriptionId,
+      status: workspaces.subscriptionStatus,
+      kind: workspaces.planKind,
+    });
+  // Only the own-key plan ends here; a Monthly plan isn't this switch's to cancel.
+  if (workspace?.subscriptionId && isLivePlan(workspace.status) && workspace.kind !== "monthly") {
     await setPlanCancellation(workspace.subscriptionId, true);
   }
 }

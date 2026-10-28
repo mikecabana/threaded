@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/marketing/legal-page";
-import { BYOK_PLATFORM_FEE_USD, TRIAL_CREDITS } from "@/lib/pricing";
+import { BYOK_PLATFORM_FEE_USD, MONTHLY_PLAN, TRIAL_CREDITS } from "@/lib/pricing";
 import { pageMetadata } from "@/lib/seo";
 import { SITE } from "@/lib/site";
 
@@ -52,6 +52,11 @@ export default function TermsPage() {
           </li>
           <li>New accounts receive {TRIAL_CREDITS} free trial credits, once per Threads account.</li>
           <li>Credits, purchased or free, never expire.</li>
+          <li>
+            The Monthly plan costs ${MONTHLY_PLAN.usd} per month, billed in advance, and renews each month until you
+            cancel it. Each successful payment adds {MONTHLY_PLAN.credits.toLocaleString("en-US")} credits. You can
+            cancel any time: the plan runs to the end of the period you paid for, and the credits you have stay.
+          </li>
           <li>
             Credits aren't refundable or exchangeable for cash, except where the law requires otherwise. If a generation
             fails on our side, its credits are returned automatically.

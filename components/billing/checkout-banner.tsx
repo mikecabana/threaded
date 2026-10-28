@@ -7,6 +7,15 @@ const MESSAGES: Record<string, { tone: "good" | "wait" | "bad"; text: string }> 
   "byok:fulfilled": { tone: "good", text: "Your plan is active and Threaded now runs on your own key." },
   "byok:pending": { tone: "wait", text: "Your plan is being set up. It switches on in a moment." },
   "card:fulfilled": { tone: "good", text: "Card saved. Auto-recharge is on." },
+  "monthly:fulfilled": {
+    tone: "good",
+    text: "You're on the Monthly plan, and this month's credits are in your balance.",
+  },
+  "monthly:pending": { tone: "wait", text: "Your plan is being set up. Its credits arrive in a moment." },
+  plan_conflict: {
+    tone: "bad",
+    text: "One plan at a time. Switch back to credits from your own key, or cancel the Monthly plan, first.",
+  },
   "card:pending": { tone: "wait", text: "Saving your card. Auto-recharge switches on in a moment." },
   canceled: { tone: "wait", text: "Checkout canceled. You weren't charged." },
   unavailable: { tone: "bad", text: "Payments aren't set up on this deployment yet." },

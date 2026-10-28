@@ -1,5 +1,6 @@
 import "server-only";
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
+import { MONTHLY_PLAN_NOTE, type PlanKind } from "@/lib/billing/subscription";
 import { db } from "@/lib/db";
 import {
   type AutoRechargeSettings,
@@ -19,7 +20,7 @@ export interface BillingOverview {
   autoRecharge: AutoRechargeSettings | null;
   customerId: string | null;
   keyLast4: string | null;
-  plan: { status: string; periodEnd: Date | null; cancelAtPeriodEnd: boolean } | null;
+  plan: { kind: PlanKind; status: string; periodEnd: Date | null; cancelAtPeriodEnd: boolean } | null;
   notice: BillingNotice | null;
 }
 
@@ -41,6 +42,7 @@ export async function billingOverview(workspaceId: string): Promise<BillingOverv
     keyLast4: workspace.byokKeyLast4,
     plan: workspace.subscriptionStatus
       ? {
+          kind: workspace.planKind ?? "own_key",
           status: workspace.subscriptionStatus,
           periodEnd: workspace.subscriptionPeriodEnd,
           cancelAtPeriodEnd: workspace.subscriptionCancelAtPeriodEnd,
@@ -53,7 +55,7 @@ export async function billingOverview(workspaceId: string): Promise<BillingOverv
 export interface ActivityItem {
   id: string;
   at: Date;
-  kind: "purchase" | "auto_recharge" | "trial" | "usage" | "adjust" | "refund";
+  kind: "purchase" | "auto_recharge" | "monthly_plan" | "trial" | "usage" | "adjust" | "refund";
   label: string;
   /** Signed change to the balance. */
   credits: number;
@@ -62,6 +64,7 @@ export interface ActivityItem {
 const LEDGER_LABELS = {
   purchase: "Bought credits",
   auto_recharge: "Auto-recharge",
+  monthly_plan: "Monthly plan",
   trial: "Free trial",
   adjust: "Adjustment",
   refund: "Refund",
@@ -75,6 +78,7 @@ export async function billingActivity(workspaceId: string, limit = 20): Promise<
       at: creditLedger.createdAt,
       kind: creditLedger.kind,
       ref: creditLedger.ref,
+      note: creditLedger.note,
       delta: creditLedger.delta,
     })
     .from(creditLedger)
@@ -102,8 +106,13 @@ export async function billingActivity(workspaceId: string, limit = 20): Promise<
 
   const items: ActivityItem[] = [
     ...ledger.map((row) => {
-      // Auto-recharges are paid by invoice (in_…); Checkout top-ups by session (cs_…).
-      const kind = row.kind === "purchase" && row.ref.startsWith("in_") ? "auto_recharge" : row.kind;
+      // The Monthly plan's credits carry a note; auto-recharges are paid by invoice (in_…); Checkout top-ups by session (cs_…).
+      const kind =
+        row.kind === "purchase" && row.note === MONTHLY_PLAN_NOTE
+          ? "monthly_plan"
+          : row.kind === "purchase" && row.ref.startsWith("in_")
+            ? "auto_recharge"
+            : row.kind;
       const known = kind as keyof typeof LEDGER_LABELS;
       return { id: row.id, at: row.at, kind: known, label: LEDGER_LABELS[known], credits: row.delta };
     }),

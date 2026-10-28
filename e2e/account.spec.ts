@@ -222,6 +222,44 @@ test("looks up a topic on Threads and the web before writing, and shows what it 
   await expect(balance(page, 2794)).toBeVisible();
 });
 
+test("the Monthly plan adds its credits every month until it's cancelled", async ({ page, request }) => {
+  await signIn(page);
+  await page.goto("/settings/billing");
+  const monthly = page.getByRole("region", { name: "Monthly plan" });
+  await expect(monthly).toContainText("Best value");
+  await monthly.getByRole("button", { name: "Start the Monthly plan" }).click();
+  await expect(page).toHaveURL(/localhost:3998\/pay\//);
+  await page.getByRole("button", { name: "Subscribe $9.00" }).click();
+  await expect(
+    shown(page.getByText("You're on the Monthly plan, and this month's credits are in your balance.")),
+  ).toBeVisible();
+  await expect(balance(page, 3994)).toBeVisible();
+  await expect(monthly).toContainText("Your plan");
+  await expect(monthly).toContainText(/Your next 1,200 credits come on/);
+  await expect(shown(page.getByLabel("Credit activity"))).toContainText("Monthly plan");
+  // One plan at a time: the own-key card points to the Monthly plan instead of taking a key.
+  await expect(shown(page.getByText(/You're on the Monthly plan\. To use your own key instead/))).toBeVisible();
+
+  // Next month's invoice arrives by webhook, and so do its credits.
+  const pool = new Pool({ connectionString: databaseUrl });
+  let subscriptionId: string;
+  try {
+    const { rows } = await pool.query(`select stripe_subscription_id from workspaces where name = '@mock.user'`);
+    subscriptionId = rows[0].stripe_subscription_id;
+  } finally {
+    await pool.end();
+  }
+  expect((await request.post(`http://localhost:3998/__control/subscriptions/${subscriptionId}/renew`)).ok()).toBe(true);
+  await page.reload();
+  await expect(balance(page, 5194)).toBeVisible();
+
+  await monthly.getByRole("button", { name: "Cancel plan" }).click();
+  await expect(monthly).toContainText(/Your plan ends on .+\. The credits you have stay\./);
+  await monthly.getByRole("button", { name: "Keep my plan" }).click();
+  await expect(monthly.getByRole("button", { name: "Cancel plan" })).toBeVisible();
+  await expect(balance(page, 5194)).toBeVisible();
+});
+
 test("voice settings set Studio's default tone and leave out ideas that break them", async ({ page }) => {
   await signIn(page);
   await page.goto("/settings");
