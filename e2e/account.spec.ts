@@ -1,4 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -508,6 +509,73 @@ test("the daily cron refreshes connected profiles", async ({ request }) => {
         { timeout: 30_000 },
       )
       .toBe("succeeded");
+  } finally {
+    await pool.end();
+  }
+});
+
+test("downloads everything kept about the account from Settings", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/settings");
+  const card = page.locator("#data");
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    card.getByRole("link", { name: "Download" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^threaded-mock\.user-\d{4}-\d{2}-\d{2}\.json$/);
+  const data = JSON.parse(await readFile(await download.path(), "utf8"));
+  expect(data).toMatchObject({
+    format: "threaded-export.v1",
+    account: { threadsUserId: "9001", username: "mock.user" },
+  });
+  expect(data.posts.length).toBeGreaterThan(0);
+  expect(data.studio.length).toBeGreaterThan(0);
+  expect(JSON.stringify(data)).not.toMatch(/access_?token/i);
+});
+
+test("disconnects Threads but keeps the data, until the next sign-in", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/settings");
+  const card = page.locator("#data");
+  await card.getByRole("button", { name: "Disconnect Threads" }).click();
+  await card.getByRole("button", { name: "Yes, disconnect" }).click();
+  await expect(shown(page.getByText("Disconnected", { exact: true }))).toBeVisible();
+  await expect(card.getByRole("button", { name: "Disconnect Threads" })).toHaveCount(0);
+
+  // Signing in with Threads again reconnects, with the data where it was.
+  await signIn(page);
+  await page.goto("/settings");
+  await expect(page.locator("#data").getByRole("button", { name: "Disconnect Threads" })).toBeVisible();
+  await page.goto("/home");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Mock");
+});
+
+test("deletes the account once the username is typed", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/settings");
+  const card = page.locator("#data");
+  await card.getByRole("button", { name: "Delete account…" }).click();
+  const form = card.getByRole("form", { name: "Delete your account" });
+  await expect(form).toContainText("This can't be undone.");
+  await expect(form).toContainText("Your Threads posts, insights, Profile DNA, ideas and scheduled posts are deleted");
+
+  await form.getByLabel(/to confirm/).fill("someone.else");
+  await form.getByRole("button", { name: "Delete my account" }).click();
+  await expect(form.getByRole("alert")).toHaveText("Type your username, @mock.user, to confirm.");
+
+  await form.getByLabel(/to confirm/).fill("@mock.user");
+  await form.getByRole("button", { name: "Delete my account" }).click();
+  await expect(page).toHaveURL(/\/data-deletion\?code=/);
+  await expect(shown(page.getByText("Your data has been deleted."))).toBeVisible();
+
+  // Signed out, and nothing that names the person is left.
+  await page.goto("/home");
+  await expect(page).toHaveURL("/");
+  const pool = new Pool({ connectionString: databaseUrl });
+  try {
+    expect((await pool.query("select id from users where threads_user_id = '9001'")).rows).toHaveLength(0);
+    expect((await pool.query("select id from threads_profiles where id = '9001'")).rows).toHaveLength(0);
+    expect((await pool.query("select id from workspaces where name = '@mock.user'")).rows).toHaveLength(0);
   } finally {
     await pool.end();
   }

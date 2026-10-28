@@ -160,21 +160,50 @@ export async function disconnectThreadsProfile(threadsUserId: string): Promise<v
   await db().delete(threadsTokens).where(eq(threadsTokens.profileId, threadsUserId));
 }
 
+/** What a workspace keeps once its last profile is deleted: the ledger and Stripe ids, for accounting. */
+export const DELETED_WORKSPACE_NAME = "Deleted account";
+
 /**
- * Meta data-deletion callback (and "delete my data" in Settings): removes the
- * profile and everything synced from it, the user and their sessions.
- * Workspaces and ledger rows stay for accounting, with no Threads identifiers.
+ * Meta data-deletion callback, and "Delete account" in Settings: removes the
+ * profile and everything synced from it, the user and their sessions. The
+ * workspace, its wallet and ledger rows stay for accounting, renamed and
+ * stripped of the AI key, auto-recharge and anything else that identifies
+ * the person.
  */
 export async function deleteThreadsData(threadsUserId: string, confirmationCode: string): Promise<void> {
   await db().transaction(async (tx) => {
     await tx.insert(deletionRequests).values({ confirmationCode, threadsUserIdHash: sha256(threadsUserId) });
     const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.threadsUserId, threadsUserId));
     // Cascades to tokens, posts, metrics, features, daily rows, DNA, generations and schedules.
-    await tx.delete(threadsProfiles).where(eq(threadsProfiles.id, threadsUserId));
+    const [profile] = await tx
+      .delete(threadsProfiles)
+      .where(eq(threadsProfiles.id, threadsUserId))
+      .returning({ workspaceId: threadsProfiles.workspaceId });
     if (user) {
       await tx.delete(sessions).where(eq(sessions.userId, user.id));
-      // Cascades to memberships and settings.
+      // Cascades to memberships, settings and the email log.
       await tx.delete(users).where(eq(users.id, user.id));
+    }
+    if (profile) {
+      const [other] = await tx
+        .select({ id: threadsProfiles.id })
+        .from(threadsProfiles)
+        .where(eq(threadsProfiles.workspaceId, profile.workspaceId))
+        .limit(1);
+      if (!other) {
+        await tx
+          .update(workspaces)
+          .set({
+            name: DELETED_WORKSPACE_NAME,
+            billingMode: "credits",
+            byokKeyEnc: null,
+            byokKeyLast4: null,
+            autoRecharge: null,
+            autoRechargePendingAt: null,
+            billingNotice: null,
+          })
+          .where(eq(workspaces.id, profile.workspaceId));
+      }
     }
     await tx
       .update(deletionRequests)
