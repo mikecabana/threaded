@@ -1,6 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import type { AiTask } from "@/lib/ai/catalog";
+import type { VoicePrefs } from "@/lib/ai/voice";
 import { db } from "@/lib/db";
 import { userSettings } from "@/lib/db/schema";
 
@@ -11,4 +12,13 @@ export async function getModelPick(userId: string, task: AiTask): Promise<string
     .from(userSettings)
     .where(eq(userSettings.userId, userId));
   return row?.modelPicks?.[task] ?? null;
+}
+
+/** The user's voice settings (Settings → Voice); empty when they haven't set any. */
+export async function getVoicePrefs(userId: string): Promise<VoicePrefs> {
+  const [row] = await db()
+    .select({ voicePrefs: userSettings.voicePrefs })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId));
+  return row?.voicePrefs ?? {};
 }

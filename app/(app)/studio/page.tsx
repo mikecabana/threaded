@@ -10,7 +10,7 @@ import { type CatalogEntry, catalogFor, DEFAULT_CATALOG, pickModel } from "@/lib
 import { researchCredits, TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS, typicalCredits } from "@/lib/ai/cost";
 import { threadsSearchStatus } from "@/lib/ai/threads-search";
 import { latestDna } from "@/lib/data/intelligence";
-import { getModelPick } from "@/lib/data/settings";
+import { getModelPick, getVoicePrefs } from "@/lib/data/settings";
 import { listSuggestions } from "@/lib/data/suggestions";
 import { requireViewer } from "@/lib/session/viewer";
 
@@ -55,6 +55,7 @@ async function StudioContent() {
     ? await catalogFor("generate")
     : DEFAULT_CATALOG.filter((m) => m.enabled && m.tasks.includes("generate"));
   const pick = account ? await getModelPick(account.userId, "generate") : null;
+  const voice = account ? await getVoicePrefs(account.userId) : null;
   const saved = account
     ? await listSuggestions(account.profile.id, { statuses: ["saved"], sinceDays: 90, limit: 20 })
     : [];
@@ -75,6 +76,7 @@ async function StudioContent() {
         models={entries.map(toStudioModel)}
         initialModelId={pickModel(entries, "generate", pick).modelId}
         voicePosts={dna?.dna.postsAnalyzed ?? null}
+        initialSpice={voice?.spice}
         researchCredits={research}
         threadsSearch={threadsSearch}
       />

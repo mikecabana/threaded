@@ -4,18 +4,21 @@ import type { GenerationContext } from "./context";
 import { PLAYBOOKS, SPICE_GUIDANCE } from "./playbooks";
 import type { Research } from "./research-prompt";
 import type { GenerateRequest } from "./schemas";
+import { type VoicePrefs, voiceRules } from "./voice";
 
 // Versioned so every stored generation records which prompt produced it.
 // v2: the Profile DNA voice guide, labelled and topic-aware exemplars, and facts for the goal.
 // v3: drafts from Threaded that beat the author's usual are pinned among the exemplars.
 // v4: web research on the topic when it names something specific, and no guessing at unfamiliar names.
 // v5: what recent popular Threads posts on the topic show, and an angle they're missing.
-export const PROMPT_VERSION = "generate.v5";
+// v6: the author's voice settings (emoji, casing, banned words).
+export const PROMPT_VERSION = "generate.v6";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
-export function buildInstructions(request: GenerateRequest): string {
+export function buildInstructions(request: GenerateRequest, voice?: VoicePrefs | null): string {
   const playbook = PLAYBOOKS[request.goal];
+  const preferences = voiceRules(voice);
   return [
     "You are a ghostwriter for one Threads account. You write posts that sound exactly like the author and serve one growth goal.",
     "",
@@ -42,6 +45,9 @@ export function buildInstructions(request: GenerateRequest): string {
     "- In `rationale`, cite the author's own numbers from the context when they support the idea. Never make up numbers.",
     "- `goalFit` is your honest 0–100 estimate for this author, not a compliment.",
     "- `bestSlot` should use the author's best hours when known.",
+    ...(preferences.length
+      ? ["", "The author's own settings, which win over their usual habits:", ...preferences.map((rule) => `- ${rule}`)]
+      : []),
   ].join("\n");
 }
 

@@ -79,6 +79,7 @@ export function Studio({
   voicePosts = null,
   researchCredits = null,
   threadsSearch = "off",
+  initialSpice = "bold",
 }: {
   author: PostAuthor;
   goal: Goal;
@@ -92,11 +93,13 @@ export function Studio({
   researchCredits?: number | null;
   /** Whether research also reads Threads posts on the topic, or would after reconnecting (lib/ai/threads-search.ts). */
   threadsSearch?: "on" | "reconnect" | "off";
+  /** The tone to start on (Settings → Voice). */
+  initialSpice?: SpiceLevel;
 }) {
   const router = useRouter();
   const composer = useComposer();
   const [topic, setTopic] = useState("");
-  const [spice, setSpice] = useState<SpiceLevel>("bold");
+  const [spice, setSpice] = useState<SpiceLevel>(initialSpice);
   const [format, setFormat] = useState<GenerateRequest["format"]>("any");
   const [count, setCount] = useState<"3" | "5">("3");
   const [modelId, setModelId] = useState(initialModelId);
@@ -261,7 +264,12 @@ export function Studio({
             <p className="text-sm text-subtle">Writing for</p>
             <p className="font-semibold text-accent">{GOAL_META[goal].label}</p>
             {voicePosts !== null && (
-              <p className="mt-1 text-subtle text-xs">In your voice, learned from {voicePosts} of your posts</p>
+              <p className="mt-1 text-subtle text-xs">
+                In your voice, learned from {voicePosts} of your posts ·{" "}
+                <Link href="/settings#voice" className="underline underline-offset-2 hover:text-fg">
+                  Voice settings
+                </Link>
+              </p>
             )}
           </div>
 
@@ -458,7 +466,11 @@ export function Studio({
         {final && final.dropped > 0 && (
           <p className="mt-3 text-subtle text-xs">
             {final.dropped === 1 ? "1 idea was" : `${final.dropped} ideas were`} left out for repeating a post (yours or
-            one on Threads) or running too long.
+            one on Threads), going against your{" "}
+            <Link href="/settings#voice" className="underline underline-offset-2 hover:text-fg">
+              voice settings
+            </Link>{" "}
+            or running too long.
           </p>
         )}
       </section>

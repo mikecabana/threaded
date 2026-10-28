@@ -7,6 +7,7 @@ import { SyncNowButton } from "@/components/app/sync-now-button";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { DeleteAccount, DisconnectThreads } from "@/components/settings/data-controls";
 import { EmailForm } from "@/components/settings/email-form";
+import { VoiceForm } from "@/components/settings/voice-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +18,7 @@ import { signOutAction } from "@/lib/actions/session";
 import { currentStaff } from "@/lib/admin/access";
 import { isLivePlan } from "@/lib/billing/subscription";
 import { billingOverview } from "@/lib/data/billing";
+import { getVoicePrefs } from "@/lib/data/settings";
 import { DEMO_PERSONA_IDS, DEMO_PERSONAS } from "@/lib/demo/personas";
 import { alertAddress } from "@/lib/email/verify";
 import { timeAgo } from "@/lib/format";
@@ -24,11 +26,6 @@ import { type DemoViewer, requireViewer } from "@/lib/session/viewer";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Settings" };
-
-const UPCOMING = [
-  { title: "Models", body: "Pick the AI model for each task, with its price per use." },
-  { title: "Voice", body: "Emoji, casing, banned words and how spicy suggestions get." },
-];
 
 export default function SettingsPage({ searchParams }: { searchParams: Promise<{ email?: string }> }) {
   return (
@@ -47,6 +44,10 @@ export default function SettingsPage({ searchParams }: { searchParams: Promise<{
 
       <Suspense fallback={<Skeleton className="h-44 rounded-2xl" />}>
         <AccountCard />
+      </Suspense>
+
+      <Suspense fallback={<Skeleton className="h-72 rounded-2xl" />}>
+        <VoiceCard />
       </Suspense>
 
       <Suspense fallback={<Skeleton className="h-40 rounded-2xl" />}>
@@ -72,18 +73,6 @@ export default function SettingsPage({ searchParams }: { searchParams: Promise<{
           <ChevronRight className="size-5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" />
         </Card>
       </Link>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {UPCOMING.map((item) => (
-          <Card key={item.title} className="p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-medium">{item.title}</h2>
-              <Badge variant="outline">Soon</Badge>
-            </div>
-            <p className="mt-2 text-muted text-sm">{item.body}</p>
-          </Card>
-        ))}
-      </div>
     </div>
   );
 }
@@ -117,6 +106,26 @@ async function AccountCard() {
             : "Your first sync hasn't finished yet."}
         </p>
         {viewer.connected && <SyncNowButton />}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Voice: rules every Studio batch follows, on top of the voice learned from the posts. */
+async function VoiceCard() {
+  const viewer = await requireViewer();
+  if (viewer.kind === "demo") return null;
+  const prefs = await getVoicePrefs(viewer.userId);
+  return (
+    <Card id="voice">
+      <CardHeader>
+        <CardTitle className="text-fg">Voice</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-muted text-sm">
+          Studio already writes in the voice it learned from your posts. Set anything you want it to follow every time.
+        </p>
+        <VoiceForm prefs={prefs} />
       </CardContent>
     </Card>
   );

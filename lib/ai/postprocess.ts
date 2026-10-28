@@ -1,11 +1,13 @@
 import { THREADS_MAX_LENGTH, THREADS_MAX_LINKS, threadsLength, threadsLinkCount } from "@/lib/threads/length";
 import type { Suggestion } from "./schemas";
+import { bannedWordIn, hasEmoji, type VoicePrefs } from "./voice";
 
 // Model output is a draft: enforce what the schema can't (length, ranges) and
 // drop ideas that repeat the author's own posts, the Threads posts research
-// read on the topic, or each other.
+// read on the topic, or each other, and ideas that break the author's voice
+// settings (a banned word, or emoji when they've turned emoji off).
 
-export type DropReason = "too_long" | "too_many_links" | "duplicate" | "empty";
+export type DropReason = "too_long" | "too_many_links" | "duplicate" | "empty" | "banned_word" | "emoji";
 
 export interface ProcessedBatch {
   kept: Suggestion[];
@@ -42,7 +44,12 @@ export const DUPLICATE_THRESHOLD = 0.6;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(value)));
 
 /** Keeps at most `limit` ideas; extras past the limit aren't counted as dropped. */
-export function postProcess(suggestions: Suggestion[], pastPosts: string[], limit = Infinity): ProcessedBatch {
+export function postProcess(
+  suggestions: Suggestion[],
+  pastPosts: string[],
+  limit = Infinity,
+  voice: VoicePrefs = {},
+): ProcessedBatch {
   const kept: Suggestion[] = [];
   const dropped: ProcessedBatch["dropped"] = [];
   for (const raw of suggestions) {
@@ -54,6 +61,10 @@ export function postProcess(suggestions: Suggestion[], pastPosts: string[], limi
       dropped.push({ text, reason: "too_long" });
     } else if (threadsLinkCount(text) > THREADS_MAX_LINKS) {
       dropped.push({ text, reason: "too_many_links" });
+    } else if (bannedWordIn(text, voice.bannedWords ?? [])) {
+      dropped.push({ text, reason: "banned_word" });
+    } else if (voice.emoji === "none" && hasEmoji(text)) {
+      dropped.push({ text, reason: "emoji" });
     } else if (
       [...pastPosts, ...kept.map((k) => k.text)].some((other) => similarity(text, other) >= DUPLICATE_THRESHOLD)
     ) {
