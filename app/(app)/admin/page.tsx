@@ -1,4 +1,3 @@
-import { createGateway } from "ai";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -8,8 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { requireStaff } from "@/lib/admin/access";
 import { marginReport, ownKeyMonthlyUsd, type SpendReport } from "@/lib/admin/margins";
-import { gatewayReachable } from "@/lib/ai/models";
-import { env } from "@/lib/env";
+import { gatewayReachable, platformGateway } from "@/lib/ai/models";
 import { formatUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +29,7 @@ const pct = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / 
 
 function spendReport(): SpendReport | null {
   if (!gatewayReachable()) return null;
-  const gateway = createGateway(env.AI_GATEWAY_API_KEY ? { apiKey: env.AI_GATEWAY_API_KEY } : {});
+  const gateway = platformGateway();
   return (params) => gateway.getSpendReport(params);
 }
 

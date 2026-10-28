@@ -1,13 +1,20 @@
 "use server";
 
-import { createGateway } from "ai";
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/admin/access";
-import { addModel, modelUpdateSchema, newModelSchema, setDefaultModel, updateModel } from "@/lib/admin/catalog";
+import {
+  addGatewayModel,
+  addModel,
+  gatewayPickSchema,
+  modelUpdateSchema,
+  newModelSchema,
+  setDefaultModel,
+  updateModel,
+} from "@/lib/admin/catalog";
 import { adjustCredits, MAX_ADJUSTMENT } from "@/lib/admin/credits";
+import { fetchGatewayModels } from "@/lib/admin/gateway-models";
 import { AI_TASKS, type AiTask, syncCatalogFromGateway } from "@/lib/ai/catalog";
-import { gatewayReachable } from "@/lib/ai/models";
-import { env } from "@/lib/env";
+import { gatewayReachable, platformGateway } from "@/lib/ai/models";
 
 // /admin's actions. Each one checks the caller is staff again: an action is
 // a public endpoint, whatever page it's rendered on.
@@ -81,13 +88,36 @@ export async function addModelAction(_state: AdminFormState, formData: FormData)
   return { ok: true, message: `Added ${parsed.data.modelId}, switched off. Evaluate it, then switch it on.` };
 }
 
+/** Adds a model picked from the Gateway's list, checked against the list as it is now. */
+export async function addGatewayModelAction(_state: AdminFormState, formData: FormData): Promise<AdminFormState> {
+  await requireStaff();
+  const parsed = gatewayPickSchema.safeParse({
+    modelId: formData.get("modelId"),
+    tier: formData.get("tier"),
+    tasks: tasksFrom(formData),
+    enabled: formData.get("enabled") === "on",
+  });
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check the fields." };
+  const listing = await fetchGatewayModels();
+  if (!listing.ok) return listing;
+  const result = await addGatewayModel(parsed.data, listing.models);
+  if (!result.ok) return result;
+  revalidatePath("/admin/catalog");
+  revalidatePath("/admin/models");
+  return {
+    ok: true,
+    message: parsed.data.enabled
+      ? `Added ${result.label}, switched on.`
+      : `Added ${result.label}, switched off. Evaluate it, then switch it on in the catalog.`,
+  };
+}
+
 /** Refreshes prices (and availability) from the Gateway now, rather than at the nightly sync. */
 export async function syncPricesAction(): Promise<AdminFormState> {
   await requireStaff();
   if (!gatewayReachable()) return { ok: false, message: "The AI Gateway isn't reachable from here." };
-  const gateway = createGateway(env.AI_GATEWAY_API_KEY ? { apiKey: env.AI_GATEWAY_API_KEY } : {});
   try {
-    const { updated, disabled } = await syncCatalogFromGateway(() => gateway.getAvailableModels());
+    const { updated, disabled } = await syncCatalogFromGateway(() => platformGateway().getAvailableModels());
     revalidatePath("/admin/catalog");
     return { ok: true, message: `Prices updated for ${updated} models; ${disabled} not offered by the Gateway.` };
   } catch (error) {

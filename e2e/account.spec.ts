@@ -187,10 +187,12 @@ test("looks up a topic on Threads and the web before writing, and shows what it 
   await signIn(page);
   await page.goto("/studio");
   const generate = page.getByRole("button", { name: /Generate/ });
-  await expect(page.getByText("Threaded reads what's popular on Threads about it first")).toContainText("(≈3 cr).");
+  await expect(shown(page.getByText("Threaded reads what's popular on Threads about it first"))).toContainText(
+    "(≈3 cr).",
+  );
   const estimate = async () => Number((await generate.textContent())?.match(/≈(\d+) cr/)?.[1]);
   const before = await estimate();
-  await page.getByLabel("Topic").fill("php2shell");
+  await shown(page.getByLabel("Topic")).fill("php2shell");
   // The estimate now includes a search.
   await expect(generate).toContainText(`≈${before + 3} cr`);
   await generate.click();
@@ -553,6 +555,24 @@ test("admin is invisible to everyone but staff, and staff can adjust credits", a
     await expect(page.getByRole("form", { name: "anthropic/claude-sonnet-5.5" })).toContainText(
       "Default for Studio ideas",
     );
+
+    // Every model the Gateway offers, to pick from: one goes straight into Studio's list.
+    await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Gateway models" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Gateway models" })).toBeVisible();
+    await expect(shown(page.getByText("10 language models from 6 providers; 3 in the catalog."))).toBeVisible();
+    await shown(page.getByLabel("Search models")).fill("gpt");
+    await page.getByRole("button", { name: "Filter" }).click();
+    await expect(shown(page.getByText("2 of 10 language models; 3 in the catalog."))).toBeVisible();
+    const mini = page.getByRole("listitem", { name: "openai/gpt-5.5-mini" });
+    await expect(mini).toContainText("$0.25 in · $2 out");
+    await mini.getByText("Add to the catalog…").click();
+    const add = mini.getByRole("form", { name: "Add openai/gpt-5.5-mini" });
+    await expect(add.getByLabel("Tier")).toHaveValue("fast");
+    await add.getByLabel("Switch on now").check();
+    await add.getByRole("button", { name: "Add to the catalog" }).click();
+    await expect(mini).toContainText("In the catalog, switched on");
+    await page.goto("/studio");
+    await expect(shown(page.getByLabel("Model"))).toContainText("GPT-5.5 mini · Fast");
 
     await page.goto("/admin/workspaces?q=mock.user");
     await page
