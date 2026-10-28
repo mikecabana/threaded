@@ -5,12 +5,14 @@ import { AI_TASKS, type AiTask, seedCatalog } from "@/lib/ai/catalog";
 import { db } from "@/lib/db";
 import { modelCatalog } from "@/lib/db/schema";
 import { DEFAULT_MARKUP } from "@/lib/pricing";
+import type { GatewayModel } from "./gateway-models";
 import { TASK_INFO, taskNames } from "./tasks";
 
 // Editing the model catalog from /admin: switch models on and off, set their
 // markup and minimum charge, which tasks they're offered for, and each task's
-// default. New models start switched off, so they can be evaluated first
-// (`pnpm eval --model …`). Prices come from the Gateway's nightly sync.
+// default. Models are added from the Gateway's list (/admin/models) or by ID;
+// they start switched off so they can be evaluated first (`pnpm eval --model …`),
+// unless staff switch them on as they add them. Prices come from the Gateway.
 
 export type CatalogRow = typeof modelCatalog.$inferSelect;
 
@@ -33,11 +35,13 @@ export const modelUpdateSchema = z.object({
   enabled: z.boolean(),
 });
 
+const gatewayId = z
+  .string()
+  .trim()
+  .regex(/^[a-z0-9-]+\/[a-z0-9._-]+$/i, "A Gateway model ID, like provider/model-name");
+
 export const newModelSchema = z.object({
-  modelId: z
-    .string()
-    .trim()
-    .regex(/^[a-z0-9-]+\/[a-z0-9._-]+$/i, "A Gateway model ID, like provider/model-name"),
+  modelId: gatewayId,
   label: z.string().trim().min(1).max(60),
   provider: z.string().trim().min(1).max(40),
   tier: z.enum(["fast", "balanced", "best"]),
@@ -45,6 +49,14 @@ export const newModelSchema = z.object({
 });
 
 export type ModelUpdate = z.infer<typeof modelUpdateSchema>;
+
+/** Adding a model picked from the Gateway's list: its name, provider and prices come from the list. */
+export const gatewayPickSchema = z.object({
+  modelId: gatewayId,
+  tier: z.enum(["fast", "balanced", "best"]),
+  tasks,
+  enabled: z.boolean(),
+});
 
 /**
  * Applies an edit. A model can't be the default for a task it's no longer
@@ -101,10 +113,11 @@ export async function setDefaultModel(
   });
 }
 
-/** Adds a model, switched off until it's been evaluated. */
+/** Adds a model: switched off until it's been evaluated unless `enabled`, with the Gateway's prices when given. */
 export async function addModel(
-  input: z.infer<typeof newModelSchema>,
+  input: z.infer<typeof newModelSchema> & { inputPrice?: number; outputPrice?: number; enabled?: boolean },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
+  const priced = input.inputPrice !== undefined && input.outputPrice !== undefined;
   const added = await db()
     .insert(modelCatalog)
     .values({
@@ -116,9 +129,41 @@ export async function addModel(
       defaultFor: [],
       markup: DEFAULT_MARKUP.toFixed(2),
       minCredits: 1,
-      enabled: false,
+      enabled: input.enabled ?? false,
+      ...(priced && {
+        inputPrice: input.inputPrice?.toFixed(4),
+        outputPrice: input.outputPrice?.toFixed(4),
+        syncedAt: new Date(),
+      }),
     })
     .onConflictDoNothing()
     .returning({ id: modelCatalog.modelId });
   return added.length > 0 ? { ok: true } : { ok: false, message: "That model is already in the catalog." };
+}
+
+/**
+ * Adds a model picked from the Gateway's list, named and priced as the list
+ * has it. One without a listed price is refused: credits are charged from it.
+ */
+export async function addGatewayModel(
+  pick: z.infer<typeof gatewayPickSchema>,
+  models: GatewayModel[],
+): Promise<{ ok: true; label: string } | { ok: false; message: string }> {
+  const model = models.find((m) => m.id === pick.modelId);
+  if (!model) return { ok: false, message: "The AI Gateway doesn't offer that model." };
+  if (model.inputPrice === null || model.outputPrice === null) {
+    return { ok: false, message: "The AI Gateway lists no price for it, so it can't be charged in credits." };
+  }
+  const label = model.name.trim().slice(0, 60) || model.id;
+  const added = await addModel({
+    modelId: model.id,
+    label,
+    provider: model.provider,
+    tier: pick.tier,
+    tasks: pick.tasks,
+    inputPrice: model.inputPrice,
+    outputPrice: model.outputPrice,
+    enabled: pick.enabled,
+  });
+  return added.ok ? { ok: true, label } : added;
 }

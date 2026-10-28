@@ -4,7 +4,13 @@ import { useActionState } from "react";
 import { SubmitButton } from "@/components/billing/submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { type AdminFormState, addModelAction, syncPricesAction, updateModelAction } from "@/lib/actions/admin";
+import {
+  type AdminFormState,
+  addGatewayModelAction,
+  addModelAction,
+  syncPricesAction,
+  updateModelAction,
+} from "@/lib/actions/admin";
 import { TASK_INFO, TASK_ORDER } from "@/lib/admin/tasks";
 import type { AiTask } from "@/lib/ai/catalog";
 import { cn } from "@/lib/utils";
@@ -188,6 +194,40 @@ export function SyncPricesButton() {
         Refresh prices now
       </SubmitButton>
       <Status state={state} />
+    </form>
+  );
+}
+
+/** Adds a model from the Gateway's list: its name and prices come from the list, the rest is picked here. */
+export function AddGatewayModelForm({ modelId, tier }: { modelId: string; tier: (typeof TIERS)[number] }) {
+  const [state, action] = useActionState<AdminFormState, FormData>(addGatewayModelAction, null);
+  return (
+    <form action={action} className="space-y-3" aria-label={`Add ${modelId}`}>
+      <input type="hidden" name="modelId" value={modelId} />
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+        <label className="grid gap-1 text-sm">
+          Tier
+          <select name="tier" defaultValue={tier} className={cn(field, "w-32")}>
+            {TIERS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="grid gap-1 text-sm">
+          <span>Offered for</span>
+          <TaskChecks name="tasks" selected={["generate"]} />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <label className="inline-flex items-center gap-1.5 text-sm">
+          <input type="checkbox" name="enabled" />
+          Switch on now
+        </label>
+        <SubmitButton size="sm">Add to the catalog</SubmitButton>
+        <Status state={state} />
+      </div>
     </form>
   );
 }

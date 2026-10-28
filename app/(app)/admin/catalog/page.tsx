@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { type ReactNode, Suspense } from "react";
 import { AdminHeader } from "@/components/admin/admin-header";
 import { AddModelForm, ModelForm, SyncPricesButton } from "@/components/admin/catalog-forms";
@@ -121,7 +122,11 @@ async function Catalog() {
 
       <section aria-labelledby="add-model" className="mt-10">
         <SectionHeading id="add-model" title="Add a model">
-          Any language model the AI Gateway offers, by its Gateway ID. It starts switched off with a {DEFAULT_MARKUP}×
+          Browse every model the AI Gateway offers, with its price, under{" "}
+          <Link href="/admin/models" className="text-accent hover:underline">
+            Gateway models
+          </Link>
+          , and add it from there. Or add one by its Gateway ID here. It starts switched off with a {DEFAULT_MARKUP}×
           markup: compare it with <code>pnpm eval --model &lt;id&gt;</code> first, then switch it on under Models.
         </SectionHeading>
         <AddModelForm />

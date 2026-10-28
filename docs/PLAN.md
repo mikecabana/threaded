@@ -184,6 +184,8 @@ A `model_catalog` table, edited from `/admin`, holds for each model:
 
 A nightly job syncs the table against `getAvailableModels()`. It refreshes base prices and auto-disables any model that has disappeared upstream.
 
+**Adding models:** `/admin/models` lists every language model the Gateway offers (`getAvailableModels()`, live), searchable and filtered by provider and by whether it's in the catalog, sorted by what a typical batch costs. Each shows the Gateway's prices and what 5 ideas would cost at the default markup. Staff add a model with a tier (suggested from its output price), the tasks it's offered for, and whether to switch it on now; its name, provider and prices come from the list. A model without a listed price can't be added, since credits are charged from it.
+
 **Which models a user sees:**
 - **Credits users:** only enabled catalog models, each with a per-use price.
 - **BYOK users:** the curated list by default, plus a "Show all Gateway models" toggle. Uncurated models carry an *untested* badge.
@@ -321,7 +323,7 @@ Posts published through Threaded have a known `media_id`. For posts written else
 - **Rate limits still apply,** to protect our infrastructure and the user's Threads API quota.
 
 ### Admin (`/admin`, role-gated)
-- Edit the catalog and markups
+- Edit the catalog and markups, and add models from the Gateway's full list (`/admin/models`)
 - A **margin view**: credit revenue vs. Gateway spend from `getSpendReport` grouped by user and model
 - Manual credit adjustments and refunds (written as ledger `adjust` rows)
 - Workspace lookup
@@ -436,7 +438,7 @@ A soft "aurora" gradient behind page headers takes on the accent color.
 /queue                  Saved · Scheduled (calendar) · Posted (scorecard)
 /insights               Deep analytics
 /settings               Models · Voice · Billing (credits / BYOK) · Account & data
-/admin                  Catalog, markups, margin, workspaces (staff only)
+/admin                  Catalog, Gateway models, markups, margin, workspaces (staff only)
 ```
 
 Navigation is a bottom tab bar on mobile (Home, Studio, Queue, Insights; Settings via the avatar) and a collapsible left rail on desktop. **A credits pill sits in the header**, or a "Your key" badge in BYOK mode. A PWA manifest lets people install it next to the Threads app.
@@ -557,7 +559,7 @@ app/
   (app)/onboarding/{analyzing,dna,goal}/page.tsx
   (app)/{home,studio,queue,insights}/page.tsx
   (app)/settings/{models,voice,billing,account}/page.tsx
-  (admin)/admin/{catalog,margin,workspaces}/page.tsx
+  (admin)/admin/{catalog,models,margin,workspaces}/page.tsx
   api/auth/threads/{start,callback}/route.ts
   api/threads/{uninstall,delete}/route.ts
   api/generate/route.ts
@@ -799,5 +801,8 @@ All open decisions are resolved; see the table at the top. **Pricing review befo
 - Tests: the export's contents and what it leaves out, and what deletion leaves behind; end to end, downloading, disconnecting and reconnecting, and deleting after a wrong then a right username.
 
 **Threads posts in Studio research (done):** with a topic, Studio also reads recent popular Threads posts on it (keyword search on the author's connection), and the research model sums up what they're saying and what's missing (§5). Prompt `generate.v5` passes that on with a rule to take a different angle and never copy them; ideas too close to those posts are dropped. Generations store the summary and links to the posts, never their text, and Studio shows both. Sign-in asks for `threads_keyword_search` only once `THREADS_KEYWORD_SEARCH=1`; connections from before show a reconnect link in Studio. Tests: reading the reply's two parts, picking posts (no replies, not the author's, no repeats), the prompt and charging; integration tests for a batch that read posts, a broad theme, a dropped echo, and a failed or ungranted search; end to end, the Threads card and its links.
+
+**Gateway models in /admin (done):** a "Gateway models" tab lists every language model the AI Gateway offers, with search, a provider filter, "in the catalog or not", and sorting by price or name. Each row shows the Gateway's input and output prices per million tokens and what a batch of 5 ideas would cost at the default markup. "Add to the catalog" takes a tier (suggested from the price), the tasks it's offered for and an optional "Switch on now"; the name, provider and prices come from the list, checked again when it's added. Models with no listed price can't be added. Models already in the catalog link to it. Under `AI_MOCK=1` the list is a fixed mock (`lib/ai/mock-gateway-models.ts`).
+- Tests: the list (language models only, prices, providers), the filters and sorting, the suggested tier and batch price; adding from the list (named and priced as listed, switched on or off, refused without a price or when it's not listed); end to end, finding a model, adding it switched on, and seeing it in Studio's picker.
 
 **Phase 2 is complete.** Next on the roadmap (§13): Launch, Quebec readiness (the Law 25 items, live Stripe Tax, the lawyer's review; monitoring and consent are done). French is pinned until after launch.

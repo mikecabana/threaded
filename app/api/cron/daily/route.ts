@@ -1,6 +1,5 @@
-import { createGateway } from "ai";
 import { syncCatalogFromGateway } from "@/lib/ai/catalog";
-import { gatewayReachable } from "@/lib/ai/models";
+import { gatewayReachable, platformGateway } from "@/lib/ai/models";
 import { safeEqual } from "@/lib/crypto/sign";
 import { db } from "@/lib/db";
 import { threadsTokens } from "@/lib/db/schema";
@@ -21,7 +20,7 @@ export async function GET(request: Request) {
 
   let catalog: { updated: number; disabled: number } | null = null;
   if (gatewayReachable()) {
-    const gateway = createGateway(env.AI_GATEWAY_API_KEY ? { apiKey: env.AI_GATEWAY_API_KEY } : {});
+    const gateway = platformGateway();
     catalog = await syncCatalogFromGateway(() => gateway.getAvailableModels()).catch((error) => {
       console.error("Model catalog sync failed", error);
       return null;

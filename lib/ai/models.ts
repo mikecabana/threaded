@@ -14,6 +14,11 @@ export function gatewayWithKey(apiKey: string) {
   return createGateway({ apiKey, ...(env.AI_GATEWAY_BASE_URL && { baseURL: env.AI_GATEWAY_BASE_URL }) });
 }
 
+/** Our own Gateway client: credits workspaces' AI, the nightly price sync and /admin. */
+export function platformGateway() {
+  return createGateway(env.AI_GATEWAY_API_KEY ? { apiKey: env.AI_GATEWAY_API_KEY } : {});
+}
+
 /**
  * True when the platform Gateway has a credential: an API key, or the
  * deployment's OIDC token. On Vercel that token comes with each request as a
@@ -82,7 +87,7 @@ type WorkspaceKey = { id: string; byokKeyEnc: string | null };
 function gatewayFor(workspace: WorkspaceKey, billing: "credits" | "byok") {
   return billing === "byok"
     ? gatewayWithKey(decryptSecret(workspace.byokKeyEnc as string, byokContext(workspace.id)))
-    : createGateway(env.AI_GATEWAY_API_KEY ? { apiKey: env.AI_GATEWAY_API_KEY } : {});
+    : platformGateway();
 }
 
 export interface ResolvedDecisionModel {

@@ -3,12 +3,14 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { provisionThreadsAccount } from "@/lib/accounts/provision";
 import { catalogFor, syncCatalogFromGateway } from "@/lib/ai/catalog";
+import { MOCK_GATEWAY_MODELS } from "@/lib/ai/mock-gateway-models";
 import { grantCredits } from "@/lib/billing/wallet";
 import { db } from "@/lib/db";
 import { creditLedger, creditLots, generations, modelCatalog, wallets, workspaces } from "@/lib/db/schema";
 import { closeDatabase, resetDatabase } from "@/test/db";
-import { addModel, listCatalog, setDefaultModel, updateModel } from "./catalog";
+import { addGatewayModel, addModel, listCatalog, setDefaultModel, updateModel } from "./catalog";
 import { adjustCredits } from "./credits";
+import { languageModels } from "./gateway-models";
 import { marginReport, type SpendReport } from "./margins";
 import { searchWorkspaces, workspaceDetail } from "./workspaces";
 
@@ -265,6 +267,37 @@ describe("the catalog", () => {
       .where(eq(modelCatalog.modelId, "anthropic/claude-haiku-5.5"));
     expect(haiku).toMatchObject({ enabled: true, available: false });
     expect((await catalogFor("classify")).map((m) => m.modelId)).not.toContain("anthropic/claude-haiku-5.5");
+  });
+
+  it("adds models picked from the Gateway's list, named and priced as listed", async () => {
+    const gateway = languageModels(MOCK_GATEWAY_MODELS);
+    const pick = { tier: "fast" as const, tasks: ["generate" as const], enabled: true };
+    expect(await addGatewayModel({ ...pick, modelId: "openai/gpt-5.5-mini" }, gateway)).toEqual({
+      ok: true,
+      label: "GPT-5.5 mini",
+    });
+    const [mini] = await db().select().from(modelCatalog).where(eq(modelCatalog.modelId, "openai/gpt-5.5-mini"));
+    expect(mini).toMatchObject({ provider: "OpenAI", tier: "fast", enabled: true, available: true, markup: "2.00" });
+    expect([Number(mini.inputPrice), Number(mini.outputPrice)]).toEqual([0.25, 2]);
+    expect(mini.syncedAt).not.toBeNull();
+    // Switched on as it's added, it's in Studio's list straight away.
+    expect((await catalogFor("generate")).find((m) => m.modelId === "openai/gpt-5.5-mini")).toMatchObject({
+      label: "GPT-5.5 mini",
+      inputPrice: 0.25,
+      outputPrice: 2,
+    });
+
+    // Switched off, it waits for an evaluation.
+    await addGatewayModel({ ...pick, modelId: "google/gemini-3.5-pro", tier: "balanced", enabled: false }, gateway);
+    expect((await catalogFor("generate")).map((m) => m.modelId)).not.toContain("google/gemini-3.5-pro");
+
+    expect(await addGatewayModel({ ...pick, modelId: "openai/gpt-5.5-mini" }, gateway)).toMatchObject({ ok: false });
+    expect(await addGatewayModel({ ...pick, modelId: "meta/llama-5-70b" }, gateway)).toEqual({
+      ok: false,
+      message: "The AI Gateway lists no price for it, so it can't be charged in credits.",
+    });
+    expect(await addGatewayModel({ ...pick, modelId: "acme/not-listed" }, gateway)).toMatchObject({ ok: false });
+    expect((await db().select().from(modelCatalog).where(eq(modelCatalog.modelId, "meta/llama-5-70b"))).length).toBe(0);
   });
 });
 
