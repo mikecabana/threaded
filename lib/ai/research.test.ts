@@ -224,7 +224,7 @@ describe("research in the generation prompt", () => {
 
 describe("research costs", () => {
   it("estimates a typical search well under the worst case it reserves", () => {
-    expect(researchCredits(haiku, "typical")).toBe(2);
+    expect(researchCredits(haiku, "typical")).toBe(3);
     expect(researchCredits(haiku, "max")).toBeGreaterThan(researchCredits(haiku, "typical"));
     expect(RESEARCH_USAGE.max.searches * SEARCH_USD).toBe(0.01);
   });
@@ -232,12 +232,13 @@ describe("research costs", () => {
   it("charges for research only when it searched or read posts, never past the reserve", () => {
     const research = { entry: haiku, costUsd: 0.008, searches: 1, threadsPosts: 0 };
     const skipped = { ...research, searches: 0 };
-    expect(chargeBatch({ entry: sonnet, costUsd: 0.012, reserved: 20 })).toBe(2);
-    expect(chargeBatch({ entry: sonnet, costUsd: 0.012, research, reserved: 20 })).toBe(4);
-    expect(chargeBatch({ entry: sonnet, costUsd: 0.012, research: skipped, reserved: 20 })).toBe(2);
+    // At 2×: the ideas are 3 credits, the research 2 more.
+    expect(chargeBatch({ entry: sonnet, costUsd: 0.012, reserved: 20 })).toBe(3);
+    expect(chargeBatch({ entry: sonnet, costUsd: 0.012, research, reserved: 20 })).toBe(5);
+    expect(chargeBatch({ entry: sonnet, costUsd: 0.012, research: skipped, reserved: 20 })).toBe(3);
     expect(
       chargeBatch({ entry: sonnet, costUsd: 0.012, research: { ...skipped, threadsPosts: 3 }, reserved: 20 }),
-    ).toBe(4);
+    ).toBe(5);
     expect(chargeBatch({ entry: sonnet, costUsd: 0.012, research, reserved: 3 })).toBe(3);
   });
 });

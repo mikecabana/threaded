@@ -16,7 +16,7 @@ Implementation and UI/UX plan. Working name: **Threaded** (after the repo).
 | Personal tool or product? | **Multi-tenant SaaS.** |
 | Who picks AI models? | **Each user**, from a curated list priced per use. Users can also **BYOK** (their own Vercel AI Gateway key) and pay Vercel directly. |
 | Do BYOK users pay us? | **Yes: a $5/month platform fee** covering sync, analytics and scheduling. |
-| Markup, packs, trial | **1.5× default markup** (per model in the catalog), packs of **$5 / $20 / $50**, **$1 trial** (100 credits) once per Threads account. |
+| Markup, packs, trial | **2× default markup** (per model in the catalog; raised from 1.5× before launch, see §15), packs of **$5 / $20 / $50** for **500 / 2,200 / 5,750 credits** (bigger packs carry a bonus), **$1 trial** (100 credits) once per Threads account. |
 | Expiry and refunds | Credits, purchased or free, **never expire**. **Not refundable** except where the law requires; failed generations are refunded automatically. |
 | Where is the business, and which currency? | **Quebec, Canada**, with a Canadian Stripe account. Prices stay in **USD** (AI costs are in USD); Stripe shows customers abroad a converted price at checkout. |
 | Sales tax? | **Stripe Tax**: GST/HST for Canada plus QST for Quebec, tax-exclusive prices. |
@@ -306,7 +306,7 @@ Posts published through Threaded have a known `media_id`. For posts written else
 **No expiry:** credits never expire. They still arrive in **lots** (`credit_lots`, one per purchase or grant), which record what's left of each purchase, for refunds and for accounting (unspent credits are owed to the customer). A settled charge draws on the oldest lot first. Invariant: the lots' remaining credits equal `balance + reserved`.
 
 **Buying credits:**
-- **Top-ups:** hosted Stripe Checkout in one-time payment mode, packs of $5, $20 and $50 priced inline from `lib/pricing.ts`. The `checkout.session.completed` webhook **and** the return route (`/api/billing/return`) both fulfill the session: each re-reads it from Stripe and adds a `purchase` ledger row, idempotent on the session id.
+- **Top-ups:** hosted Stripe Checkout in one-time payment mode, packs of $5, $20 and $50 (500, 2,200 and 5,750 credits) priced inline from `lib/pricing.ts`. The `checkout.session.completed` webhook **and** the return route (`/api/billing/return`) both fulfill the session: each re-reads it from Stripe and adds a `purchase` ledger row, idempotent on the session id.
 - **Currency and tax:** prices are USD, but the Stripe account is Canadian, so every Stripe object that takes a currency gets `CURRENCY` explicitly (Stripe otherwise uses CAD, and an auto-recharge invoice then rejects its USD item). Stripe Tax (`STRIPE_AUTOMATIC_TAX=1`) adds GST/HST and QST on top of the price, based on the customer's address. Checkout collects that address, including when saving a card for auto-recharge.
 - **Receipt language:** a new Stripe customer gets `preferred_locales` from the browser's language, so French speakers get French receipts and invoices. Checkout picks its language from the browser.
 - **Auto-recharge:** "Add a card" is Checkout in setup mode; the card becomes the customer's default for invoices. When a charge leaves the balance under the threshold, a conditional UPDATE claims the workspace (so only one runs), and a Vercel Workflow run charges the card off-session through an invoice (create, add the pack, finalize, pay), so tax and receipts work like Checkout. Every Stripe call is keyed by the claim, so retries never charge twice. A decline turns auto-recharge off and shows an in-app banner (email comes with Resend). So does a missing address while Stripe Tax is on, which retrying can't fix; turning auto-recharge back on then goes through Checkout to collect it. A 402 also starts a recharge.
@@ -661,7 +661,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 
 ## 15. Decisions log
 
-All open decisions are resolved; see the table at the top. **Before launch, revisit pricing and costs** (the markup, packs, trial credits and own-key fee, against Stripe's fees and the running costs) once the margin dashboard has real data (SETUP.md §5).
+All open decisions are resolved; see the table at the top. **Pricing review before launch (done):** with Stripe's fees on a Canadian account charging USD (about 6.2% + 30¢ a payment: card, international card, currency conversion without a USD bank account, Stripe Tax), 1.5× left 21–27% of a pack after the AI behind its credits, before the trial, the background work and fixed costs. The default markup is now **2×** (38–43%; a typical batch of three ideas goes from 4 to 5 credits), packs carry a bonus (**500 / 2,200 / 5,750** credits for $5 / $20 / $50), and Profile DNA is only rebuilt when there are new posts (it cost about $0.18 a month for every connected account, active or not). A monthly credits plan, the best value per credit, comes next. Check the real numbers in `/admin` → Margins once there's traffic.
 
 ## 16. Phase 0 status
 
@@ -732,13 +732,12 @@ All open decisions are resolved; see the table at the top. **Before launch, revi
 - Stripe live mode: check that Tax shows Active, add the GST/HST and QST registrations once you have the numbers, and create the live webhook endpoint
 - A Resend account (Phase 2c emails)
 - Legal review of the Terms and Privacy drafts by a Quebec lawyer, and the Law 25 items (French follows right after launch)
-- Pricing and costs: revisit the markup, packs, trial credits and own-key fee against real usage before launch
 - Keyword search: add `threads_keyword_search` to the Meta app, set `THREADS_KEYWORD_SEARCH=1`, reconnect, and include it in App Review (SETUP.md §1, step 7)
 
 ## 18. Phase 2 progress
 
 **2a, intelligence (done):**
-- Every sync classifies the posts that aren't labelled yet (now with Jev, below), then rebuilds Profile DNA if it's over a week old and the account has 10+ posts. Both run after the account's data is in: Home shows the data straight away while they finish.
+- Every sync classifies the posts that aren't labelled yet (now with Jev, below), then rebuilds Profile DNA if it's over a week old, the account has 10+ posts and it has posted since (an idle account keeps its DNA). Both run after the account's data is in: Home shows the data straight away while they finish.
 - It's enrichment, never a failure: if no model is reachable or a call fails, the sync still succeeds and the rest is picked up next time. On credits the cost is ours; with the workspace's own key it runs on that key.
 - Studio's prompt is now `generate.v2`: the DNA as a voice guide (habits, rules, real signature phrases, what the audience rewards and the blind spots, each with our number), exemplars labelled with format and topic, up to three on-topic exemplars from the author's better half when the requested topic matches one of theirs, and the facts that matter for the goal. Studio says when it's writing in the author's voice.
 - Tests: facts and prompt assembly on the demo data; integration tests against Postgres for classification (batching, topic reuse, failures, no double labelling, no credits charged), DNA (weekly rebuilds, versions, claims checked against facts, cold start), and Studio's prompt; the end-to-end sign-in now waits for the DNA through the real workflow, with the mock model answering from the prompt.

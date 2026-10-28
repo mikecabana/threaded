@@ -152,7 +152,7 @@ describe("auto-recharge", () => {
     expect(await claimAutoRecharge(workspaceId)).toBeNull();
 
     expect(await runAutoRecharge(workspaceId, attempt as string)).toBe("recharged");
-    expect(await getBalance(workspaceId)).toBe(2040);
+    expect(await getBalance(workspaceId)).toBe(2240);
     expect((await workspace()).autoRechargePendingAt).toBeNull();
 
     // A retried step, and the invoice.paid webhook, don't credit twice.
@@ -162,7 +162,7 @@ describe("auto-recharge", () => {
     // In USD, not the Canadian account's default currency.
     expect(paid?.currency).toBe("usd");
     expect(await fulfillRechargeInvoice(paid?.id as string)).toBe(false);
-    expect(await getBalance(workspaceId)).toBe(2040);
+    expect(await getBalance(workspaceId)).toBe(2240);
   });
 
   it("turns itself off and leaves a notice when the card is declined", async () => {
@@ -205,7 +205,7 @@ describe("auto-recharge with Stripe Tax on", () => {
     await setBalance(40);
     const attempt = (await claimAutoRecharge(workspaceId)) as string;
     expect(await runAutoRecharge(workspaceId, attempt)).toBe("recharged");
-    expect(await getBalance(workspaceId)).toBe(2040);
+    expect(await getBalance(workspaceId)).toBe(2240);
     expect([...mock.state.invoices.values()].at(-1)).toMatchObject({
       status: "paid",
       automatic_tax: { enabled: true },

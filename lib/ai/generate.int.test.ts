@@ -85,7 +85,7 @@ describe("startGeneration", () => {
       promptVersion: PROMPT_VERSION,
       dropped: 0,
     });
-    // Mock usage: 1,200 input + 400 output tokens on the default (Sonnet-tier) price, ×1.5 markup.
+    // Mock usage: 1,200 input + 400 output tokens on the default (Sonnet-tier) price, ×2 markup.
     expect(generation.creditsCharged).toBe(2);
 
     // Only the requested number of ideas are kept.
@@ -291,7 +291,7 @@ describe("web research", () => {
     expect(lastPrompt("generate")).toContain('What\'s happening with "php2shell", from a web search today:');
     expect(lastPrompt("generate")).toContain("security flaw disclosed on 2026-10-20");
 
-    // Ideas: 2 credits. Research: 2,500 + 120 tokens on the fast tier plus a $0.005 search, ×1.5 → 2 credits.
+    // Ideas: 2 credits. Research: 2,500 + 120 tokens on the fast tier plus a $0.005 search, ×2 → 2 credits.
     expect(row.creditsCharged).toBe(4);
     expect(Number(row.costUsd)).toBeGreaterThan(0.005);
     expect(await wallet()).toMatchObject({ balance: TRIAL_CREDITS - 4, reserved: 0 });
@@ -399,7 +399,7 @@ describe("Threads posts on the topic", () => {
     expect(row.research).toMatchObject({ queries: [], brief: null, searches: 0 });
     expect(row.research?.conversation).toContain("mock summary");
     expect(lastPrompt("generate")).not.toContain("web search");
-    // Ideas: 2 credits. Research: 2,500 + 120 tokens on the fast tier, ×1.5 → 1 credit.
+    // Ideas: 2 credits. Research: 2,500 + 120 tokens on the fast tier, ×2 → 1 credit.
     expect(row.creditsCharged).toBe(3);
   });
 

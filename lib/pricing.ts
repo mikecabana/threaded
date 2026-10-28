@@ -11,19 +11,29 @@ export const CURRENCY = "usd";
 /** Retail value of one credit in USD. */
 export const CREDIT_USD = 0.01;
 
-/** Default multiplier on actual AI Gateway cost; overridable per catalog model. */
-export const DEFAULT_MARKUP = 1.5;
+/**
+ * Default multiplier on actual AI Gateway cost; overridable per catalog model.
+ * 2× leaves room for Stripe's fees (about 6% + 30¢ a payment), the free trial
+ * and the background work every account costs (docs/PLAN.md §6).
+ */
+export const DEFAULT_MARKUP = 2;
 
 /** Free credits granted once per Threads account. */
 export const TRIAL_CREDITS = 100;
 
+/** Bigger packs come with bonus credits: 100, 110 and 115 credits per dollar. */
 export const CREDIT_PACKS = [
   { id: "pack_5", usd: 5, credits: 500 },
-  { id: "pack_20", usd: 20, credits: 2000 },
-  { id: "pack_50", usd: 50, credits: 5000 },
+  { id: "pack_20", usd: 20, credits: 2200 },
+  { id: "pack_50", usd: 50, credits: 5750 },
 ] as const;
 
 export type CreditPack = (typeof CREDIT_PACKS)[number];
+
+/** Credits beyond the pack's dollar value (1 credit = 1¢), e.g. 200 for $20 → 2,200. */
+export function packBonus(pack: CreditPack): number {
+  return pack.credits - Math.round(pack.usd / CREDIT_USD);
+}
 
 export function packById(id: string | null | undefined): CreditPack | undefined {
   return CREDIT_PACKS.find((pack) => pack.id === id);
