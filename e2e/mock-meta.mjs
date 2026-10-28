@@ -54,6 +54,8 @@ function mockPosts(now = Date.now()) {
 
 /** Posts published through the mock, newest last; they show up in the post list too. */
 const published = [];
+/** Replies published through the mock (the rest of a series); replies aren't in the post list. */
+const replies = [];
 const containers = new Map();
 
 function json(res, status, body) {
@@ -104,12 +106,21 @@ const server = createServer(async (req, res) => {
   }
   if (url.pathname === "/v1.0/me/threads" && req.method === "POST") {
     const id = `mock-container-${containers.size + 1}`;
-    containers.set(id, { text: url.searchParams.get("text") ?? "", topicTag: url.searchParams.get("topic_tag") });
+    containers.set(id, {
+      text: url.searchParams.get("text") ?? "",
+      topicTag: url.searchParams.get("topic_tag"),
+      replyToId: url.searchParams.get("reply_to_id"),
+    });
     return json(res, 200, { id });
   }
   if (url.pathname === "/v1.0/me/threads_publish" && req.method === "POST") {
     const container = containers.get(url.searchParams.get("creation_id"));
     if (!container) return json(res, 400, { error: { message: "Invalid creation_id", code: 100 } });
+    if (container.replyToId) {
+      const id = `mock-reply-${replies.length + 1}`;
+      replies.push({ id, text: container.text, replyToId: container.replyToId });
+      return json(res, 200, { id });
+    }
     const id = `mock-media-${published.length + 1}`;
     published.push({
       id,
@@ -197,6 +208,8 @@ const server = createServer(async (req, res) => {
     });
   }
   if (url.pathname === "/health") return json(res, 200, { ok: true });
+  // Test control: replies published through the mock, in order.
+  if (url.pathname === "/__control/replies") return json(res, 200, { data: replies });
   return json(res, 404, { error: { message: `mock has no route for ${url.pathname}`, code: 100 } });
 });
 

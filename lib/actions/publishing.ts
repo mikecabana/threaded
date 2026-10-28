@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { threadsProfiles } from "@/lib/db/schema";
-import { DRAFT_PROBLEMS, MAX_SCHEDULE_DAYS } from "@/lib/publishing/draft";
+import { DRAFT_PROBLEMS, MAX_SCHEDULE_DAYS, MAX_SERIES_PARTS } from "@/lib/publishing/draft";
 import {
   cancelPost,
   MAX_PENDING,
@@ -29,11 +29,14 @@ const MESSAGES: Record<PublishingProblem, string> = {
   not_found: "That post isn't in your queue anymore.",
   not_editable: "That post has already gone out, or is publishing right now.",
   not_connected: "Reconnect your Threads account to post.",
+  too_many_parts: `A series can have up to ${MAX_SERIES_PARTS} posts.`,
 };
 
 const draftSchema = z.object({
   text: z.string().max(5_000),
   topicTag: z.string().max(100).optional(),
+  /** The rest of a series, after the first post. */
+  seriesParts: z.array(z.string().max(5_000)).max(50).optional(),
   suggestionId: z.uuid().optional(),
   /** "now", a slot's ISO time, or a datetime-local value in the profile's timezone. */
   when: z.discriminatedUnion("kind", [
@@ -66,10 +69,13 @@ async function run(action: () => Promise<{ id: string; scheduledFor: Date }>): P
     refresh();
     return { ok: true, id, scheduledFor: scheduledFor.toISOString() };
   } catch (error) {
-    if (error instanceof PublishingError) return { ok: false, message: MESSAGES[error.problem] };
+    if (error instanceof PublishingError) return { ok: false, message: messageFor(error) };
     throw error;
   }
 }
+
+const messageFor = (error: PublishingError) =>
+  error.part ? `Part ${error.part}: ${MESSAGES[error.problem]}` : MESSAGES[error.problem];
 
 /** Queue a new post, to publish now or at a time. */
 export async function schedulePostAction(input: unknown): Promise<ComposeResult> {
@@ -84,6 +90,7 @@ export async function schedulePostAction(input: unknown): Promise<ComposeResult>
       profileId: identity.profileId,
       text: parsed.data.text,
       topicTag: parsed.data.topicTag,
+      seriesParts: parsed.data.seriesParts,
       suggestionId: parsed.data.suggestionId,
       when,
     }),
@@ -99,7 +106,12 @@ export async function updatePostAction(id: string, input: unknown): Promise<Comp
   const when = await resolveWhen(identity, parsed.data.when);
   if (!when) return { ok: false, message: "Pick a date and time." };
   return run(() =>
-    updatePost(identity.profileId, id, { text: parsed.data.text, topicTag: parsed.data.topicTag, when }),
+    updatePost(identity.profileId, id, {
+      text: parsed.data.text,
+      topicTag: parsed.data.topicTag,
+      seriesParts: parsed.data.seriesParts,
+      when,
+    }),
   );
 }
 
@@ -117,7 +129,7 @@ export async function cancelPostAction(id: string): Promise<{ ok: boolean; messa
     refresh();
     return { ok: true };
   } catch (error) {
-    if (error instanceof PublishingError) return { ok: false, message: MESSAGES[error.problem] };
+    if (error instanceof PublishingError) return { ok: false, message: messageFor(error) };
     throw error;
   }
 }

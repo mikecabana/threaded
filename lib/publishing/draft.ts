@@ -7,6 +7,8 @@ import { THREADS_MAX_LENGTH, THREADS_MAX_LINKS, threadsLength, threadsLinkCount 
 export const TOPIC_TAG_MAX = 50;
 /** How far ahead a post can be scheduled. */
 export const MAX_SCHEDULE_DAYS = 60;
+/** Posts in a series, the first one included. */
+export const MAX_SERIES_PARTS = 10;
 
 export type DraftProblem = "empty" | "too_long" | "too_many_links" | "bad_topic";
 
@@ -20,6 +22,18 @@ export const DRAFT_PROBLEMS: Record<DraftProblem, string> = {
 export function normalizeTopic(topic: string | null | undefined): string | null {
   const tag = (topic ?? "").trim().replace(/^#/, "");
   return tag === "" ? null : tag;
+}
+
+/**
+ * The first problem in a series and which part has it (1 is the first post).
+ * The topic tag goes on the first post only.
+ */
+export function seriesProblem(texts: readonly string[], topic?: string | null) {
+  for (const [index, text] of texts.entries()) {
+    const problem = draftProblem(text, index === 0 ? topic : null);
+    if (problem) return { problem, part: index + 1 };
+  }
+  return null;
 }
 
 export function draftProblem(text: string, topic?: string | null): DraftProblem | null {

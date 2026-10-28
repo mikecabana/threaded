@@ -441,6 +441,13 @@ export const creditLots = pgTable(
 
 // ── Publishing & jobs ────────────────────────────────────────────────────────
 
+/** A part of a series after the first post. */
+export interface SeriesPart {
+  text: string;
+  containerId?: string | null;
+  mediaId?: string | null;
+}
+
 export const scheduledPosts = pgTable(
   "scheduled_posts",
   {
@@ -451,7 +458,16 @@ export const scheduledPosts = pgTable(
     suggestionId: uuid("suggestion_id").references(() => suggestions.id, { onDelete: "set null" }),
     text: text("text").notNull(),
     topicTag: text("topic_tag"),
-    /** Previous part of a series; published with reply_to_id. */
+    /**
+     * The rest of a series, after this first post. Each part goes out as a
+     * reply to the one before it (reply_to_id), with its own container and
+     * media id; the first part's are the columns below.
+     */
+    seriesParts: jsonb("series_parts").$type<SeriesPart[]>().notNull().default([]),
+    /**
+     * Unused (series live in series_parts). Drop it in a later migration: the
+     * previous deployment still selects it while a new one builds.
+     */
     replyToScheduledId: uuid("reply_to_scheduled_id"),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
     status: scheduledStatusEnum("status").notNull().default("scheduled"),

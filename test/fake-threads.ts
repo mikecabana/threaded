@@ -36,6 +36,8 @@ export interface FakePublished {
   mediaId: string;
   text: string;
   topicTag: string | null;
+  /** The post it replies to (the part before, in a series). */
+  replyToId: string | null;
 }
 
 function json(body: unknown, status = 200) {
@@ -69,7 +71,10 @@ export function searchResults(query: string, ownUsername: string) {
 export function installFakeThreads(options: FakeThreadsOptions) {
   const calls: URL[] = [];
   const pageSize = options.pageSize ?? 2;
-  const containers = new Map<string, { text: string; topicTag: string | null; checks: number }>();
+  const containers = new Map<
+    string,
+    { text: string; topicTag: string | null; replyToId: string | null; checks: number }
+  >();
   const published: FakePublished[] = [];
 
   const realFetch = globalThis.fetch;
@@ -101,6 +106,7 @@ export function installFakeThreads(options: FakeThreadsOptions) {
       containers.set(id, {
         text: url.searchParams.get("text") ?? "",
         topicTag: url.searchParams.get("topic_tag"),
+        replyToId: url.searchParams.get("reply_to_id"),
         checks: 0,
       });
       return json({ id });
@@ -113,7 +119,13 @@ export function installFakeThreads(options: FakeThreadsOptions) {
         return json({ error: { message: "Container already published", code: 100 } }, 400);
       }
       const mediaId = `media-${published.length + 1}`;
-      published.push({ containerId, mediaId, text: container.text, topicTag: container.topicTag });
+      published.push({
+        containerId,
+        mediaId,
+        text: container.text,
+        topicTag: container.topicTag,
+        replyToId: container.replyToId,
+      });
       return json({ id: mediaId });
     }
     if (path === "/me/threads_publishing_limit") {

@@ -71,6 +71,13 @@
       "when": 1793063535834,
       "tag": "0009_web_research",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793157228714,
+      "tag": "0010_series",
+      "breakpoints": true
     }
   ]
 }

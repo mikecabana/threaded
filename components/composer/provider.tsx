@@ -9,6 +9,8 @@ import { Composer } from "./composer";
 export interface ComposerDraft {
   text: string;
   topicTag?: string | null;
+  /** The rest of a series, after the first post. */
+  seriesParts?: string[];
   /** The idea this post came from; it's marked scheduled, then posted. */
   suggestionId?: string | null;
   /** The idea's own best slot, offered first. */

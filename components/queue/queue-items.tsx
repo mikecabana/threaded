@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { useComposer } from "@/components/composer/provider";
 import { uiSpring } from "@/components/motion/springs";
-import { type PostAuthor, PostPreview } from "@/components/threads/post-preview";
+import type { PostAuthor } from "@/components/threads/post-preview";
+import { SeriesPreview, seriesParts } from "@/components/threads/series-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,6 +26,7 @@ export function ScheduledItem({ author, post }: { author: PostAuthor; post: Queu
     composer?.open({
       text: post.text,
       topicTag: post.topicTag,
+      seriesParts: post.seriesParts,
       postId: post.id,
       scheduledFor: post.scheduledFor,
       mode,
@@ -32,10 +34,10 @@ export function ScheduledItem({ author, post }: { author: PostAuthor; post: Queu
 
   return (
     <Card className="p-4">
-      <PostPreview
+      <SeriesPreview
         author={author}
-        text={post.text}
-        clamp={4}
+        parts={seriesParts(post.id, [post.text, ...post.seriesParts])}
+        clamp={post.seriesParts.length > 0 ? 3 : 4}
         meta={
           publishing ? (
             <Badge variant="accent">
@@ -105,12 +107,17 @@ export function ScheduledItem({ author, post }: { author: PostAuthor; post: Queu
   );
 }
 
-/** A post that didn't go out, with why, and the fixes. */
+/**
+ * A post that didn't go out, with why, and the fixes. A series that stopped
+ * partway can only post the rest or keep what's live: editing would change
+ * what people already see.
+ */
 export function FailedItem({ author, post, time }: { author: PostAuthor; post: QueuedPost; time: string }) {
   const composer = useComposer();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const partway = post.partsLive > 0;
   const act = (action: () => Promise<{ ok: boolean; message?: string }>) =>
     startTransition(async () => {
       const result = await action();
@@ -123,25 +130,36 @@ export function FailedItem({ author, post, time }: { author: PostAuthor; post: Q
       <p className="mb-3 flex items-start gap-2 text-sm">
         <TriangleAlert className="mt-0.5 size-4 shrink-0 text-negative" aria-hidden />
         <span>
-          <span className="font-medium">Didn't post {time}.</span> {post.lastError}
+          <span className="font-medium">
+            {partway ? "Didn't finish posting" : "Didn't post"} {time}.
+          </span>{" "}
+          {post.lastError}
         </span>
       </p>
-      <PostPreview author={author} text={post.text} clamp={3} />
+      <SeriesPreview author={author} parts={seriesParts(post.id, [post.text, ...post.seriesParts])} clamp={3} />
       <div className="mt-3 flex flex-wrap gap-2 border-border border-t pt-3">
         <Button size="sm" disabled={pending} onClick={() => act(() => retryPostAction(post.id))}>
-          {pending ? <LoaderCircle className="animate-spin" /> : <RotateCw />} Retry now
+          {pending ? <LoaderCircle className="animate-spin" /> : <RotateCw />} {partway ? "Post the rest" : "Retry now"}
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() =>
-            composer?.open({ text: post.text, topicTag: post.topicTag, postId: post.id, mode: "schedule" })
-          }
-        >
-          <CalendarClock /> Edit and reschedule
-        </Button>
+        {!partway && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              composer?.open({
+                text: post.text,
+                topicTag: post.topicTag,
+                seriesParts: post.seriesParts,
+                postId: post.id,
+                mode: "schedule",
+              })
+            }
+          >
+            <CalendarClock /> Edit and reschedule
+          </Button>
+        )}
         <Button size="sm" variant="ghost" disabled={pending} onClick={() => act(() => cancelPostAction(post.id))}>
-          <X /> Remove
+          <X /> {partway ? "Keep what's posted" : "Remove"}
         </Button>
       </div>
       {message && <p className="mt-2 text-negative text-sm">{message}</p>}

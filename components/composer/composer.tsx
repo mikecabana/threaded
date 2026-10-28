@@ -1,16 +1,16 @@
 "use client";
 
-import { CalendarClock, Check, ExternalLink, LoaderCircle, Send, TriangleAlert, X } from "lucide-react";
+import { CalendarClock, Check, ExternalLink, LoaderCircle, Plus, Send, TriangleAlert, X } from "lucide-react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { revealSpring, uiSpring } from "@/components/motion/springs";
-import { PostPreview } from "@/components/threads/post-preview";
+import { SeriesPreview } from "@/components/threads/series-preview";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { type ComposeResult, schedulePostAction, updatePostAction } from "@/lib/actions/publishing";
-import { DRAFT_PROBLEMS, draftProblem, TOPIC_TAG_MAX } from "@/lib/publishing/draft";
+import { DRAFT_PROBLEMS, MAX_SERIES_PARTS, seriesProblem, TOPIC_TAG_MAX } from "@/lib/publishing/draft";
 import { fromLocalInput, type Slot, slotLabel, suggestedSlots, toLocalInput } from "@/lib/publishing/slots";
 import { threadsLength } from "@/lib/threads/length";
 import { cn } from "@/lib/utils";
@@ -38,7 +38,9 @@ function defaultCustom(timeZone: string) {
 /**
  * The composer: write or polish a post with a live Threads preview, then
  * schedule it into one of your best slots (or any time), or post it now
- * after a confirmation. Nothing is posted without that explicit step.
+ * after a confirmation. Nothing is posted without that explicit step. "Add to
+ * thread" turns it into a series: each part goes out as a reply to the one
+ * before, the way Threads chains them.
  */
 export function Composer({
   config,
@@ -55,7 +57,10 @@ export function Composer({
   const titleId = useId();
   const editing = Boolean(draft.postId);
 
-  const [text, setText] = useState(draft.text);
+  const nextKey = useRef(0);
+  const part = (text: string) => ({ key: String(nextKey.current++), text });
+  const [parts, setParts] = useState(() => [draft.text, ...(draft.seriesParts ?? [])].map(part));
+  const [added, setAdded] = useState<string | null>(null);
   const [topic, setTopic] = useState(draft.topicTag ?? "");
   const [mode, setMode] = useState<Mode>(draft.mode ?? "schedule");
   const [stage, setStage] = useState<Stage>({ kind: "editing" });
@@ -73,7 +78,11 @@ export function Composer({
     draft.scheduledFor ? toLocalInput(new Date(draft.scheduledFor), config.timeZone) : defaultCustom(config.timeZone),
   );
 
-  const problem = draftProblem(text, topic);
+  const texts = parts.map((p) => p.text);
+  const series = parts.length > 1;
+  const found = seriesProblem(texts, topic);
+  const problem =
+    found && (series ? `Part ${found.part}: ${DRAFT_PROBLEMS[found.problem]}` : DRAFT_PROBLEMS[found.problem]);
   const busy = stage.kind === "sending" || stage.kind === "publishing";
   const customAt = fromLocalInput(custom, config.timeZone);
   const when =
@@ -92,13 +101,14 @@ export function Composer({
     };
   }, []);
 
-  // After "Post now", follow the publish run until it lands.
+  // After "Post now", follow the publish run until it lands (a series takes a little longer per part).
+  const patience = 90_000 + 60_000 * (parts.length - 1);
   useEffect(() => {
     if (stage.kind !== "publishing") return;
     let cancelled = false;
     const started = Date.now();
     const poll = async () => {
-      while (!cancelled && Date.now() - started < 90_000) {
+      while (!cancelled && Date.now() - started < patience) {
         const response = await fetch(`/api/posts/${stage.id}`, { cache: "no-store" }).catch(() => null);
         const post = (await response?.json().catch(() => null)) as {
           status: string;
@@ -125,20 +135,31 @@ export function Composer({
     return () => {
       cancelled = true;
     };
-  }, [stage, router]);
+  }, [stage, router, patience]);
 
   function close() {
     if (busy) return;
     onClose();
   }
 
+  function setPartText(key: string, text: string) {
+    setParts((current) => current.map((p) => (p.key === key ? { ...p, text } : p)));
+  }
+
+  function addPart() {
+    const next = part("");
+    setParts((current) => [...current, next]);
+    setAdded(next.key);
+  }
+
   async function submit(now: boolean) {
-    if (problem) return setError(DRAFT_PROBLEMS[problem]);
+    if (problem) return setError(problem);
     setError(null);
     setStage({ kind: "sending" });
     const payload = {
-      text,
+      text: texts[0],
       topicTag: topic.trim() || undefined,
+      seriesParts: series ? texts.slice(1) : undefined,
       suggestionId: draft.suggestionId ?? undefined,
       when: now
         ? { kind: "now" as const }
@@ -217,9 +238,9 @@ export function Composer({
 
           <AnimatePresence mode="wait" initial={false}>
             {stage.kind === "scheduled" || stage.kind === "published" || stage.kind === "publishing" ? (
-              <Outcome key="outcome" stage={stage} onClose={close} username={config.author.username} />
+              <Outcome key="outcome" stage={stage} onClose={close} username={config.author.username} series={series} />
             ) : stage.kind === "failed" ? (
-              <Outcome key="failed" stage={stage} onClose={close} username={config.author.username} />
+              <Outcome key="failed" stage={stage} onClose={close} username={config.author.username} series={series} />
             ) : (
               <m.div
                 key="form"
@@ -229,41 +250,74 @@ export function Composer({
                 exit={{ opacity: 0 }}
               >
                 <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto p-5 md:grid-cols-2">
-                  <div className="space-y-3">
-                    <label className="block">
-                      <span className="sr-only">Post text</span>
-                      <textarea
-                        value={text}
-                        onChange={(e) => setText(e.target.value)}
-                        rows={8}
-                        autoFocus
-                        className="h-36 w-full resize-none rounded-2xl border border-border-strong bg-surface-2 p-3 text-[15px] leading-relaxed outline-none focus-visible:border-accent sm:h-56"
-                      />
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border-strong bg-surface-2 px-3">
-                        <span className="text-subtle text-sm">#</span>
-                        <input
-                          value={topic}
-                          onChange={(e) => setTopic(e.target.value)}
-                          maxLength={TOPIC_TAG_MAX + 1}
-                          placeholder="Topic tag (optional)"
-                          aria-label="Topic tag"
-                          className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-subtle"
-                        />
-                      </label>
-                      <CounterRing length={threadsLength(text)} />
-                    </div>
+                  <div className="space-y-4">
+                    {parts.map((p, index) => (
+                      <div key={p.key} className="space-y-3">
+                        <label className="block">
+                          <span className={series ? "mb-1.5 block font-medium text-subtle text-xs" : "sr-only"}>
+                            {index === 0 ? "Post text" : `Part ${index + 1} text`}
+                          </span>
+                          <textarea
+                            value={p.text}
+                            onChange={(e) => setPartText(p.key, e.target.value)}
+                            rows={series ? 4 : 8}
+                            autoFocus={index === 0 || p.key === added}
+                            className={cn(
+                              "w-full resize-none rounded-2xl border border-border-strong bg-surface-2 p-3 text-[15px] leading-relaxed outline-none focus-visible:border-accent",
+                              series ? "h-28" : "h-36 sm:h-56",
+                            )}
+                          />
+                        </label>
+                        <div className="flex items-center gap-3">
+                          {index === 0 ? (
+                            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border-strong bg-surface-2 px-3">
+                              <span className="text-subtle text-sm">#</span>
+                              <input
+                                value={topic}
+                                onChange={(e) => setTopic(e.target.value)}
+                                maxLength={TOPIC_TAG_MAX + 1}
+                                placeholder="Topic tag (optional)"
+                                aria-label="Topic tag"
+                                className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-subtle"
+                              />
+                            </label>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setParts((current) => current.filter((other) => other.key !== p.key))}
+                              className="mr-auto flex items-center gap-1 rounded-lg px-2 py-1 text-muted text-sm transition-colors hover:bg-surface-2 hover:text-fg"
+                            >
+                              <X className="size-4" aria-hidden /> Remove part {index + 1}
+                            </button>
+                          )}
+                          <CounterRing length={threadsLength(p.text)} />
+                        </div>
+                      </div>
+                    ))}
+                    {parts.length < MAX_SERIES_PARTS && (
+                      <button
+                        type="button"
+                        onClick={addPart}
+                        className="flex items-center gap-1.5 rounded-xl px-2 py-1.5 font-medium text-accent text-sm transition-colors hover:bg-accent/10"
+                      >
+                        <Plus className="size-4" aria-hidden /> Add to thread
+                      </button>
+                    )}
                   </div>
                   <div>
                     <p className="mb-2 font-medium text-subtle text-xs uppercase tracking-wide">Preview</p>
                     <div className="rounded-2xl border border-border bg-surface p-4">
-                      <PostPreview
+                      <SeriesPreview
                         author={config.author}
-                        text={text || " "}
+                        parts={parts}
                         meta={topic.trim() ? <span className="text-xs">#{topic.trim().replace(/^#/, "")}</span> : null}
                       />
                     </div>
+                    {series && (
+                      <p className="mt-2 text-subtle text-xs">
+                        Each part goes out as a reply to the one before, so they read as one thread.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -310,7 +364,9 @@ export function Composer({
                         animate={{ opacity: 1, y: 0 }}
                         transition={revealSpring}
                       >
-                        <span className="font-medium text-sm">Post this to Threads now?</span>
+                        <span className="font-medium text-sm">
+                          {series ? `Post these ${parts.length} parts to Threads now?` : "Post this to Threads now?"}
+                        </span>
                         <Button variant="ghost" onClick={() => setStage({ kind: "editing" })}>
                           Not yet
                         </Button>
@@ -320,7 +376,7 @@ export function Composer({
                       </m.div>
                     ) : mode === "now" ? (
                       <Button
-                        onClick={() => (problem ? setError(DRAFT_PROBLEMS[problem]) : setStage({ kind: "confirming" }))}
+                        onClick={() => (problem ? setError(problem) : setStage({ kind: "confirming" }))}
                         disabled={busy}
                       >
                         {busy ? <LoaderCircle className="animate-spin" /> : <Send />} Post now
@@ -403,10 +459,12 @@ function Outcome({
   stage,
   onClose,
   username,
+  series,
 }: {
   stage: Extract<Stage, { kind: "scheduled" | "published" | "publishing" | "failed" }>;
   onClose: () => void;
   username: string;
+  series: boolean;
 }) {
   const icon =
     stage.kind === "publishing" ? (
@@ -447,7 +505,9 @@ function Outcome({
       </h3>
       <p className="mt-2 max-w-sm text-muted text-sm">
         {stage.kind === "publishing"
-          ? "This usually takes a few seconds."
+          ? series
+            ? "Each part goes out as a reply to the one before. This can take a minute."
+            : "This usually takes a few seconds."
           : stage.kind === "published"
             ? "It's live. Threaded will track how it does over the next three days."
             : stage.kind === "scheduled"
