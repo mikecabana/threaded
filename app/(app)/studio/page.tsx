@@ -7,7 +7,13 @@ import { SavedIdeas } from "@/components/studio/saved-ideas";
 import { Studio, type StudioModel } from "@/components/studio/studio";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type CatalogEntry, catalogFor, DEFAULT_CATALOG, pickModel } from "@/lib/ai/catalog";
-import { researchCredits, TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS, typicalCredits } from "@/lib/ai/cost";
+import {
+  researchCredits,
+  TYPICAL_INPUT_TOKENS,
+  TYPICAL_OUTPUT_TOKENS,
+  TYPICAL_THREAD_OUTPUT_TOKENS,
+  typicalCredits,
+} from "@/lib/ai/cost";
 import { threadsSearchStatus } from "@/lib/ai/threads-search";
 import { latestDna } from "@/lib/data/intelligence";
 import { getModelPick, getVoicePrefs } from "@/lib/data/settings";
@@ -22,8 +28,14 @@ function toStudioModel(entry: CatalogEntry): StudioModel {
     label: entry.label,
     tier: entry.tier,
     credits: {
-      3: typicalCredits(entry, TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS[3]),
-      5: typicalCredits(entry, TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS[5]),
+      post: {
+        3: typicalCredits(entry, TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS[3]),
+        5: typicalCredits(entry, TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS[5]),
+      },
+      thread: {
+        3: typicalCredits(entry, TYPICAL_INPUT_TOKENS, TYPICAL_THREAD_OUTPUT_TOKENS[3]),
+        5: typicalCredits(entry, TYPICAL_INPUT_TOKENS, TYPICAL_THREAD_OUTPUT_TOKENS[5]),
+      },
     },
   };
 }

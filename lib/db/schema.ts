@@ -364,6 +364,8 @@ export const suggestions = pgTable(
       .notNull()
       .references(() => generations.id, { onDelete: "cascade" }),
     text: text("text").notNull(),
+    /** For a thread, the posts after the first, in order. */
+    seriesParts: jsonb("series_parts").$type<string[]>().notNull().default([]),
     format: text("format").notNull(),
     hook: text("hook"),
     rationale: text("rationale"),

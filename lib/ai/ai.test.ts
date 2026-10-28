@@ -5,12 +5,12 @@ import { DEMO_PERSONAS } from "@/lib/demo/personas";
 import { creditsForCost } from "@/lib/pricing";
 import { type CatalogEntry, DEFAULT_CATALOG, pickModel, sameTierFallbacks } from "./catalog";
 import { buildContext, insightsFor, matchTopic, voiceStats } from "./context";
-import { chargeCredits, costUsd, maxCredits, reportedCostUsd } from "./cost";
+import { chargeCredits, costUsd, maxCredits, outputTokenBudget, reportedCostUsd } from "./cost";
 import { assembleDna, buildDnaPrompt } from "./dna-prompt";
 import { byokFailure, gatewayStatus } from "./errors";
 import { MOCK_SUGGESTIONS, mockDna } from "./mock-model";
 import { DUPLICATE_THRESHOLD, postProcess, similarity } from "./postprocess";
-import { buildInstructions, buildPrompt } from "./prompt";
+import { buildInstructions, buildPrompt, THREAD_RULES } from "./prompt";
 import { generateRequestSchema, suggestionBatchSchema } from "./schemas";
 
 const now = new Date("2026-10-20T19:30:00Z");
@@ -81,10 +81,50 @@ describe("post-processing", () => {
     expect(DUPLICATE_THRESHOLD).toBeGreaterThan(0.5);
   });
 
+  it("checks every post of a thread, and keeps parts only when a thread was asked for", () => {
+    const base = { ...MOCK_SUGGESTIONS[2], parts: ["Part two.", "  ", "Part three."] };
+    const { kept } = postProcess([base], [], 3, {}, "thread");
+    // Blank parts go; the rest stay in order.
+    expect(kept[0].parts).toEqual(["Part two.", "Part three."]);
+    expect(postProcess([base], []).kept[0].parts).toEqual([]);
+
+    const checked = postProcess(
+      [
+        { ...base, text: "One", parts: ["x".repeat(501)] },
+        { ...base, text: "Two", parts: ["Never say delve."] },
+        { ...base, text: "Three", parts: ["A part with an emoji 🚀"] },
+        { ...base, text: "Four", parts: Array.from({ length: 12 }, (_, i) => `Part ${i + 2}.`) },
+      ],
+      [],
+      10,
+      { bannedWords: ["delve"], emoji: "none" },
+      "thread",
+    );
+    expect(checked.dropped.map((d) => [d.text, d.reason])).toEqual([
+      ["One", "too_long"],
+      ["Two", "banned_word"],
+      ["Three", "emoji"],
+    ]);
+    // A thread is at most ten posts, like a series in the composer.
+    expect(checked.kept[0].parts).toHaveLength(9);
+  });
+
   it("clamps scores and time slots into range", () => {
     const { kept } = postProcess([{ ...MOCK_SUGGESTIONS[1], goalFit: 140.6, bestSlot: { weekday: 9, hour: -1 } }], []);
     expect(kept[0].goalFit).toBe(100);
     expect(kept[0].bestSlot).toEqual({ weekday: 2, hour: 23 });
+  });
+});
+
+describe("threads", () => {
+  it("asks for threads only when Studio does, and budgets for the longer output", () => {
+    const single = generateRequestSchema.parse({ goal: "followers" });
+    const thread = generateRequestSchema.parse({ goal: "followers", shape: "thread" });
+    expect(single.shape).toBe("post");
+    expect(buildInstructions(thread)).toContain(THREAD_RULES.join("\n"));
+    expect(buildInstructions(single)).not.toContain(THREAD_RULES[0]);
+    expect(buildInstructions(single)).toContain("`parts` is always empty");
+    expect(outputTokenBudget(3, "thread")).toBeGreaterThan(2 * outputTokenBudget(3));
   });
 });
 

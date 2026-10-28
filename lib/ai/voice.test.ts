@@ -39,9 +39,9 @@ describe("reading Settings → Voice", () => {
   });
 });
 
-describe("the writer's rules (v6)", () => {
+describe("the writer's rules", () => {
   it("adds the author's settings after the usual rules, and nothing without them", () => {
-    expect(PROMPT_VERSION).toBe("generate.v6");
+    expect(PROMPT_VERSION).toBe("generate.v7");
     const instructions = buildInstructions(request, {
       emoji: "none",
       casing: "lowercase",

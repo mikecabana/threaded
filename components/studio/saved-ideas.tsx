@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CopyButton } from "@/components/app/copy-button";
 import { ComposeButton, useComposer } from "@/components/composer/provider";
-import { type PostAuthor, PostPreview } from "@/components/threads/post-preview";
+import type { PostAuthor } from "@/components/threads/post-preview";
+import { SeriesPreview, seriesParts } from "@/components/threads/series-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,19 +35,20 @@ export function SavedIdeas({ author, ideas }: { author: PostAuthor; ideas: Store
           {visible.map((idea) => (
             <m.div key={idea.id} layout exit={{ opacity: 0, scale: 0.96 }}>
               <Card className="flex h-full flex-col p-4">
-                <PostPreview
+                <SeriesPreview
                   author={author}
-                  text={idea.text}
-                  clamp={4}
+                  parts={seriesParts(idea.id, [idea.text, ...idea.parts])}
+                  clamp={idea.parts.length > 0 ? 2 : 4}
                   meta={<Badge variant="outline">{FORMAT_LABELS[idea.format]}</Badge>}
                 />
                 <p className="mt-3 text-subtle text-xs">For {GOAL_META[idea.goal].label.toLowerCase()}</p>
                 <div className="mt-auto flex flex-wrap gap-2 pt-3">
-                  <CopyButton text={idea.text} />
+                  <CopyButton text={[idea.text, ...idea.parts].join("\n\n")} />
                   {composer ? (
                     <ComposeButton
                       draft={{
                         text: idea.text,
+                        seriesParts: idea.parts,
                         suggestionId: idea.id,
                         ideaSlot: idea.bestSlot,
                         // Queued ideas leave the saved list.

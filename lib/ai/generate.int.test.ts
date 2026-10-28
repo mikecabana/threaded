@@ -19,7 +19,7 @@ import { KEYWORD_SEARCH_SCOPE } from "@/lib/threads/oauth";
 import { closeDatabase, resetDatabase } from "@/test/db";
 import { installFakeThreads } from "@/test/fake-threads";
 import { RATE_LIMIT, startGeneration } from "./generate";
-import { MOCK_SUGGESTIONS, mockCalls } from "./mock-model";
+import { MOCK_SUGGESTIONS, MOCK_THREAD_PARTS, mockCalls } from "./mock-model";
 import { byokContext } from "./models";
 import { PROMPT_VERSION } from "./prompt";
 import { generateRequestSchema } from "./schemas";
@@ -230,6 +230,32 @@ describe("voice settings", () => {
     // The mock writes five; the one with the banned word goes, and the batch still has three.
     expect(kept.map((s) => s.text).join(" ")).not.toContain("procrastination");
     expect(kept).toHaveLength(3);
+  });
+});
+
+describe("threads", () => {
+  it("asks for threads and stores each idea's parts", async () => {
+    const { generationId } = await run({ shape: "thread" });
+    const lastPrompt = mockCalls.filter((call) => call.task === "generate").at(-1)?.prompt ?? "";
+    expect(lastPrompt).toContain("Write 3 new ideas, each a thread.");
+    expect(lastPrompt).toContain("Write every idea as a thread of 3 to 5 posts");
+
+    const kept = await db()
+      .select()
+      .from(suggestions)
+      .where(eq(suggestions.generationId, generationId as string));
+    expect(kept).toHaveLength(3);
+    for (const idea of kept) expect(idea.seriesParts).toHaveLength(2);
+    expect(kept.find((idea) => idea.text === MOCK_SUGGESTIONS[0].text)?.seriesParts).toEqual(MOCK_THREAD_PARTS[0]);
+  });
+
+  it("keeps single posts single", async () => {
+    const { generationId } = await run();
+    const kept = await db()
+      .select()
+      .from(suggestions)
+      .where(eq(suggestions.generationId, generationId as string));
+    expect(kept.every((idea) => idea.seriesParts.length === 0)).toBe(true);
   });
 });
 

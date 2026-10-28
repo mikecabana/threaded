@@ -12,7 +12,16 @@ import { type VoicePrefs, voiceRules } from "./voice";
 // v4: web research on the topic when it names something specific, and no guessing at unfamiliar names.
 // v5: what recent popular Threads posts on the topic show, and an angle they're missing.
 // v6: the author's voice settings (emoji, casing, banned words) and notes.
-export const PROMPT_VERSION = "generate.v6";
+// v7: ideas as threads (an opening post and 2–4 parts), on request.
+export const PROMPT_VERSION = "generate.v7";
+
+/** How a thread is written: the opening post earns the rest. */
+export const THREAD_RULES = [
+  "- Write every idea as a thread of 3 to 5 posts: `text` is the opening post, and `parts` holds the rest in order. Each part replies to the one before it on Threads.",
+  "- The opening post has to make people want to read on, and still work if it's the only one they see.",
+  "- Every part adds something (a step, an example, a turn), and the last one lands the point or asks a question.",
+  "- Number the posts only if the author does.",
+];
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -41,6 +50,7 @@ export function buildInstructions(request: GenerateRequest, voice?: VoicePrefs |
     "- Match the author's voice: length, casing, emoji habits, line breaks and vocabulary. When a voice guide is given, follow it.",
     "- Use the author's signature phrases sparingly: at most one idea should lean on one.",
     "- Every post must be under 450 characters (emoji count as several characters).",
+    ...(request.shape === "thread" ? THREAD_RULES : ["- Every idea is a single post: `parts` is always empty."]),
     "- Each idea must be meaningfully different from the others.",
     "- In `rationale`, cite the author's own numbers from the context when they support the idea. Never make up numbers.",
     "- `goalFit` is your honest 0–100 estimate for this author, not a compliment.",
@@ -153,7 +163,9 @@ export function buildPrompt(request: GenerateRequest, context: GenerationContext
   if (request.topic) lines.push(...researchLines(request.topic, research));
 
   lines.push(
-    `Write ${request.count} new post ideas.`,
+    request.shape === "thread"
+      ? `Write ${request.count} new ideas, each a thread.`
+      : `Write ${request.count} new post ideas.`,
     request.topic ? `Topic: ${request.topic}.${topicNote(context)}` : "Topic: whatever fits the author's niche best.",
     request.format === "any"
       ? "Mix formats where it helps the goal."

@@ -1,0 +1,1 @@
+ALTER TABLE "suggestions" ADD COLUMN "series_parts" jsonb DEFAULT '[]'::jsonb NOT NULL;
