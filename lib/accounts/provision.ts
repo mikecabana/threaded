@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { grantCredits } from "@/lib/billing/wallet";
 import { encryptSecret } from "@/lib/crypto/secrets";
 import { sha256 } from "@/lib/crypto/sign";
-import { db, type Tx } from "@/lib/db";
+import { db, lockFor, type Tx } from "@/lib/db";
 import {
   deletionRequests,
   memberships,
@@ -53,11 +53,13 @@ export function isValidTimeZone(zone: string | undefined): zone is string {
  * workspace, membership, profile, encrypted token and wallet. The free trial
  * is granted once per Threads account, ever. The ledger keeps a hashed
  * reference that survives data deletion, so deleting and reconnecting
- * doesn't earn a second trial.
+ * doesn't earn a second trial. Sign-ins for the same account wait for each
+ * other, so two at once (two tabs, two devices) don't both create it.
  */
 export async function provisionThreadsAccount(input: ProvisionInput): Promise<ProvisionResult> {
   const { profile } = input;
   return db().transaction(async (tx) => {
+    await lockFor(tx, `provision:${profile.id}`);
     const [existing] = await tx
       .select({ workspaceId: threadsProfiles.workspaceId, lastSyncedAt: threadsProfiles.lastSyncedAt })
       .from(threadsProfiles)

@@ -725,7 +725,7 @@ All open decisions are resolved; see the table at the top. **Before launch, revi
 - The mock now behaves the same way (CAD by default, no mixed currencies, no taxed invoice without an address), and integration tests cover both cases. The default portal configuration Stripe creates already matches what Threaded needs.
 - These checks ran on a separate "Threaded sandbox". The app now uses the **Threaded** account's test mode, which has its Quebec head office set, default tax code `txcd_10103000`, and GST/HST and QST registrations.
 
-**Phase 1 is live.** Production runs on Vercel at `getthreaded.app` (behind Cloudflare's proxy, settings under "Domains" in `docs/SETUP.md`; `www` redirects to it), with Neon Postgres (migrated on every deploy) and Threads sign-in for the Meta app's testers (the app is in development mode until App Review). Production uses live Stripe keys; previews use test keys and sign in through production's callback (`PREVIEW_ORIGINS`). Docs-only changes don't build previews (`scripts/vercel-ignore-build.sh`). Phase 2 is under way (§18).
+**Phase 1 is live.** Production runs on Vercel at `getthreaded.app` (behind Cloudflare's proxy, settings under "Domains" in `docs/SETUP.md`; `www` redirects to it), with Neon Postgres (migrated on every deploy) and Threads sign-in for the Meta app's testers (the app is published, but only people with a role on it can sign in until App Review approves its permissions). Production uses live Stripe keys; previews use test keys and sign in through production's callback (`PREVIEW_ORIGINS`). Docs-only changes don't build previews (`scripts/vercel-ignore-build.sh`). Phase 2 is under way (§18).
 
 **Waiting on you** (see `docs/SETUP.md` §5):
 - Meta: verify the app's contact email; submit App Review (screencasts, icon; business verification may be requested)
@@ -772,6 +772,7 @@ All open decisions are resolved; see the table at the top. **Before launch, revi
 
 **Reliability fixes (done):**
 - **Costs:** Studio billed from `getGenerationInfo`, which the Gateway can't answer straight after a call ("usage event not found"), so every batch fell back to token pricing. Batches and research now bill from the cost the Gateway sends with each response.
+- **Two sign-ins at once:** a new account signing in from two tabs or devices at the same moment made both create it, and the second failed on the duplicate profile. Sign-ins for the same Threads account now wait for each other (a transaction-level advisory lock), so the second signs in to the account the first created. Each would then have started its own first sync; starting a run is now a locked check-and-insert, so a second sync for a profile stops before doing anything, which also covers a double click on "Sync now" and the daily sync during a manual one.
 - **Topic names:** on a real account the fast model's topic list sometimes couldn't be read ("could not parse the response"). JSON wrapped in a code block or a sentence is now unwrapped before giving up (topics and DNA), the list gets 2,000 output tokens instead of 1,000, and a failure logs how the reply ended and its shape, never its words. Posts labelled before the first list was named are filed again once it is; before, they stayed without a topic.
 
 **Launch, part 1: monitoring and cookies (done):**

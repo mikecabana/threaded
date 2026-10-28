@@ -1,6 +1,6 @@
 import "server-only";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { db, lockFor } from "@/lib/db";
 import { accountDaily, postMetrics, posts, syncRuns, threadsProfiles } from "@/lib/db/schema";
 import { ThreadsApiError } from "@/lib/threads/errors";
 import { threadsLength } from "@/lib/threads/length";
@@ -29,9 +29,33 @@ async function guard<T>(profileId: string, work: () => Promise<T>): Promise<T> {
 
 // ── Runs ─────────────────────────────────────────────────────────────────────
 
-export async function startSyncRun(profileId: string, kind: "initial" | "daily" | "manual"): Promise<string> {
-  const [run] = await db().insert(syncRuns).values({ profileId, kind, step: "posts" }).returning({ id: syncRuns.id });
-  return run.id;
+/** A run that started over 30 minutes ago and never finished has died; it doesn't block a new one. */
+const STALE_RUN_MS = 30 * 60_000;
+
+const activeRun = (profileId: string, now: Date) =>
+  and(
+    eq(syncRuns.profileId, profileId),
+    eq(syncRuns.status, "running"),
+    gte(syncRuns.startedAt, new Date(now.getTime() - STALE_RUN_MS)),
+  );
+
+/**
+ * Records a new run, or returns null while another is still going: two
+ * sign-ins at once, a double click on "Sync now", or the daily sync during a
+ * manual one can each start a workflow, and only the first gets to run.
+ */
+export async function startSyncRun(
+  profileId: string,
+  kind: "initial" | "daily" | "manual",
+  now = new Date(),
+): Promise<string | null> {
+  return db().transaction(async (tx) => {
+    await lockFor(tx, `sync:${profileId}`);
+    const [active] = await tx.select({ id: syncRuns.id }).from(syncRuns).where(activeRun(profileId, now)).limit(1);
+    if (active) return null;
+    const [run] = await tx.insert(syncRuns).values({ profileId, kind, step: "posts" }).returning({ id: syncRuns.id });
+    return run.id;
+  });
 }
 
 export async function setSyncStep(runId: string, step: SyncStep, stats?: Record<string, number>): Promise<void> {
@@ -72,17 +96,7 @@ export async function latestSyncRun(profileId: string) {
 
 /** True while a run started in the last 30 minutes is still going (stale runs don't block). */
 export async function hasActiveSyncRun(profileId: string, now = new Date()): Promise<boolean> {
-  const [run] = await db()
-    .select({ id: syncRuns.id })
-    .from(syncRuns)
-    .where(
-      and(
-        eq(syncRuns.profileId, profileId),
-        eq(syncRuns.status, "running"),
-        gte(syncRuns.startedAt, new Date(now.getTime() - 30 * 60_000)),
-      ),
-    )
-    .limit(1);
+  const [run] = await db().select({ id: syncRuns.id }).from(syncRuns).where(activeRun(profileId, now)).limit(1);
   return Boolean(run);
 }
 
