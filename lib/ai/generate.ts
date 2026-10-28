@@ -143,7 +143,7 @@ export async function startGeneration(input: {
     winners,
   });
   const instructions = buildInstructions(request, voice);
-  const maxOutputTokens = outputTokenBudget(request.count);
+  const maxOutputTokens = outputTokenBudget(request.count, request.shape);
 
   const generationId = randomUUID();
   await db().insert(generations).values({
@@ -224,7 +224,7 @@ export async function startGeneration(input: {
     try {
       const processed =
         outcome.kind === "ok" && outcome.output
-          ? postProcess(outcome.output.suggestions, pastPosts, request.count, voice)
+          ? postProcess(outcome.output.suggestions, pastPosts, request.count, voice, request.shape)
           : null;
       if (!processed || processed.kept.length === 0) {
         await db()
@@ -263,6 +263,7 @@ export async function startGeneration(input: {
           processed.kept.map((s) => ({
             generationId,
             text: s.text,
+            seriesParts: s.parts,
             format: s.format,
             hook: s.hook,
             rationale: s.rationale,

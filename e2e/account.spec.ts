@@ -251,6 +251,29 @@ test("voice settings set Studio's default tone and leave out ideas that break th
   await expect(ideas.getByText("1 idea was left out")).toContainText("voice settings");
 });
 
+test("writes ideas as threads in Studio, and opens one in the composer as a series", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/studio");
+  await page.getByRole("radio", { name: "A thread" }).check({ force: true });
+  await expect(page.getByText("3 to 5 posts, each a reply to the one before.")).toBeVisible();
+  await page.getByRole("button", { name: /Generate/ }).click();
+  const ideas = shown(page.getByLabel("Ideas", { exact: true }));
+  await expect(ideas.getByRole("button", { name: "Copy" })).toHaveCount(3, { timeout: 20_000 });
+  await expect(ideas.getByText("Part 3 of 3").first()).toBeAttached();
+  await expect(ideas.getByText("3 posts").first()).toBeVisible();
+
+  // Scheduling one opens the composer with every part in place.
+  await ideas.getByRole("button", { name: "Schedule" }).first().click();
+  const composer = page.getByRole("dialog", { name: "New post" });
+  await expect(composer.getByLabel("Post text")).toHaveValue(
+    "What's one habit that quietly made you better at your job this year?",
+  );
+  await expect(composer.getByLabel("Part 2 text")).toHaveValue("Mine: a one-line plan before I open my inbox.");
+  await expect(composer.getByLabel("Part 3 text")).toHaveValue("Reply with yours. I'll share the best ones next week.");
+  await composer.getByRole("button", { name: "Close" }).click();
+  await expect(composer).toHaveCount(0);
+});
+
 test("shows a billing problem across the app until it's dismissed", async ({ page }) => {
   const pool = new Pool({ connectionString: databaseUrl });
   try {

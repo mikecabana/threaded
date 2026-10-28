@@ -3,6 +3,7 @@ import { Experimental_DecisionMockModelV4, MockLanguageModelV4 } from "ai/test";
 import type { PostFormat } from "@/lib/analysis/formats";
 import type { AiTask } from "./catalog";
 import type { DnaOutput } from "./dna-prompt";
+import { THREAD_RULES } from "./prompt";
 import type { Suggestion } from "./schemas";
 import type { TopicsOutput } from "./topics-prompt";
 
@@ -16,6 +17,7 @@ import type { TopicsOutput } from "./topics-prompt";
 export const MOCK_SUGGESTIONS: Suggestion[] = [
   {
     text: "What's one habit that quietly made you better at your job this year?",
+    parts: [],
     format: "question",
     hook: "Everyone has an answer, and it's flattering to share.",
     rationale: "Your questions get the most replies of anything you post.",
@@ -24,6 +26,7 @@ export const MOCK_SUGGESTIONS: Suggestion[] = [
   },
   {
     text: "Hot take: most productivity advice is just procrastination with better branding.",
+    parts: [],
     format: "hot_take",
     hook: "A line people want to quote, agree or not.",
     rationale: "Contrarian one-liners travel furthest for you.",
@@ -32,6 +35,7 @@ export const MOCK_SUGGESTIONS: Suggestion[] = [
   },
   {
     text: "Three things I stopped doing this year:\n\n1. Checking email first thing\n2. Saying yes by default\n3. Working past 7pm",
+    parts: [],
     format: "list",
     hook: "Lists promise quick value.",
     rationale: "Your lists get reposted more than your other formats.",
@@ -40,6 +44,7 @@ export const MOCK_SUGGESTIONS: Suggestion[] = [
   },
   {
     text: "Shipped the smallest possible version today. It already taught me more than a month of planning.",
+    parts: [],
     format: "story",
     hook: "A tiny, relatable win.",
     rationale: "Short building stories land well with your audience.",
@@ -48,6 +53,7 @@ export const MOCK_SUGGESTIONS: Suggestion[] = [
   },
   {
     text: "Tip: write the announcement post before you build the feature. If it's boring, so is the feature.",
+    parts: [],
     format: "tip",
     hook: "Useful in one sentence.",
     rationale: "Practical tips are your most saved posts.",
@@ -55,6 +61,26 @@ export const MOCK_SUGGESTIONS: Suggestion[] = [
     bestSlot: { weekday: 5, hour: 9 },
   },
 ];
+
+/** The rest of each mock idea when it's asked for a thread (lib/ai/prompt.ts THREAD_RULES). */
+export const MOCK_THREAD_PARTS: string[][] = [
+  ["Mine: a one-line plan before I open my inbox.", "Reply with yours. I'll share the best ones next week."],
+  [
+    "Most of it sells you a system for avoiding the work.",
+    "The boring version works: fewer projects, one list, earlier nights.",
+  ],
+  ["Email first thing meant reacting all day.", "Saying yes by default filled my week with other people's priorities."],
+  ["The plan said six weeks. The first users found the real problem on day two.", "Ship the small thing first."],
+  ["If you can't make the post exciting, users won't be either.", "It takes ten minutes and saves a month."],
+];
+
+/** The mock's batch: single posts, or threads when the prompt asks for them. */
+function mockBatch(prompt: string, count: number) {
+  const thread = prompt.includes(THREAD_RULES[0]);
+  return {
+    suggestions: MOCK_SUGGESTIONS.slice(0, count).map((s, i) => ({ ...s, parts: thread ? MOCK_THREAD_PARTS[i] : [] })),
+  };
+}
 
 function usage(input: number, output: number) {
   return {
@@ -244,9 +270,6 @@ export function createMockModel(
   modelId = "mock/model",
   { fail = false, task = "generate" }: { fail?: boolean; task?: AiTask } = {},
 ) {
-  const json = JSON.stringify({ suggestions: MOCK_SUGGESTIONS.slice(0, count) });
-  // ~24-character chunks, so the client sees a realistic stream.
-  const deltas = json.match(/[\s\S]{1,24}/g) ?? [json];
   return new MockLanguageModelV4({
     provider: "mock",
     modelId,
@@ -263,11 +286,7 @@ export function createMockModel(
         };
       }
       const answer =
-        task === "dna"
-          ? mockDna(prompt)
-          : task === "classify"
-            ? mockTopics(prompt)
-            : { suggestions: MOCK_SUGGESTIONS.slice(0, count) };
+        task === "dna" ? mockDna(prompt) : task === "classify" ? mockTopics(prompt) : mockBatch(prompt, count);
       return {
         content: [{ type: "text", text: JSON.stringify(answer) }],
         finishReason: { unified: "stop", raw: undefined },
@@ -276,8 +295,12 @@ export function createMockModel(
       };
     },
     doStream: async (options) => {
-      record(task, promptText(options.prompt as PromptMessage[]));
+      const prompt = promptText(options.prompt as PromptMessage[]);
+      record(task, prompt);
       if (fail) throw new Error("Mock provider failure");
+      const json = JSON.stringify(mockBatch(prompt, count));
+      // ~24-character chunks, so the client sees a realistic stream.
+      const deltas = json.match(/[\s\S]{1,24}/g) ?? [json];
       return {
         stream: simulateReadableStream({
           initialDelayInMs: 50,

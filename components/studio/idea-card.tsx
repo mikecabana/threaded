@@ -7,6 +7,7 @@ import { CopyButton } from "@/components/app/copy-button";
 import { GoalFitRing } from "@/components/goal/goal-fit-ring";
 import { revealSpring } from "@/components/motion/springs";
 import { type PostAuthor, PostPreview } from "@/components/threads/post-preview";
+import { SeriesPreview, seriesParts } from "@/components/threads/series-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,6 +19,8 @@ import { cn } from "@/lib/utils";
 
 export interface IdeaView {
   text?: string;
+  /** For a thread, the posts after the first (streamed ones may be partial). */
+  parts?: (string | undefined)[];
   format?: string;
   hook?: string;
   rationale?: string;
@@ -52,7 +55,10 @@ export function IdeaCard({
   onCompose?: (mode: "schedule" | "now") => void;
 }) {
   const text = idea.text ?? "";
+  const parts = (idea.parts ?? []).filter((part): part is string => Boolean(part));
+  const posts = [text, ...parts];
   const length = threadsLength(text);
+  const tooLong = posts.some((post) => threadsLength(post) > THREADS_MAX_LENGTH);
   const format = idea.format && idea.format in FORMAT_LABELS ? FORMAT_LABELS[idea.format as PostFormat] : null;
   const slot = idea.bestSlot;
 
@@ -66,28 +72,32 @@ export function IdeaCard({
       aria-busy={streaming}
     >
       <Card className={cn("p-5 transition-colors", saved && "border-accent/50")}>
-        <PostPreview
-          author={author}
-          text={text}
-          meta={
-            <>
-              {format && <Badge variant="accent">{format}</Badge>}
-              {!streaming && onDismiss && (
-                <button
-                  type="button"
-                  onClick={onDismiss}
-                  aria-label="Dismiss idea"
-                  className="rounded-full p-1 text-subtle transition-colors hover:bg-surface-2 hover:text-fg"
-                >
-                  <X className="size-4" />
-                </button>
-              )}
-            </>
-          }
-          trailing={
-            streaming && <span className="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 animate-pulse bg-accent" />
-          }
-        />
+        {parts.length > 0 ? (
+          <SeriesPreview
+            author={author}
+            parts={seriesParts("idea", posts)}
+            meta={
+              <>
+                {format && <Badge variant="accent">{format}</Badge>}
+                {!streaming && onDismiss && <DismissButton onDismiss={onDismiss} />}
+              </>
+            }
+          />
+        ) : (
+          <PostPreview
+            author={author}
+            text={text}
+            meta={
+              <>
+                {format && <Badge variant="accent">{format}</Badge>}
+                {!streaming && onDismiss && <DismissButton onDismiss={onDismiss} />}
+              </>
+            }
+            trailing={
+              streaming && <span className="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 animate-pulse bg-accent" />
+            }
+          />
+        )}
 
         {(idea.goalFit !== undefined || idea.hook) && (
           <div className="mt-4 flex items-center gap-3 border-border border-t pt-4">
@@ -102,13 +112,10 @@ export function IdeaCard({
               )}
             </div>
             <span
-              className={cn(
-                "self-start font-mono text-xs tabular",
-                length > THREADS_MAX_LENGTH ? "text-negative" : "text-subtle",
-              )}
+              className={cn("self-start font-mono text-xs tabular", tooLong ? "text-negative" : "text-subtle")}
               title="Threads counts emoji as several characters"
             >
-              {length}/{THREADS_MAX_LENGTH}
+              {parts.length > 0 ? `${posts.length} posts` : `${length}/${THREADS_MAX_LENGTH}`}
             </span>
           </div>
         )}
@@ -127,7 +134,7 @@ export function IdeaCard({
             animate={{ opacity: 1, y: 0 }}
             transition={revealSpring}
           >
-            <CopyButton text={text} />
+            <CopyButton text={posts.join("\n\n")} />
             {!onCompose && (
               <Button asChild variant="outline" size="sm">
                 <a href={threadsIntentUrl(text)} target="_blank" rel="noopener noreferrer">
@@ -164,5 +171,18 @@ export function IdeaCard({
         )}
       </Card>
     </m.article>
+  );
+}
+
+function DismissButton({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onDismiss}
+      aria-label="Dismiss idea"
+      className="rounded-full p-1 text-subtle transition-colors hover:bg-surface-2 hover:text-fg"
+    >
+      <X className="size-4" />
+    </button>
   );
 }

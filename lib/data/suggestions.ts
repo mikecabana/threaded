@@ -12,6 +12,8 @@ export interface StoredSuggestion {
   generationId: string;
   goal: Goal;
   text: string;
+  /** For a thread, the posts after the first. */
+  parts: string[];
   format: PostFormat;
   hook: string;
   rationale: string;
@@ -26,6 +28,7 @@ const columns = {
   generationId: suggestions.generationId,
   goal: generations.goal,
   text: suggestions.text,
+  seriesParts: suggestions.seriesParts,
   format: suggestions.format,
   hook: suggestions.hook,
   rationale: suggestions.rationale,
@@ -40,6 +43,7 @@ function toStored(row: {
   generationId: string;
   goal: Goal;
   text: string;
+  seriesParts: string[];
   format: string;
   hook: string | null;
   rationale: string | null;
@@ -48,8 +52,10 @@ function toStored(row: {
   status: SuggestionStatus;
   createdAt: Date;
 }): StoredSuggestion {
+  const { seriesParts, ...rest } = row;
   return {
-    ...row,
+    ...rest,
+    parts: seriesParts,
     format: row.format as PostFormat,
     hook: row.hook ?? "",
     rationale: row.rationale ?? "",

@@ -8,6 +8,9 @@ import { GOALS } from "@/lib/goals";
 
 export const suggestionSchema = z.object({
   text: z.string().describe("The post exactly as it should be published. Plain text, at most 500 characters."),
+  parts: z
+    .array(z.string())
+    .describe("For a thread, the posts after the first, in order, each as it should be published. Otherwise empty."),
   format: z.enum(POST_FORMATS),
   hook: z.string().describe("One sentence: why the first line stops the scroll."),
   rationale: z
@@ -30,11 +33,15 @@ export type SuggestionBatch = z.infer<typeof suggestionBatchSchema>;
 export const SPICE_LEVELS = ["mild", "bold", "spicy"] as const;
 export type SpiceLevel = (typeof SPICE_LEVELS)[number];
 
+/** One post per idea, or a thread: an opening post and the parts that reply to it. */
+export const IDEA_SHAPES = ["post", "thread"] as const;
+export type IdeaShape = (typeof IDEA_SHAPES)[number];
 /** What Studio sends to /api/generate. */
 export const generateRequestSchema = z.object({
   goal: z.enum(GOALS),
   topic: z.string().trim().max(120).optional(),
   spice: z.enum(SPICE_LEVELS).default("bold"),
+  shape: z.enum(IDEA_SHAPES).default("post"),
   format: z.enum([...POST_FORMATS, "any"]).default("any"),
   count: z.number().int().min(3).max(5).default(3),
   modelId: z.string().max(120).optional(),

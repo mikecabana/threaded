@@ -174,6 +174,7 @@ export async function exportAccount(identity: AccountIdentity, now = new Date())
         : null,
       ideas: (ideasByGeneration.get(generation.id) ?? []).map((idea) => ({
         text: idea.text,
+        threadParts: idea.seriesParts,
         format: idea.format,
         hook: idea.hook,
         why: idea.rationale,

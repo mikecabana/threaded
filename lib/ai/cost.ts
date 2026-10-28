@@ -1,5 +1,6 @@
 import { creditsForCost } from "@/lib/pricing";
 import type { CatalogEntry } from "./catalog";
+import type { IdeaShape } from "./schemas";
 
 // Cost maths for one AI call. The reserve uses the worst case (every output
 // token used) so a wallet can never be overdrawn; the user is charged what the
@@ -18,9 +19,9 @@ export function costUsd(
   return (input * entry.inputPrice + output * entry.outputPrice) / 1_000_000;
 }
 
-/** Output tokens a batch of `count` ideas may use (also caps what's reserved). */
-export function outputTokenBudget(count: number): number {
-  return 300 + 350 * count;
+/** Output tokens a batch of `count` ideas may use (also caps what's reserved). A thread is up to 5 posts. */
+export function outputTokenBudget(count: number, shape: IdeaShape = "post"): number {
+  return 300 + (shape === "thread" ? 900 : 350) * count;
 }
 
 /** Credits to reserve: the maximum the call could cost. */
@@ -34,6 +35,8 @@ export function maxCredits(entry: CatalogEntry, inputTokens: number, maxOutputTo
 // (voice, best posts, recent posts) and typical output per batch size.
 export const TYPICAL_INPUT_TOKENS = 2500;
 export const TYPICAL_OUTPUT_TOKENS = { 3: 900, 5: 1400 } as const;
+/** The same for threads, at about four posts each. */
+export const TYPICAL_THREAD_OUTPUT_TOKENS = { 3: 1500, 5: 2400 } as const;
 
 export function typicalCredits(entry: CatalogEntry, inputTokens: number, typicalOutputTokens: number): number {
   return creditsForCost(costUsd(entry, inputTokens, typicalOutputTokens), entry.markup, entry.minCredits);

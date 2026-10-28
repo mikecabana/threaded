@@ -2,7 +2,8 @@ import { ArrowUpRight, CalendarClock, Clock } from "lucide-react";
 import { CopyButton } from "@/components/app/copy-button";
 import { ComposeButton } from "@/components/composer/provider";
 import { GoalFitRing } from "@/components/goal/goal-fit-ring";
-import { type PostAuthor, PostPreview } from "@/components/threads/post-preview";
+import type { PostAuthor } from "@/components/threads/post-preview";
+import { SeriesPreview, seriesParts } from "@/components/threads/series-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,11 +25,13 @@ export function PlayCard({
   play: DemoSuggestion;
   suggestionId?: string;
 }) {
+  const posts = [play.text, ...(play.parts ?? [])];
   return (
     <Card className="p-5">
-      <PostPreview
+      <SeriesPreview
         author={author}
-        text={play.text}
+        parts={seriesParts(suggestionId ?? play.text, posts)}
+        clamp={posts.length > 1 ? 3 : undefined}
         meta={<Badge variant="accent">{FORMAT_LABELS[play.format]}</Badge>}
       />
       <div className="mt-4 flex items-center gap-3 border-border border-t pt-4">
@@ -46,9 +49,9 @@ export function PlayCard({
         {play.rationale}
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
-        <CopyButton text={play.text} />
+        <CopyButton text={posts.join("\n\n")} />
         {suggestionId && (
-          <ComposeButton draft={{ text: play.text, suggestionId, ideaSlot: play.bestSlot }}>
+          <ComposeButton draft={{ text: play.text, seriesParts: play.parts, suggestionId, ideaSlot: play.bestSlot }}>
             <CalendarClock /> Schedule
           </ComposeButton>
         )}

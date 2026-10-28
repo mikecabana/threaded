@@ -13,7 +13,13 @@ import { Card } from "@/components/ui/card";
 import { Segmented } from "@/components/ui/segmented";
 import { switchToCreditsAction } from "@/lib/actions/billing";
 import { setModelPickAction, setSuggestionStatusAction } from "@/lib/actions/studio";
-import { type GenerateRequest, SPICE_LEVELS, type SpiceLevel, suggestionBatchSchema } from "@/lib/ai/schemas";
+import {
+  type GenerateRequest,
+  type IdeaShape,
+  SPICE_LEVELS,
+  type SpiceLevel,
+  suggestionBatchSchema,
+} from "@/lib/ai/schemas";
 import { FORMAT_LABELS, POST_FORMATS } from "@/lib/analysis/formats";
 import type { StoredSuggestion } from "@/lib/data/suggestions";
 import { GOAL_META, type Goal } from "@/lib/goals";
@@ -23,8 +29,8 @@ export interface StudioModel {
   modelId: string;
   label: string;
   tier: "fast" | "balanced" | "best";
-  /** Typical credits for a batch of 3 and of 5. */
-  credits: { 3: number; 5: number };
+  /** Typical credits for a batch of 3 and of 5, of single posts or of threads. */
+  credits: Record<IdeaShape, { 3: number; 5: number }>;
 }
 
 type Phase = "idle" | "streaming" | "finalizing" | "done" | "error";
@@ -100,6 +106,7 @@ export function Studio({
   const composer = useComposer();
   const [topic, setTopic] = useState("");
   const [spice, setSpice] = useState<SpiceLevel>(initialSpice);
+  const [shape, setShape] = useState<IdeaShape>("post");
   const [format, setFormat] = useState<GenerateRequest["format"]>("any");
   const [count, setCount] = useState<"3" | "5">("3");
   const [modelId, setModelId] = useState(initialModelId);
@@ -114,7 +121,7 @@ export function Studio({
 
   const model = models.find((x) => x.modelId === modelId) ?? models[0];
   const researches = !demo && researchCredits !== null && topic.trim() !== "";
-  const estimate = (model?.credits[count === "5" ? 5 : 3] ?? 0) + (researches ? (researchCredits ?? 0) : 0);
+  const estimate = (model?.credits[shape][count === "5" ? 5 : 3] ?? 0) + (researches ? (researchCredits ?? 0) : 0);
 
   async function finalize(streamed: IdeaView[]) {
     if (meta.current.demo || !meta.current.generationId) {
@@ -202,6 +209,7 @@ export function Studio({
     const request: Partial<GenerateRequest> = {
       goal,
       spice,
+      shape,
       format,
       count: Number(count),
       modelId,
@@ -315,6 +323,26 @@ export function Studio({
             />
           </div>
 
+          {!demo && (
+            <div>
+              <span className="mb-1.5 block font-medium text-sm">Each idea is</span>
+              <Segmented
+                legend="Each idea is"
+                options={[
+                  { value: "post", label: "One post" },
+                  { value: "thread", label: "A thread" },
+                ]}
+                value={shape}
+                onChange={setShape}
+              />
+              {shape === "thread" && (
+                <p className="mt-1.5 text-subtle text-xs leading-relaxed">
+                  3 to 5 posts, each a reply to the one before. Longer, so it costs a little more.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-4">
             <label className="block flex-1">
               <span className="mb-1.5 block font-medium text-sm">Format</span>
@@ -355,7 +383,7 @@ export function Studio({
               {models.map((x) => (
                 <option key={x.modelId} value={x.modelId}>
                   {x.label} · {TIER_LABEL[x.tier]}
-                  {byok || demo ? "" : ` · ≈${x.credits[count === "5" ? 5 : 3]} cr`}
+                  {byok || demo ? "" : ` · ≈${x.credits[shape][count === "5" ? 5 : 3]} cr`}
                 </option>
               ))}
             </select>
@@ -446,6 +474,7 @@ export function Studio({
                       ? (mode) =>
                           composer.open({
                             text: settled.idea.text ?? "",
+                            seriesParts: (settled.idea.parts ?? []).filter((part): part is string => Boolean(part)),
                             suggestionId: settled.id,
                             ideaSlot: completeSlot(settled.idea.bestSlot),
                             mode,

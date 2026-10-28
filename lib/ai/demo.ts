@@ -14,6 +14,7 @@ export function demoGenerationResponse(personaId: DemoPersonaId, request: Genera
   const batch: SuggestionBatch = {
     suggestions: ordered.slice(0, request.count).map((s) => ({
       text: s.text,
+      parts: [],
       format: s.format,
       hook: s.hook,
       rationale: s.rationale,

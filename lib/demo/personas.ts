@@ -22,6 +22,8 @@ export interface DemoPostSeed {
 
 export interface DemoSuggestion {
   text: string;
+  /** For a thread, the posts after the first (account ideas only). */
+  parts?: string[];
   format: PostFormat;
   hook: string;
   rationale: string;
