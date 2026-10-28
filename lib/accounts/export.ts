@@ -110,6 +110,7 @@ export async function exportAccount(identity: AccountIdentity, now = new Date())
       ownKeyLast4: workspace.byokKeyLast4,
       plan: workspace.stripeSubscriptionId
         ? {
+            kind: workspace.planKind ?? "own_key",
             status: workspace.subscriptionStatus,
             periodEnd: iso(workspace.subscriptionPeriodEnd),
             endsAtPeriodEnd: workspace.subscriptionCancelAtPeriodEnd,

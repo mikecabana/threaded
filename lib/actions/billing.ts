@@ -7,8 +7,14 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { maybeStartAutoRecharge } from "@/lib/billing/auto-recharge";
 import { checkGatewayKey, storeByokKey, switchToCredits } from "@/lib/billing/byok";
-import { createByokCheckout, createCardCheckout, createTopUpCheckout } from "@/lib/billing/checkout";
+import {
+  createByokCheckout,
+  createCardCheckout,
+  createMonthlyCheckout,
+  createTopUpCheckout,
+} from "@/lib/billing/checkout";
 import { isStripeConfigured, portalUrl, readyForAutoRecharge, stripeLocales } from "@/lib/billing/stripe";
+import { runningPlan, setPlanCancellation } from "@/lib/billing/subscription";
 import { db } from "@/lib/db";
 import { workspaces } from "@/lib/db/schema";
 import { packById, RECHARGE_THRESHOLDS } from "@/lib/pricing";
@@ -132,6 +138,12 @@ export async function saveKeyAction(_: BillingFormState, formData: FormData): Pr
     };
   }
   const result = await storeByokKey(identity.workspaceId, key);
+  if (result === "monthly_plan") {
+    return {
+      ok: false,
+      message: "You're on the Monthly plan. Cancel it first; it runs to the end of the period, and your credits stay.",
+    };
+  }
   if (result === "needs_plan") {
     if (!isStripeConfigured()) return { ok: false, message: NOT_SET_UP };
     redirect(
@@ -156,6 +168,8 @@ export async function saveKeyAction(_: BillingFormState, formData: FormData): Pr
 export async function startPlanAction(): Promise<void> {
   const identity = await requireAccount();
   if (!isStripeConfigured()) redirect("/settings/billing?checkout=unavailable");
+  if ((await runningPlan(identity.workspaceId))?.kind === "monthly")
+    redirect("/settings/billing?checkout=plan_conflict");
   redirect(
     await createByokCheckout({
       workspaceId: identity.workspaceId,
@@ -163,6 +177,34 @@ export async function startPlanAction(): Promise<void> {
       locales: await customerLocales(),
     }),
   );
+}
+
+/** The Monthly plan's Checkout. One plan at a time: a running own-key plan has to be cancelled first. */
+export async function startMonthlyPlanAction(): Promise<void> {
+  const identity = await requireAccount();
+  if (!isStripeConfigured()) redirect("/settings/billing?checkout=unavailable");
+  const running = await runningPlan(identity.workspaceId);
+  if (running?.kind === "own_key") redirect("/settings/billing?checkout=plan_conflict");
+  if (running) redirect("/settings/billing");
+  redirect(
+    await createMonthlyCheckout({
+      workspaceId: identity.workspaceId,
+      origin: await appOrigin(),
+      locales: await customerLocales(),
+    }),
+  );
+}
+
+/** Ends the Monthly plan with its current period ("end"), or keeps it after all ("keep"). */
+export async function setMonthlyPlanEndingAction(formData: FormData): Promise<void> {
+  const identity = await requireAccount();
+  const [workspace] = await db()
+    .select({ subscriptionId: workspaces.stripeSubscriptionId, kind: workspaces.planKind })
+    .from(workspaces)
+    .where(eq(workspaces.id, identity.workspaceId));
+  if (!workspace?.subscriptionId || workspace.kind !== "monthly" || !isStripeConfigured()) return;
+  await setPlanCancellation(workspace.subscriptionId, formData.get("ending") === "end");
+  refresh();
 }
 
 /** Back to credits: deletes the key; a live plan ends with its current period. */

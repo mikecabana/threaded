@@ -2,7 +2,7 @@ import "server-only";
 import type Stripe from "stripe";
 import { fulfillRechargeInvoice } from "./auto-recharge";
 import { fulfillCheckout } from "./checkout";
-import { syncSubscription } from "./subscription";
+import { fulfillPlanInvoice, syncSubscription } from "./subscription";
 
 /**
  * Applies a verified Stripe event. Handlers re-read the object from Stripe and
@@ -21,7 +21,10 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<"handled" 
       await syncSubscription(event.data.object.id);
       return "handled";
     case "invoice.paid":
-      if (event.data.object.id) await fulfillRechargeInvoice(event.data.object.id);
+      if (event.data.object.id) {
+        await fulfillRechargeInvoice(event.data.object.id);
+        await fulfillPlanInvoice(event.data.object.id);
+      }
       return "handled";
     default:
       return "ignored";

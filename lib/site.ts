@@ -9,5 +9,5 @@ export const SITE = {
   contactEmail: "contact@getthreaded.app",
   legalEntity: "Threaded",
   /** When each legal document last changed (ISO dates), shown on the page and in the sitemap. */
-  legalUpdated: { terms: "2026-10-20", privacy: "2026-10-28" },
+  legalUpdated: { terms: "2026-10-28", privacy: "2026-10-28" },
 } as const;

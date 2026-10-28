@@ -2,15 +2,22 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { POST as webhook } from "@/app/api/stripe/webhook/route";
 import { createMockBilling, signPayload } from "@/e2e/mock-billing.mjs";
+import { billingActivity } from "@/lib/data/billing";
 import { db } from "@/lib/db";
 import { creditLedger, creditLots, memberships, users, wallets, workspaces } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { closeDatabase, resetDatabase } from "@/test/db";
 import { claimAutoRecharge, fulfillRechargeInvoice, runAutoRecharge } from "./auto-recharge";
 import { checkGatewayKey, storeByokKey, switchToCredits } from "./byok";
-import { createByokCheckout, createCardCheckout, createTopUpCheckout, fulfillCheckout } from "./checkout";
+import {
+  createByokCheckout,
+  createCardCheckout,
+  createMonthlyCheckout,
+  createTopUpCheckout,
+  fulfillCheckout,
+} from "./checkout";
 import { ensureCustomer, readyForAutoRecharge, stripeLocales } from "./stripe";
-import { syncSubscription } from "./subscription";
+import { fulfillPlanInvoice, runningPlan, setPlanCancellation, syncSubscription } from "./subscription";
 import { getBalance } from "./wallet";
 
 // Billing against e2e/mock-billing.mjs, a stateful stand-in for Stripe's API.
@@ -282,5 +289,109 @@ describe("bring your own key", () => {
     // Seeing the same ended plan again doesn't email twice.
     await syncSubscription(ws.stripeSubscriptionId as string);
     expect(emailsTo(ownerEmail).map((e: { subject: string }) => e.subject)).toEqual(["Your Threaded plan has ended"]);
+  });
+});
+
+describe("the Monthly plan", () => {
+  /** Bills the next month, as Stripe does when the period turns over. */
+  async function renew(subscriptionId: string): Promise<{ id: string }> {
+    const invoice = await mock.renewSubscription(subscriptionId);
+    if (!invoice) throw new Error(`no live subscription ${subscriptionId}`);
+    return invoice;
+  }
+
+  async function startMonthly() {
+    const url = await createMonthlyCheckout({ workspaceId, origin: ORIGIN });
+    await mock.completeSession(sessionId(url));
+    return { url, result: await fulfillCheckout(sessionId(url)) };
+  }
+
+  it("adds its credits once for every paid invoice: at the start, then each month", async () => {
+    const { url, result } = await startMonthly();
+    expect(result).toMatchObject({ kind: "monthly", status: "fulfilled" });
+    const ws = await workspace();
+    expect(ws).toMatchObject({ planKind: "monthly", subscriptionStatus: "active", billingMode: "credits" });
+    expect(await getBalance(workspaceId)).toBe(1200);
+
+    // The webhook and the return page both fulfil it; it still counts once.
+    await fulfillCheckout(sessionId(url));
+    const first = mock.state.subscriptions.get(ws.stripeSubscriptionId).latest_invoice;
+    expect(await fulfillPlanInvoice(first)).toBe(false);
+    expect(await getBalance(workspaceId)).toBe(1200);
+
+    const renewal = await renew(ws.stripeSubscriptionId as string);
+    expect(await fulfillPlanInvoice(renewal.id)).toBe(true);
+    expect(await fulfillPlanInvoice(renewal.id)).toBe(false);
+    expect(await getBalance(workspaceId)).toBe(2400);
+    const activity = await billingActivity(workspaceId);
+    expect(activity.filter((item) => item.kind === "monthly_plan").map((item) => item.label)).toEqual([
+      "Monthly plan",
+      "Monthly plan",
+    ]);
+  });
+
+  it("only credits the plan's own invoices, at its price", async () => {
+    // An own-key plan's invoice isn't the Monthly plan's.
+    const byok = await createByokCheckout({ workspaceId, origin: ORIGIN });
+    await mock.completeSession(sessionId(byok));
+    await fulfillCheckout(sessionId(byok));
+    const ownKey = mock.state.subscriptions.get((await workspace()).stripeSubscriptionId);
+    expect(await fulfillPlanInvoice(ownKey.latest_invoice)).toBe(false);
+
+    await setPlanCancellation(ownKey.id, true);
+    await startMonthly();
+    const monthly = (await workspace()).stripeSubscriptionId as string;
+    const renewal = await renew(monthly);
+    mock.state.invoices.get(renewal.id).subtotal = 450;
+    expect(await fulfillPlanInvoice(renewal.id)).toBe(false);
+    expect(await getBalance(workspaceId)).toBe(1200);
+  });
+
+  it("is one plan at a time with the own-key plan", async () => {
+    await startMonthly();
+    const monthly = (await workspace()).stripeSubscriptionId as string;
+    expect(await runningPlan(workspaceId)).toEqual({ kind: "monthly", subscriptionId: monthly });
+    // A key isn't even saved while the Monthly plan runs.
+    expect(await storeByokKey(workspaceId, "vck_good_key_abcd")).toBe("monthly_plan");
+    expect((await workspace()).byokKeyLast4).toBeNull();
+
+    // Once it's set to end, the own-key plan can start, and takes over.
+    await setPlanCancellation(monthly, true);
+    expect(await runningPlan(workspaceId)).toBeNull();
+    expect(await storeByokKey(workspaceId, "vck_good_key_abcd")).toBe("needs_plan");
+    const byok = await createByokCheckout({ workspaceId, origin: ORIGIN });
+    await mock.completeSession(sessionId(byok));
+    await fulfillCheckout(sessionId(byok));
+    const ownKey = (await workspace()).stripeSubscriptionId as string;
+    expect(await workspace()).toMatchObject({ planKind: "own_key", billingMode: "byok" });
+
+    // The Monthly plan winding down, then ending, doesn't take the slot back.
+    await syncSubscription(monthly);
+    await mock.setSubscription(monthly, { status: "canceled" }, "customer.subscription.deleted");
+    await syncSubscription(monthly);
+    expect(await workspace()).toMatchObject({
+      stripeSubscriptionId: ownKey,
+      planKind: "own_key",
+      billingMode: "byok",
+      subscriptionStatus: "active",
+    });
+    // Switching back to credits ends the own-key plan only.
+    await switchToCredits(workspaceId);
+    expect(mock.state.subscriptions.get(ownKey).cancel_at_period_end).toBe(true);
+  });
+
+  it("keeps its credits when it ends, without the own-key plan's notice", async () => {
+    await startMonthly();
+    const monthly = (await workspace()).stripeSubscriptionId as string;
+    await setPlanCancellation(monthly, true);
+    expect(await workspace()).toMatchObject({ subscriptionCancelAtPeriodEnd: true });
+    await setPlanCancellation(monthly, false);
+    expect(await workspace()).toMatchObject({ subscriptionCancelAtPeriodEnd: false });
+
+    await mock.setSubscription(monthly, { status: "canceled" }, "customer.subscription.deleted");
+    await syncSubscription(monthly);
+    expect(await workspace()).toMatchObject({ subscriptionStatus: "canceled", billingNotice: null });
+    expect(await getBalance(workspaceId)).toBe(1200);
+    expect(emailsTo(ownerEmail)).toHaveLength(0);
   });
 });

@@ -133,11 +133,15 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
         cancel_at: null,
         metadata: session.subscription_data?.metadata ?? {},
         items: { object: "list", data: [{ id: newId("si"), current_period_end: nowS() + 30 * DAY_S }] },
+        latest_invoice: null,
+        /** The price it renews at (the mock's own field). */
+        amount: session.amount_subtotal,
       };
       state.subscriptions.set(subscription.id, subscription);
       session.subscription = subscription.id;
       session.payment_status = "paid";
       await emit("customer.subscription.created", subscription);
+      await billSubscription(subscription, "subscription_create");
     } else if (session.mode === "setup") {
       const pm = createPaymentMethod(session.customer, outcome === "decline-card");
       const setupIntent = { id: newId("seti"), object: "setup_intent", payment_method: pm.id, status: "succeeded" };
@@ -147,6 +151,41 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
     }
     await emit("checkout.session.completed", session);
     return session;
+  }
+
+  /** The paid invoice a subscription gets when it starts or renews, as Stripe sends it (parent.subscription_details). */
+  async function billSubscription(subscription, reason) {
+    const invoice = {
+      id: newId("in"),
+      object: "invoice",
+      customer: subscription.customer,
+      currency: "usd",
+      automatic_tax: { enabled: false },
+      status: "paid",
+      billing_reason: reason,
+      metadata: {},
+      parent: {
+        type: "subscription_details",
+        subscription_details: { subscription: subscription.id, metadata: subscription.metadata },
+      },
+      lines: [],
+      subtotal: subscription.amount,
+      amount_paid: subscription.amount,
+    };
+    state.invoices.set(invoice.id, invoice);
+    subscription.latest_invoice = invoice.id;
+    await emit("invoice.paid", invoice);
+    return invoice;
+  }
+
+  /** The next period of a live subscription: a new paid invoice. */
+  async function renewSubscription(id) {
+    const subscription = state.subscriptions.get(id);
+    if (subscription?.status !== "active") return null;
+    subscription.items.data[0].current_period_end += 30 * DAY_S;
+    const invoice = await billSubscription(subscription, "subscription_cycle");
+    await emit("customer.subscription.updated", subscription);
+    return invoice;
   }
 
   async function setSubscription(id, changes, type = "customer.subscription.updated") {
@@ -464,6 +503,12 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
           "content-type": "text/html",
         });
       }
+      // Test control: renew a subscription, as at the start of its next period.
+      const renew = url.pathname.match(/^\/__control\/subscriptions\/([^/]+)\/renew$/);
+      if (renew && req.method === "POST") {
+        const invoice = await renewSubscription(renew[1]);
+        return send(res, invoice ? 200 : 404, invoice ?? { error: "not found" });
+      }
       // Test control: end a subscription as if it lapsed.
       const end = url.pathname.match(/^\/__control\/subscriptions\/([^/]+)\/end$/);
       if (end && req.method === "POST") {
@@ -502,6 +547,7 @@ export function createMockBilling({ webhookUrl, webhookSecret, publicUrl } = {})
     state,
     completeSession,
     setSubscription,
+    renewSubscription,
     /** Listens on `port` (0 = any free port) and resolves with the base URL. */
     listen(port = 0) {
       return new Promise((resolve) => {
