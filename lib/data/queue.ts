@@ -13,6 +13,10 @@ export interface QueuedPost {
   permalink: string | null;
   lastError: string | null;
   suggestionId: string | null;
+  /** The rest of a series, after the first post. */
+  seriesParts: string[];
+  /** Parts already on Threads: more than 0 for a series that stopped partway. */
+  partsLive: number;
 }
 
 const columns = {
@@ -25,6 +29,8 @@ const columns = {
   permalink: scheduledPosts.permalink,
   lastError: scheduledPosts.lastError,
   suggestionId: scheduledPosts.suggestionId,
+  mediaId: scheduledPosts.mediaId,
+  seriesParts: scheduledPosts.seriesParts,
 };
 
 const selectPosts = () => db().select(columns).from(scheduledPosts);
@@ -41,6 +47,8 @@ function toQueued(row: Row): QueuedPost {
     permalink: row.permalink,
     lastError: row.lastError,
     suggestionId: row.suggestionId,
+    seriesParts: row.seriesParts.map((part) => part.text),
+    partsLive: row.mediaId ? 1 + row.seriesParts.filter((part) => part.mediaId).length : 0,
   };
 }
 

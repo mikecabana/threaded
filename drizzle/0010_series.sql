@@ -1,0 +1,1 @@
+ALTER TABLE "scheduled_posts" ADD COLUMN "series_parts" jsonb DEFAULT '[]'::jsonb NOT NULL;

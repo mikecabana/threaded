@@ -350,6 +350,48 @@ test("posts now after an explicit confirmation", async ({ page }) => {
   await expect(scorecard.getByRole("link", { name: /View on Threads/ })).toBeVisible();
 });
 
+test("posts a series, each part a reply to the one before", async ({ page, request }) => {
+  await signIn(page);
+  await page.goto("/queue");
+  await page.getByRole("button", { name: "New post" }).click();
+  const composer = page.getByRole("dialog", { name: "New post" });
+  await composer.getByLabel("Post text").fill("How we shipped the queue, a thread.");
+  await composer.getByRole("button", { name: "Add to thread" }).click();
+  await composer.getByLabel("Part 2 text").fill("First, we picked the boring stack.");
+  await composer.getByRole("button", { name: "Add to thread" }).click();
+  await composer.getByLabel("Part 3 text").fill("Then we let real posts decide the slots.");
+  await expect(composer.getByText("Part 3 of 3")).toBeAttached();
+
+  // An empty part is caught before anything is sent, then dropped.
+  await composer.getByRole("button", { name: "Add to thread" }).click();
+  await composer
+    .locator("label")
+    .filter({ hasText: /^Post now$/ })
+    .click();
+  await composer.getByRole("button", { name: "Post now" }).click();
+  await expect(composer.getByRole("alert")).toHaveText("Part 4: Write something first.");
+  await composer.getByRole("button", { name: "Remove part 4" }).click();
+
+  await composer.getByRole("button", { name: "Post now" }).click();
+  await composer.getByText("Post these 3 parts to Threads now?").waitFor();
+  await composer.getByRole("button", { name: "Yes, post it" }).click();
+  await expect(composer.getByText("Posted to @mock.user")).toBeVisible({ timeout: 60_000 });
+  const href = await composer.getByRole("link", { name: /View on Threads/ }).getAttribute("href");
+  const root = `mock-media-${href?.match(/MOCK-MEDIA-(\d+)/)?.[1]}`;
+
+  // Part 2 replies to the first post, part 3 to part 2.
+  const { data } = (await (await request.get("http://localhost:3999/__control/replies")).json()) as {
+    data: { id: string; text: string; replyToId: string }[];
+  };
+  const parts = data.slice(-2);
+  expect(parts.map((part) => part.text)).toEqual([
+    "First, we picked the boring stack.",
+    "Then we let real posts decide the slots.",
+  ]);
+  expect(parts[0].replyToId).toBe(root);
+  expect(parts[1].replyToId).toBe(parts[0].id);
+});
+
 test("a post Threads can't take shows up as failed until it's dealt with", async ({ page }) => {
   await signIn(page);
   await page.goto("/queue");

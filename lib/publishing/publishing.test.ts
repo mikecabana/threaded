@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { draftProblem, normalizeTopic } from "./draft";
+import { draftProblem, normalizeTopic, seriesProblem } from "./draft";
 import { fromLocalInput, nextOccurrence, slotLabel, suggestedSlots, toLocalInput } from "./slots";
 
 const TZ = "America/Toronto";
@@ -21,6 +21,13 @@ describe("draft rules", () => {
     expect(draftProblem("Hi", "x".repeat(51))).toBe("bad_topic");
     expect(normalizeTopic(" #IndieHackers ")).toBe("IndieHackers");
     expect(normalizeTopic("")).toBeNull();
+  });
+
+  it("checks every part of a series, with the topic tag on the first only", () => {
+    expect(seriesProblem(["One", "Two"], "Building")).toBeNull();
+    expect(seriesProblem(["One", " ", "🔥".repeat(126)])).toEqual({ problem: "empty", part: 2 });
+    expect(seriesProblem(["One", "🔥".repeat(126)])).toEqual({ problem: "too_long", part: 2 });
+    expect(seriesProblem(["One", "Two"], "a.b")).toEqual({ problem: "bad_topic", part: 1 });
   });
 });
 

@@ -2,7 +2,7 @@ import "server-only";
 import { and, count, eq, gt, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { generations, scheduledPosts, suggestions, threadsTokens } from "@/lib/db/schema";
-import { type DraftProblem, draftProblem, MAX_SCHEDULE_DAYS, normalizeTopic } from "./draft";
+import { type DraftProblem, MAX_SCHEDULE_DAYS, MAX_SERIES_PARTS, normalizeTopic, seriesProblem } from "./draft";
 
 // Scheduling a post, and changing your mind about it. Every change bumps the
 // row's version and starts a fresh publish run for that version, so a run
@@ -22,10 +22,15 @@ export type PublishingProblem =
   | "too_many"
   | "not_found"
   | "not_editable"
-  | "not_connected";
+  | "not_connected"
+  | "too_many_parts";
 
 export class PublishingError extends Error {
-  constructor(readonly problem: PublishingProblem) {
+  /** For a problem with one part of a series: which (1 is the first post). */
+  constructor(
+    readonly problem: PublishingProblem,
+    readonly part?: number,
+  ) {
     super(problem);
     this.name = "PublishingError";
   }
@@ -36,12 +41,16 @@ export type PostWhen = { kind: "now" } | { kind: "at"; at: Date };
 interface Draft {
   text: string;
   topicTag?: string | null;
+  /** The rest of a series, each posted as a reply to the one before. */
+  seriesParts?: readonly string[];
   when: PostWhen;
 }
 
 function checkDraft(draft: Draft, now: Date): Date {
-  const problem = draftProblem(draft.text, draft.topicTag);
-  if (problem) throw new PublishingError(problem);
+  const texts = [draft.text, ...(draft.seriesParts ?? [])];
+  if (texts.length > MAX_SERIES_PARTS) throw new PublishingError("too_many_parts");
+  const found = seriesProblem(texts, draft.topicTag);
+  if (found) throw new PublishingError(found.problem, texts.length > 1 ? found.part : undefined);
   if (draft.when.kind === "now") return now;
   const at = draft.when.at;
   if (at.getTime() < now.getTime() - PAST_GRACE_MS) throw new PublishingError("past");
@@ -86,10 +95,13 @@ async function ownedSuggestion(profileId: string, suggestionId: string | null | 
   return row?.id ?? null;
 }
 
+const partsOf = (draft: Draft) => (draft.seriesParts ?? []).map((text) => ({ text: text.trim() }));
+
 export async function schedulePost(input: {
   profileId: string;
   text: string;
   topicTag?: string | null;
+  seriesParts?: readonly string[];
   suggestionId?: string | null;
   when: PostWhen;
   now?: Date;
@@ -115,6 +127,7 @@ export async function schedulePost(input: {
         suggestionId,
         text: input.text.trim(),
         topicTag: normalizeTopic(input.topicTag),
+        seriesParts: partsOf(input),
         scheduledFor,
       })
       .returning({ id: scheduledPosts.id, version: scheduledPosts.version });
@@ -142,6 +155,7 @@ export async function updatePost(
     .set({
       text: draft.text.trim(),
       topicTag: normalizeTopic(draft.topicTag),
+      seriesParts: partsOf(draft),
       scheduledFor,
       status: "scheduled",
       version: sql`${scheduledPosts.version} + 1`,
@@ -163,19 +177,48 @@ export async function updatePost(
   return { id: row.id, scheduledFor };
 }
 
-/** Publish a failed post again, now. */
+/**
+ * Publish a failed post again, now. A series that got partway picks up at
+ * the first part that didn't go out; what's already posted stays as it is.
+ */
 export async function retryPost(profileId: string, postId: string, now = new Date()) {
   const [row] = await db()
-    .select({ text: scheduledPosts.text, topicTag: scheduledPosts.topicTag, status: scheduledPosts.status })
+    .select()
     .from(scheduledPosts)
     .where(and(eq(scheduledPosts.id, postId), eq(scheduledPosts.profileId, profileId)));
   if (!row) throw new PublishingError("not_found");
   if (row.status !== "failed") throw new PublishingError("not_editable");
-  return updatePost(profileId, postId, { text: row.text, topicTag: row.topicTag, when: { kind: "now" } }, now);
+  if (!row.mediaId) {
+    const draft = { text: row.text, topicTag: row.topicTag, seriesParts: row.seriesParts.map((p) => p.text) };
+    return updatePost(profileId, postId, { ...draft, when: { kind: "now" } }, now);
+  }
+
+  await requireConnected(profileId, now);
+  const [resumed] = await db()
+    .update(scheduledPosts)
+    .set({
+      status: "scheduled",
+      scheduledFor: now,
+      version: sql`${scheduledPosts.version} + 1`,
+      // A part that didn't go out gets a fresh container.
+      seriesParts: row.seriesParts.map((part) => (part.mediaId ? part : { text: part.text })),
+      lastError: null,
+    })
+    .where(
+      and(eq(scheduledPosts.id, postId), eq(scheduledPosts.version, row.version), eq(scheduledPosts.status, "failed")),
+    )
+    .returning({ id: scheduledPosts.id, version: scheduledPosts.version });
+  if (!resumed) throw new PublishingError("not_editable");
+  await startPublishRun(resumed.id, resumed.version);
+  return { id: resumed.id, scheduledFor: now };
 }
 
-/** Takes a post out of the queue; its idea goes back to the saved list. */
+/**
+ * Takes a post out of the queue; its idea goes back to the saved list. For a
+ * series that failed partway, it keeps what went out and drops the rest.
+ */
 export async function cancelPost(profileId: string, postId: string): Promise<void> {
+  if (await keepPostedParts(profileId, postId)) return;
   await db().transaction(async (tx) => {
     const [row] = await tx
       .update(scheduledPosts)
@@ -197,6 +240,34 @@ export async function cancelPost(profileId: string, postId: string): Promise<voi
         .where(and(eq(suggestions.id, row.suggestionId), eq(suggestions.status, "scheduled")));
     }
   });
+}
+
+/** A series that failed partway is published as far as it got. False for anything else. */
+async function keepPostedParts(profileId: string, postId: string): Promise<boolean> {
+  const [row] = await db()
+    .select({ version: scheduledPosts.version, seriesParts: scheduledPosts.seriesParts })
+    .from(scheduledPosts)
+    .where(
+      and(
+        eq(scheduledPosts.id, postId),
+        eq(scheduledPosts.profileId, profileId),
+        eq(scheduledPosts.status, "failed"),
+        sql`${scheduledPosts.mediaId} is not null`,
+      ),
+    );
+  if (!row) return false;
+  const [kept] = await db()
+    .update(scheduledPosts)
+    .set({
+      status: "published",
+      seriesParts: row.seriesParts.filter((part) => part.mediaId),
+      version: sql`${scheduledPosts.version} + 1`,
+      lastError: null,
+    })
+    .where(and(eq(scheduledPosts.id, postId), eq(scheduledPosts.version, row.version)))
+    .returning({ id: scheduledPosts.id });
+  if (!kept) throw new PublishingError("not_editable");
+  return true;
 }
 
 async function whyNotEditable(profileId: string, postId: string): Promise<PublishingProblem> {

@@ -186,6 +186,7 @@ export async function exportAccount(identity: AccountIdentity, now = new Date())
     })),
     scheduledPosts: scheduled.map((post) => ({
       text: post.text,
+      seriesParts: post.seriesParts.map((part) => part.text),
       topicTag: post.topicTag,
       scheduledFor: iso(post.scheduledFor),
       status: post.status,

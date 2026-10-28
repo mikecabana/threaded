@@ -24,13 +24,19 @@ export async function publishPost(postId: string, version: number) {
   if (!(await claim(postId, version))) return { outcome: "superseded" };
 
   try {
-    const containerId = await prepare(postId);
-    for (let poll = 0; !(await isReady(postId, containerId)); poll++) {
-      if (poll >= CONTAINER_POLLS)
-        throw new FatalError("Threads took too long to prepare the post. Retry in a few minutes.");
-      await sleep(CONTAINER_POLL);
+    // A series goes out part by part, each a reply to the one before. A part
+    // that's already out (a retry after a series stopped partway) is skipped.
+    const parts = await countParts(postId);
+    for (let part = 0; part < parts; part++) {
+      const containerId = await prepare(postId, part);
+      if (!containerId) continue;
+      for (let poll = 0; !(await isReady(postId, containerId)); poll++) {
+        if (poll >= CONTAINER_POLLS)
+          throw new FatalError("Threads took too long to prepare the post. Retry in a few minutes.");
+        await sleep(CONTAINER_POLL);
+      }
+      await publish(postId, containerId, part);
     }
-    await publish(postId, containerId);
     await finish(postId);
   } catch (error) {
     // Fatal errors carry a message written for the user; anything else ran out of retries.
@@ -72,10 +78,16 @@ async function claim(postId: string, version: number) {
   return claimForPublishing(postId, version);
 }
 
-async function prepare(postId: string) {
+async function countParts(postId: string) {
+  "use step";
+  const { partCount } = await import("@/lib/publishing/publish");
+  return partCount(postId);
+}
+
+async function prepare(postId: string, part: number) {
   "use step";
   const { prepareContainer } = await import("@/lib/publishing/publish");
-  return prepareContainer(postId).catch(classify);
+  return prepareContainer(postId, part).catch(classify);
 }
 
 async function isReady(postId: string, containerId: string) {
@@ -84,10 +96,10 @@ async function isReady(postId: string, containerId: string) {
   return containerReady(postId, containerId).catch(classify);
 }
 
-async function publish(postId: string, containerId: string) {
+async function publish(postId: string, containerId: string, part: number) {
   "use step";
   const { publishContainer } = await import("@/lib/publishing/publish");
-  return publishContainer(postId, containerId).catch(classify);
+  return publishContainer(postId, containerId, part).catch(classify);
 }
 
 async function finish(postId: string) {

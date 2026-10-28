@@ -12,6 +12,7 @@ import {
   markFailed,
   markPublished,
   PublishFailure,
+  partCount,
   planPublish,
   prepareContainer,
   publishContainer,
@@ -44,16 +45,23 @@ async function row(id: string) {
   return found;
 }
 
-/** The workflow's happy path, step by step. */
-async function publishNow(id: string, version: number) {
+/** The workflow's happy path, step by step: each part that hasn't gone out, then the record. */
+async function publishParts(id: string, version: number) {
   expect(await planPublish(id, version)).toEqual({ action: "publish" });
   expect(await claimForPublishing(id, version)).toBe(true);
-  const container = await prepareContainer(id);
-  expect(await containerReady(id, container)).toBe(true);
-  const media = await publishContainer(id, container);
+  const media: string[] = [];
+  const parts = await partCount(id);
+  for (let part = 0; part < parts; part++) {
+    const container = await prepareContainer(id, part);
+    if (!container) continue;
+    expect(await containerReady(id, container)).toBe(true);
+    media.push(await publishContainer(id, container, part));
+  }
   await markPublished(id);
   return media;
 }
+
+const publishNow = async (id: string, version: number) => (await publishParts(id, version))[0];
 
 beforeAll(async () => {
   await resetDatabase();
@@ -182,7 +190,7 @@ describe("publishing", () => {
     useThreads({ publishing: { containerStatuses: ["IN_PROGRESS", "FINISHED"] } });
     const { id } = await schedulePost({ profileId: PROFILE, text: "One", when: { kind: "now" } });
     await claimForPublishing(id, 0);
-    const container = await prepareContainer(id);
+    const container = (await prepareContainer(id)) as string;
     expect(await containerReady(id, container)).toBe(false);
     expect(await containerReady(id, container)).toBe(true);
     fake?.restore();
@@ -190,7 +198,7 @@ describe("publishing", () => {
     useThreads({ publishing: { containerStatuses: ["ERROR"] } });
     const { id: broken } = await schedulePost({ profileId: PROFILE, text: "Two", when: { kind: "now" } });
     await claimForPublishing(broken, 0);
-    const failing = await prepareContainer(broken);
+    const failing = (await prepareContainer(broken)) as string;
     await expect(containerReady(broken, failing)).rejects.toThrow(
       "Threads couldn't prepare the post: Media upload failed",
     );
@@ -232,7 +240,7 @@ describe("publishing", () => {
     useThreads();
     const { id } = await schedulePost({ profileId: PROFILE, text: "Half done", when: { kind: "now" } });
     await claimForPublishing(id, 0);
-    await publishContainer(id, await prepareContainer(id));
+    await publishContainer(id, (await prepareContainer(id)) as string);
     await markFailed(id, 0, "Threads didn't respond.");
     expect((await row(id)).status).toBe("published");
   });
@@ -288,6 +296,110 @@ describe("changing a scheduled post", () => {
     expect(await row(id)).toMatchObject({ status: "scheduled", version: 1, lastError: null, containerId: null });
     await publishNow(id, 1);
     expect(threads.published.map((p) => p.text)).toEqual(["Again"]);
+  });
+});
+
+describe("series", () => {
+  const rest = ["Part two: the setup.", "Part three: what we learned."];
+  const series = (extra: Partial<Parameters<typeof schedulePost>[0]> = {}) =>
+    schedulePost({ profileId: PROFILE, text: "Part one: why.", seriesParts: rest, when: { kind: "now" }, ...extra });
+
+  /** Publishes the first part, then stops as if Threads stopped answering. */
+  async function stopAfterFirst(id: string) {
+    await claimForPublishing(id, 0);
+    const first = await publishContainer(id, (await prepareContainer(id, 0)) as string, 0);
+    await prepareContainer(id, 1);
+    return first;
+  }
+
+  it("checks every part, and how many there are", async () => {
+    const when = { kind: "now" as const };
+    const error = await schedulePost({
+      profileId: PROFILE,
+      text: "One",
+      seriesParts: ["Two", "🔥".repeat(130)],
+      when,
+    }).catch((e) => e);
+    expect(error).toMatchObject({ problem: "too_long", part: 3 });
+    const eleven = Array.from({ length: 10 }, (_, i) => `Part ${i + 2}`);
+    expect(
+      await schedulePost({ profileId: PROFILE, text: "One", seriesParts: eleven, when }).catch((e) => e.problem),
+    ).toBe("too_many_parts");
+    // A single post's problem doesn't name a part.
+    expect(await schedulePost({ profileId: PROFILE, text: " ", when }).catch((e) => e.part)).toBeUndefined();
+    expect(started).toHaveLength(0);
+  });
+
+  it("posts each part as a reply to the one before, with the topic tag on the first", async () => {
+    const threads = useThreads();
+    const { id } = await series({ topicTag: "BuildInPublic", suggestionId });
+    const media = await publishParts(id, 0);
+    expect(threads.published.map(({ text, topicTag, replyToId }) => ({ text, topicTag, replyToId }))).toEqual([
+      { text: "Part one: why.", topicTag: "BuildInPublic", replyToId: null },
+      { text: rest[0], topicTag: null, replyToId: media[0] },
+      { text: rest[1], topicTag: null, replyToId: media[1] },
+    ]);
+    const published = await row(id);
+    expect(published).toMatchObject({ status: "published", mediaId: media[0] });
+    expect(published.seriesParts.map((part) => part.mediaId)).toEqual(media.slice(1));
+    // The first post is the one on the profile, and the one the idea is scored on.
+    expect((await db().select().from(posts)).map((post) => post.id)).toEqual([media[0]]);
+    const [idea] = await db().select().from(suggestions).where(eq(suggestions.id, suggestionId));
+    expect(idea).toMatchObject({ status: "posted", postedMediaId: media[0] });
+  });
+
+  it("stops partway, then a retry posts the rest without repeating what went out", async () => {
+    const threads = useThreads();
+    const { id } = await series();
+    const first = await stopAfterFirst(id);
+    await markFailed(id, 0, "Threads didn't respond. Retry in a few minutes.");
+    expect(await row(id)).toMatchObject({
+      status: "failed",
+      mediaId: first,
+      lastError: "Part 1 of 3 is live, but the series stopped there. Threads didn't respond. Retry in a few minutes.",
+    });
+    // What's live is recorded, and can't be edited any more.
+    expect((await db().select().from(posts)).map((post) => post.id)).toEqual([first]);
+    await expect(updatePost(PROFILE, id, { text: "New", when: { kind: "now" } })).rejects.toMatchObject({
+      problem: "not_editable",
+    });
+
+    await retryPost(PROFILE, id);
+    const resumed = await row(id);
+    expect(resumed).toMatchObject({ status: "scheduled", version: 1, lastError: null, mediaId: first });
+    // The part that stopped gets a fresh container.
+    expect(resumed.seriesParts[0]).toEqual({ text: rest[0] });
+    expect(started.at(-1)).toEqual([id, 1]);
+
+    await publishParts(id, 1);
+    expect(threads.published.map((post) => post.text)).toEqual(["Part one: why.", ...rest]);
+    expect(threads.published[1].replyToId).toBe(first);
+    expect(await row(id)).toMatchObject({ status: "published", lastError: null });
+  });
+
+  it("keeps what went out when a stopped series is removed", async () => {
+    useThreads();
+    const { id } = await series();
+    await stopAfterFirst(id);
+    await markFailed(id, 0, "Threads didn't respond.");
+    await cancelPost(PROFILE, id);
+    const kept = await row(id);
+    expect(kept).toMatchObject({ status: "published", lastError: null });
+    expect(kept.seriesParts).toEqual([]);
+  });
+
+  it("the sweeper records a series whose run died partway", async () => {
+    useThreads();
+    const { id } = await series();
+    await stopAfterFirst(id);
+    await db()
+      .update(scheduledPosts)
+      .set({ publishingAt: new Date(Date.now() - STUCK_PUBLISHING_MS - 60_000) })
+      .where(eq(scheduledPosts.id, id));
+    expect((await sweepPublishing()).stuck).toBe(1);
+    const swept = await row(id);
+    expect(swept.status).toBe("failed");
+    expect(swept.lastError).toMatch(/^Part 1 of 3 is live, but the series stopped there\. We couldn't confirm/);
   });
 });
 
