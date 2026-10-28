@@ -125,10 +125,10 @@ test("auto-recharge saves a card, then tops up as soon as the balance is low", a
   await expect(shown(page.getByText("Card saved. Auto-recharge is on."))).toBeVisible();
   await expect(shown(page.getByText("Charges Visa •••• 4242"))).toBeVisible();
 
-  // The recharge runs as a workflow: 2,000 credits for $20 on the saved card.
+  // The recharge runs as a workflow: 2,200 credits for $20 on the saved card.
   await expect(async () => {
     await page.reload();
-    await expect(balance(page, 2098)).toBeVisible({ timeout: 1_000 });
+    await expect(balance(page, 2298)).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 30_000 });
   await expect(shown(page.getByLabel("Credit activity"))).toContainText("Auto-recharge");
 });
@@ -141,13 +141,13 @@ test("buys a credit pack through Stripe Checkout", async ({ page }) => {
   await page.getByRole("button", { name: "Buy 500 credits for $5" }).click();
   await page.getByRole("link", { name: "Cancel" }).click();
   await expect(shown(page.getByText("Checkout canceled. You weren't charged."))).toBeVisible();
-  await expect(balance(page, 2098)).toBeVisible();
+  await expect(balance(page, 2298)).toBeVisible();
 
   await page.getByRole("button", { name: "Buy 500 credits for $5" }).click();
   await expect(page).toHaveURL(/localhost:3998\/pay\//);
   await page.getByRole("button", { name: "Pay $5.00" }).click();
   await expect(shown(page.getByText("Payment received. Your credits are ready to use."))).toBeVisible();
-  await expect(balance(page, 2598)).toBeVisible();
+  await expect(balance(page, 2798)).toBeVisible();
   await expect(shown(page.getByLabel("Credit activity"))).toContainText("Bought credits");
 });
 
@@ -179,7 +179,7 @@ test("switches to the user's own AI key and back", async ({ page }) => {
 
   await page.goto("/settings/billing");
   await page.getByRole("button", { name: "Switch back to credits" }).click();
-  await expect(balance(page, 2598)).toBeVisible();
+  await expect(balance(page, 2798)).toBeVisible();
   await expect(shown(page.getByText(/Your plan ends on/))).toBeVisible();
 });
 
@@ -187,12 +187,12 @@ test("looks up a topic on Threads and the web before writing, and shows what it 
   await signIn(page);
   await page.goto("/studio");
   const generate = page.getByRole("button", { name: /Generate/ });
-  await expect(page.getByText("Threaded reads what's popular on Threads about it first")).toContainText("(≈2 cr).");
+  await expect(page.getByText("Threaded reads what's popular on Threads about it first")).toContainText("(≈3 cr).");
   const estimate = async () => Number((await generate.textContent())?.match(/≈(\d+) cr/)?.[1]);
   const before = await estimate();
   await page.getByLabel("Topic").fill("php2shell");
   // The estimate now includes a search.
-  await expect(generate).toContainText(`≈${before + 2} cr`);
+  await expect(generate).toContainText(`≈${before + 3} cr`);
   await generate.click();
   // Scoped to the new batch: the idea saved earlier is listed under Saved ideas too.
   const ideas = page.getByRole("region", { name: "Ideas", exact: true });
@@ -219,7 +219,7 @@ test("looks up a topic on Threads and the web before writing, and shows what it 
     "https://news.example.com/php2shell",
   );
   // 2 credits for the ideas and 2 for the research.
-  await expect(balance(page, 2594)).toBeVisible();
+  await expect(balance(page, 2794)).toBeVisible();
 });
 
 test("voice settings set Studio's default tone and leave out ideas that break them", async ({ page }) => {

@@ -1,6 +1,7 @@
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { buyCreditsAction } from "@/lib/actions/billing";
-import { CREDIT_PACKS } from "@/lib/pricing";
+import { CREDIT_PACKS, packBonus } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 import { SubmitButton } from "./submit-button";
 
@@ -19,7 +20,9 @@ export function CreditPacks({
       <h2 id="buy-credits" className="font-semibold text-lg">
         Buy credits
       </h2>
-      <p className="mt-0.5 text-muted text-sm">A one-time payment, no subscription. Credits never expire.</p>
+      <p className="mt-0.5 text-muted text-sm">
+        A one-time payment, no subscription. Credits never expire, and bigger packs come with bonus credits.
+      </p>
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         {CREDIT_PACKS.map((pack, i) => (
           <form key={pack.id} action={buyCreditsAction}>
@@ -33,7 +36,12 @@ export function CreditPacks({
             >
               <p className="w-16 shrink-0 font-semibold text-2xl tracking-tight sm:w-auto sm:text-3xl">${pack.usd}</p>
               <div className="min-w-0">
-                <p className="font-medium sm:mt-1">{pack.credits.toLocaleString("en-US")} credits</p>
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium sm:mt-1">
+                  {pack.credits.toLocaleString("en-US")} credits
+                  {packBonus(pack) > 0 && (
+                    <Badge variant="accent">+{packBonus(pack).toLocaleString("en-US")} bonus</Badge>
+                  )}
+                </p>
                 <p className="mt-0.5 text-subtle text-xs sm:mt-1">
                   About {Math.floor(pack.credits / Math.max(1, batchCredits)).toLocaleString("en-US")} batches of three
                   ideas

@@ -39,7 +39,7 @@ export const FAQS: Faq[] = [
   },
   {
     question: "How much does it cost?",
-    answer: `You start with $${creditsToUsd(TRIAL_CREDITS).toFixed(0)} of free credits, and every batch shows its price before you run it; a batch of ideas usually costs a few cents. Top up with ${packs.slice(0, -1).join(", ")} or ${packs.at(-1)} packs, and credits never expire. Or bring your own Vercel AI Gateway key for a $${BYOK_PLATFORM_FEE_USD} monthly platform fee.`,
+    answer: `You start with $${creditsToUsd(TRIAL_CREDITS).toFixed(0)} of free credits, and every batch shows its price before you run it; a batch of ideas usually costs a few cents. Top up with ${packs.slice(0, -1).join(", ")} or ${packs.at(-1)} packs (the bigger ones come with bonus credits), and credits never expire. Or bring your own Vercel AI Gateway key for a $${BYOK_PLATFORM_FEE_USD} monthly platform fee.`,
   },
   {
     question: "Which AI models write the ideas?",

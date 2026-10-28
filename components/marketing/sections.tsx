@@ -198,7 +198,7 @@ export function Pricing() {
             </p>
             <ul className="mt-6 space-y-3 text-muted text-sm">
               <Feature>Choose from our tested models, priced per use</Feature>
-              <Feature>Top up with {packs} credit packs</Feature>
+              <Feature>Top up with {packs} credit packs, with bonus credits on the bigger ones</Feature>
               <Feature>Profile analysis and insights included</Feature>
               <Feature>Credits never expire</Feature>
             </ul>

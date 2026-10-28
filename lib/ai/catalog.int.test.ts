@@ -32,7 +32,7 @@ describe("model catalog", () => {
     expect(Number(sonnet.inputPrice)).toBe(2.5);
     expect(Number(sonnet.outputPrice)).toBe(12.5);
     // Markups are ours and never overwritten by a sync.
-    expect(Number(sonnet.markup)).toBe(1.5);
+    expect(Number(sonnet.markup)).toBe(2);
 
     const generate = await catalogFor("generate");
     expect(generate.map((e) => e.modelId)).not.toContain("anthropic/claude-opus-5.5");

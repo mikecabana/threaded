@@ -1,6 +1,6 @@
 import "server-only";
 import { generateText } from "ai";
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, gt, sql } from "drizzle-orm";
 import { performanceFacts, topicStats } from "@/lib/analysis/facts";
 import { loadProfileDataset } from "@/lib/data/dataset";
 import { latestDna, loadPostFeatures } from "@/lib/data/intelligence";
@@ -25,7 +25,11 @@ const DAY_MS = 86_400_000;
 /** Slack so a weekly rebuild doesn't slip a day when the daily cron runs a little early. */
 const SLACK_MS = 2 * 3_600_000;
 
-/** True when the profile has enough posts and no DNA from the last week. */
+/**
+ * True when the profile has enough posts and no DNA yet, or a DNA at least a
+ * week old with posts since. An account that stops posting keeps its DNA
+ * rather than paying for the same rebuild every week.
+ */
 export async function dnaDue(profileId: string, now = new Date()): Promise<boolean> {
   const [{ total }] = await db()
     .select({ total: count() })
@@ -33,7 +37,14 @@ export async function dnaDue(profileId: string, now = new Date()): Promise<boole
     .where(and(eq(posts.profileId, profileId), sql`length(trim(${posts.text})) > 0`));
   if (total < MIN_DNA_POSTS) return false;
   const latest = await latestDna(profileId);
-  return !latest || now.getTime() - latest.generatedAt.getTime() >= DNA_MAX_AGE_DAYS * DAY_MS - SLACK_MS;
+  if (!latest) return true;
+  if (now.getTime() - latest.generatedAt.getTime() < DNA_MAX_AGE_DAYS * DAY_MS - SLACK_MS) return false;
+  const [newer] = await db()
+    .select({ id: posts.id })
+    .from(posts)
+    .where(and(eq(posts.profileId, profileId), gt(posts.postedAt, latest.generatedAt)))
+    .limit(1);
+  return Boolean(newer);
 }
 
 /** Stores the DNA as the profile's next version and returns that version number. */

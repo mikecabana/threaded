@@ -297,7 +297,7 @@ export const modelCatalog = pgTable("model_catalog", {
   tier: text("tier", { enum: ["fast", "balanced", "best"] }).notNull(),
   tasks: text("tasks").array().notNull(),
   defaultFor: text("default_for").array().notNull().default(sql`'{}'::text[]`),
-  markup: numeric("markup", { precision: 4, scale: 2 }).notNull().default("1.50"),
+  markup: numeric("markup", { precision: 4, scale: 2 }).notNull().default("2.00"),
   minCredits: integer("min_credits").notNull().default(1),
   /** USD per million tokens, synced nightly from the Gateway catalog. */
   inputPrice: numeric("input_price", { precision: 10, scale: 4 }),

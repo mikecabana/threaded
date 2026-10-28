@@ -228,9 +228,20 @@ describe("Profile DNA", () => {
     expect(dna?.stats.posts).toBe(26);
   });
 
-  it("isn't rebuilt within a week, then is, as a new version", async () => {
+  it("isn't rebuilt within a week, or after it without new posts, then is, as a new version", async () => {
     expect(await dnaDue(profileId, now)).toBe(false);
     const nextWeek = new Date(now.getTime() + 7 * DAY_MS);
+    // Nothing new was posted, so the same DNA stands.
+    expect(await dnaDue(profileId, nextWeek)).toBe(false);
+    await db()
+      .insert(posts)
+      .values({
+        id: "after-dna",
+        profileId,
+        text: "A new post since the DNA",
+        mediaType: "TEXT_POST",
+        postedAt: new Date(now.getTime() + DAY_MS),
+      });
     expect(await dnaDue(profileId, nextWeek)).toBe(true);
     expect(await buildDna(profileId, nextWeek)).toEqual({ ok: true, version: 2 });
     expect((await latestDna(profileId))?.version).toBe(2);
@@ -257,7 +268,7 @@ describe("Profile DNA", () => {
     expect(response.status).toBe(200);
     await response.text();
     const prompt = mockCalls.findLast((c) => c.task === "generate")?.prompt ?? "";
-    expect(prompt).toContain("Voice guide, learned from 26 of their posts:");
+    expect(prompt).toContain("Voice guide, learned from 27 of their posts:");
     expect(prompt).toContain("What their audience rewards:");
     expect(prompt).toMatch(/\(Question · \w+; [\d.,k]+ views/);
     expect(prompt).toContain("They've written about shipping before");
