@@ -321,6 +321,7 @@ export const userSettings = pgTable("user_settings", {
     casing?: "normal" | "lowercase";
     bannedWords?: string[];
     spice?: "mild" | "bold" | "spicy";
+    notes?: string;
   }>(),
 });
 

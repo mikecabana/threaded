@@ -5,7 +5,7 @@ import { SubmitButton } from "@/components/billing/submit-button";
 import { Segmented } from "@/components/ui/segmented";
 import { saveVoiceAction, type VoiceFormState } from "@/lib/actions/voice";
 import type { SpiceLevel } from "@/lib/ai/schemas";
-import { MAX_BANNED, type VoicePrefs } from "@/lib/ai/voice";
+import { MAX_BANNED, MAX_NOTES, type VoicePrefs } from "@/lib/ai/voice";
 import { cn } from "@/lib/utils";
 
 type Emoji = NonNullable<VoicePrefs["emoji"]> | "";
@@ -52,7 +52,7 @@ function Choice<T extends string>(props: {
   );
 }
 
-/** Settings → Voice: emoji, casing, words to never use, and Studio's default tone. */
+/** Settings → Voice: emoji, casing, words to never use, Studio's default tone, and free-form notes. */
 export function VoiceForm({ prefs }: { prefs: VoicePrefs }) {
   const [state, action] = useActionState<VoiceFormState, FormData>(saveVoiceAction, null);
   const [emoji, setEmoji] = useState<Emoji>(prefs.emoji ?? "");
@@ -74,6 +74,23 @@ export function VoiceForm({ prefs }: { prefs: VoicePrefs }) {
         />
         <span className="mt-1 block text-subtle text-xs">
           Separate them with commas or new lines, up to {MAX_BANNED}. Ideas that use one are left out.
+        </span>
+      </label>
+      <label className="block">
+        <span className="mb-1.5 block font-medium text-sm">Anything else Studio should follow</span>
+        <textarea
+          name="notes"
+          rows={4}
+          maxLength={MAX_NOTES}
+          defaultValue={prefs.notes ?? ""}
+          placeholder={
+            'Call my product Tidy, never "my app".\nI write for indie hackers, not big companies.\nNo politics.'
+          }
+          className="w-full rounded-xl border border-border-strong bg-surface-2 px-3 py-2 text-sm outline-none placeholder:text-subtle focus-visible:border-accent"
+        />
+        <span className="mt-1 block text-subtle text-xs">
+          Up to {MAX_NOTES} characters. Studio follows these as guidance, within its own rules: it won't invent numbers
+          or copy other people's posts.
         </span>
       </label>
       <div className="flex flex-wrap items-center gap-3">

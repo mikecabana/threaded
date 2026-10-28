@@ -2,21 +2,25 @@ import { z } from "zod";
 import { SPICE_LEVELS, type SpiceLevel } from "./schemas";
 
 // The author's voice settings (Settings → Voice): emoji, casing, words to
-// never use, and Studio's default tone. Unset emoji and casing mean "like my
-// posts": the voice learned from their posts decides. The writer is told the
-// rules (./prompt.ts), and ideas that still break the hard ones are dropped
-// (./postprocess.ts).
+// never use, Studio's default tone, and free-form notes. Unset emoji and
+// casing mean "like my posts": the voice learned from their posts decides.
+// The writer is told the rules and notes (./prompt.ts), and ideas that still
+// break the hard rules are dropped (./postprocess.ts). Notes are guidance
+// only: they can't be checked, and they never outrank Threaded's own rules.
 
 export const EMOJI_LEVELS = ["none", "some", "lots"] as const;
 export const CASINGS = ["normal", "lowercase"] as const;
 export const MAX_BANNED = 30;
 export const MAX_BANNED_LENGTH = 40;
+export const MAX_NOTES = 500;
 
 export interface VoicePrefs {
   emoji?: (typeof EMOJI_LEVELS)[number];
   casing?: (typeof CASINGS)[number];
   bannedWords?: string[];
   spice?: SpiceLevel;
+  /** Anything else the writer should follow, in the author's words. */
+  notes?: string;
 }
 
 const choice = <T extends readonly [string, ...string[]]>(values: T) =>
@@ -49,6 +53,12 @@ export const voiceFormSchema = z.object({
         .array(z.string().max(MAX_BANNED_LENGTH, `Keep each word or phrase under ${MAX_BANNED_LENGTH} characters.`))
         .max(MAX_BANNED, `Up to ${MAX_BANNED} words or phrases.`),
     ),
+  notes: z
+    .string()
+    .default("")
+    .transform((text) => text.replace(/\r\n/g, "\n").trim())
+    .pipe(z.string().max(MAX_NOTES, `Keep your notes under ${MAX_NOTES} characters.`))
+    .transform((text) => text || undefined),
 });
 
 /** What the writer is told, beyond the voice learned from the author's posts. */

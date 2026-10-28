@@ -11,7 +11,7 @@ import { type VoicePrefs, voiceRules } from "./voice";
 // v3: drafts from Threaded that beat the author's usual are pinned among the exemplars.
 // v4: web research on the topic when it names something specific, and no guessing at unfamiliar names.
 // v5: what recent popular Threads posts on the topic show, and an angle they're missing.
-// v6: the author's voice settings (emoji, casing, banned words).
+// v6: the author's voice settings (emoji, casing, banned words) and notes.
 export const PROMPT_VERSION = "generate.v6";
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -47,6 +47,15 @@ export function buildInstructions(request: GenerateRequest, voice?: VoicePrefs |
     "- `bestSlot` should use the author's best hours when known.",
     ...(preferences.length
       ? ["", "The author's own settings, which win over their usual habits:", ...preferences.map((rule) => `- ${rule}`)]
+      : []),
+    ...(voice?.notes
+      ? [
+          "",
+          "The author's notes for every batch. Follow them, unless they conflict with the rules above:",
+          '"""',
+          voice.notes.replace(/"{3,}/g, '"'),
+          '"""',
+        ]
       : []),
   ].join("\n");
 }

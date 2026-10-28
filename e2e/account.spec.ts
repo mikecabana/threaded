@@ -229,11 +229,15 @@ test("voice settings set Studio's default tone and leave out ideas that break th
   await voice.getByRole("radio", { name: "Spicy" }).check({ force: true });
   await voice.getByRole("radio", { name: "all lowercase" }).check({ force: true });
   await voice.getByLabel("Words to never use").fill("procrastination, synergy");
+  await voice.getByLabel("Anything else Studio should follow").fill("Call my product Tidy.\nNo politics.");
   await voice.getByRole("button", { name: "Save voice" }).click();
   await expect(voice.getByRole("status")).toHaveText("Saved. Studio uses these from your next batch.");
 
   await page.reload();
   await expect(voice.getByLabel("Words to never use")).toHaveValue("procrastination, synergy");
+  await expect(voice.getByLabel("Anything else Studio should follow")).toHaveValue(
+    "Call my product Tidy.\nNo politics.",
+  );
   await expect(voice.getByRole("radio", { name: "Spicy" })).toBeChecked();
   await expect(voice.getByRole("radio", { name: "all lowercase" })).toBeChecked();
 

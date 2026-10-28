@@ -17,6 +17,7 @@ export async function saveVoiceAction(_state: VoiceFormState, form: FormData): P
     casing: form.get("casing") ?? "",
     spice: form.get("spice") ?? "",
     bannedWords: form.get("bannedWords") ?? "",
+    notes: form.get("notes") ?? "",
   });
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check your settings." };
   const voicePrefs = parsed.data;

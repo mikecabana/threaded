@@ -208,11 +208,15 @@ describe("voice settings", () => {
   it("tells the writer the author's rules, and drops an idea that breaks one", async () => {
     await db()
       .insert(userSettings)
-      .values({ userId: identity.userId, voicePrefs: { bannedWords: ["procrastination"], casing: "lowercase" } });
+      .values({
+        userId: identity.userId,
+        voicePrefs: { bannedWords: ["procrastination"], casing: "lowercase", notes: "Call my product Tidy." },
+      });
     const { generationId } = await run();
     const lastPrompt = mockCalls.filter((call) => call.task === "generate").at(-1)?.prompt ?? "";
     expect(lastPrompt).toContain('Never use these words or phrases: "procrastination".');
     expect(lastPrompt).toContain("Write everything in lowercase");
+    expect(lastPrompt).toContain('"""\nCall my product Tidy.\n"""');
 
     const [row] = await db()
       .select()
