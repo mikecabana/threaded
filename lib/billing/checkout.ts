@@ -3,10 +3,10 @@ import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { type AutoRechargeSettings, workspaces } from "@/lib/db/schema";
-import { BYOK_PLATFORM_FEE_USD, type CreditPack, CURRENCY, packById } from "@/lib/pricing";
+import { BYOK_PLATFORM_FEE_USD, type CreditPack, CURRENCY, MONTHLY_PLAN, packById } from "@/lib/pricing";
 import { maybeStartAutoRecharge } from "./auto-recharge";
 import { automaticTax, ensureCustomer, stripe } from "./stripe";
-import { syncSubscription } from "./subscription";
+import { fulfillPlanInvoice, syncSubscription } from "./subscription";
 import { grantCredits } from "./wallet";
 
 // Hosted Checkout for everything a customer pays for: credit packs, the BYOK
@@ -87,6 +87,36 @@ export async function createByokCheckout(input: { workspaceId: string; origin: s
   return session.url as string;
 }
 
+/** The Monthly plan: its credits come with every paid invoice (fulfillPlanInvoice). */
+export async function createMonthlyCheckout(input: { workspaceId: string; origin: string; locales?: string[] }) {
+  const customer = await ensureCustomer(input.workspaceId, input.locales);
+  const metadata = { kind: "monthly", workspaceId: input.workspaceId };
+  const session = await stripe().checkout.sessions.create({
+    mode: "subscription",
+    customer,
+    client_reference_id: input.workspaceId,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: CURRENCY,
+          unit_amount: MONTHLY_PLAN.usd * 100,
+          recurring: { interval: "month" },
+          tax_behavior: "exclusive",
+          product_data: {
+            name: `Threaded Monthly plan (${MONTHLY_PLAN.credits.toLocaleString("en-US")} credits a month)`,
+          },
+        },
+      },
+    ],
+    metadata,
+    subscription_data: { metadata },
+    ...taxOptions(),
+    ...returnUrls(input.origin),
+  });
+  return session.url as string;
+}
+
 /** Saves a card without charging it, then turns on auto-recharge with these settings. */
 export async function createCardCheckout(input: {
   workspaceId: string;
@@ -118,7 +148,7 @@ export async function createCardCheckout(input: {
 
 export type FulfillResult =
   | { kind: "topup"; workspaceId: string; status: "fulfilled" | "pending"; credits: number }
-  | { kind: "byok" | "card"; workspaceId: string; status: "fulfilled" | "pending" }
+  | { kind: "byok" | "card" | "monthly"; workspaceId: string; status: "fulfilled" | "pending" }
   | { kind: "ignored" };
 
 const id = (value: string | { id: string } | null) => (typeof value === "string" ? value : (value?.id ?? null));
@@ -137,7 +167,19 @@ export async function fulfillCheckout(sessionId: string, expectedWorkspaceId?: s
 
   if (kind === "topup") return fulfillTopUp(session, workspaceId);
   if (session.status !== "complete") {
-    return kind === "byok" || kind === "card" ? { kind, workspaceId, status: "pending" } : { kind: "ignored" };
+    return kind === "byok" || kind === "card" || kind === "monthly"
+      ? { kind, workspaceId, status: "pending" }
+      : { kind: "ignored" };
+  }
+  if (kind === "monthly") {
+    // The plan's first credits come with its first invoice; the webhook may not have arrived yet.
+    const subscription = id(session.subscription);
+    if (subscription) {
+      await syncSubscription(subscription);
+      const invoice = id((await stripe().subscriptions.retrieve(subscription)).latest_invoice);
+      if (invoice) await fulfillPlanInvoice(invoice);
+    }
+    return { kind, workspaceId, status: "fulfilled" };
   }
   if (kind === "byok") {
     const subscription = id(session.subscription);

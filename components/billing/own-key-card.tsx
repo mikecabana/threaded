@@ -26,7 +26,11 @@ export function OwnKeyCard({
   formatDate: (date: Date) => string;
   unavailable?: string;
 }) {
-  const { mode, keyLast4, plan } = overview;
+  const { mode, keyLast4 } = overview;
+  // This card is the own-key plan's; a Monthly plan has its own card.
+  const plan = overview.plan?.kind === "own_key" ? overview.plan : null;
+  const monthlyRunning =
+    overview.plan?.kind === "monthly" && isLivePlan(overview.plan.status) && !overview.plan.cancelAtPeriodEnd;
   const live = isLivePlan(plan?.status);
   const periodEnd = plan?.periodEnd ? formatDate(plan.periodEnd) : null;
 
@@ -106,6 +110,11 @@ export function OwnKeyCard({
             </form>
           </div>
         </>
+      ) : monthlyRunning ? (
+        <p className="text-sm text-subtle">
+          You're on the Monthly plan. To use your own key instead, cancel it first; it runs to the end of the period,
+          and your credits stay.
+        </p>
       ) : (
         <>
           {live && plan?.cancelAtPeriodEnd && (

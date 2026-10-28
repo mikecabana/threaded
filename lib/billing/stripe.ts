@@ -115,7 +115,7 @@ export function needsTaxAddress(customer: Stripe.Customer): boolean {
   return automaticTax().enabled && customer.tax?.automatic_tax === "unrecognized_location";
 }
 
-/** Stripe's hosted portal for invoices, cards and the BYOK plan. */
+/** Stripe's hosted portal for invoices, cards and the plans. */
 export async function portalUrl(workspaceId: string, returnUrl: string, locales?: string[]): Promise<string> {
   const customer = await ensureCustomer(workspaceId, locales);
   const session = await stripe().billingPortal.sessions.create({ customer, return_url: returnUrl });

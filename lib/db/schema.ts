@@ -103,12 +103,14 @@ export const workspaces = pgTable("workspaces", {
   byokKeyEnc: text("byok_key_enc"),
   byokKeyLast4: text("byok_key_last4"),
   stripeCustomerId: text("stripe_customer_id").unique(),
-  /** BYOK platform fee subscription. */
+  /** The workspace's plan (one at a time): the own-key platform fee or the Monthly plan. */
   stripeSubscriptionId: text("stripe_subscription_id"),
   /** Mirrors the Stripe subscription; refreshed from Stripe on every webhook. */
   subscriptionStatus: text("subscription_status"),
   subscriptionPeriodEnd: timestamp("subscription_period_end", { withTimezone: true }),
   subscriptionCancelAtPeriodEnd: boolean("subscription_cancel_at_period_end").notNull().default(false),
+  /** Which plan the subscription above is. */
+  planKind: text("plan_kind").$type<"own_key" | "monthly">(),
   autoRecharge: jsonb("auto_recharge").$type<AutoRechargeSettings>(),
   /** Set while an auto-recharge charge is in flight, so only one runs at a time. */
   autoRechargePendingAt: timestamp("auto_recharge_pending_at", { withTimezone: true }),

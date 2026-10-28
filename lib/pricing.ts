@@ -42,6 +42,13 @@ export function packById(id: string | null | undefined): CreditPack | undefined 
 /** Auto-recharge tops up when the balance drops below one of these. */
 export const RECHARGE_THRESHOLDS = [50, 100, 200, 500] as const;
 
+/**
+ * The Monthly plan: credits every month for less than any pack (133 per
+ * dollar against 100–115), added each time a payment goes through. They never
+ * expire, like every other credit.
+ */
+export const MONTHLY_PLAN = { usd: 9, credits: 1200 } as const;
+
 /** Monthly platform fee for workspaces that bring their own AI Gateway key. */
 export const BYOK_PLATFORM_FEE_USD = 5;
 

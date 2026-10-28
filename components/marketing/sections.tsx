@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { GOAL_META, GOALS } from "@/lib/goals";
 import { FAQS } from "@/lib/marketing/faq";
-import { BYOK_PLATFORM_FEE_USD, CREDIT_PACKS, creditsToUsd, TRIAL_CREDITS } from "@/lib/pricing";
+import { BYOK_PLATFORM_FEE_USD, CREDIT_PACKS, creditsToUsd, MONTHLY_PLAN, TRIAL_CREDITS } from "@/lib/pricing";
 import { DemoButton } from "./demo-button";
 
 function SectionHeading({ eyebrow, title, children }: { eyebrow: string; title: string; children?: ReactNode }) {
@@ -182,15 +182,17 @@ function Feature({ children }: { children: ReactNode }) {
 
 export function Pricing() {
   const packs = CREDIT_PACKS.map((p) => `$${p.usd}`).join(", ");
+  const perDollar = Math.round(MONTHLY_PLAN.credits / MONTHLY_PLAN.usd);
+  const bestPack = Math.max(...CREDIT_PACKS.map((p) => Math.round(p.credits / p.usd)));
   return (
     <section id="pricing" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
       <SectionHeading eyebrow="Pricing" title="Pay for what you generate">
         No subscription to start. See the price of every generation before you run it.
       </SectionHeading>
-      <Stagger className="mx-auto grid max-w-4xl gap-5 md:grid-cols-2">
+      <Stagger className="mx-auto grid max-w-2xl gap-5 lg:max-w-6xl lg:grid-cols-3">
         <StaggerItem>
-          <Card className="h-full border-accent/40 p-7">
-            <Badge variant="accent">Most people</Badge>
+          <Card className="h-full p-7">
+            <Badge variant="outline">Free to start</Badge>
             <h3 className="mt-4 font-semibold text-xl">Pay as you go</h3>
             <p className="mt-1 text-muted">
               <span className="font-semibold text-3xl text-fg">${creditsToUsd(TRIAL_CREDITS).toFixed(0)}</span> of free
@@ -205,6 +207,24 @@ export function Pricing() {
             <DemoButton className="mt-8 w-full" size="lg">
               Try the demo
             </DemoButton>
+          </Card>
+        </StaggerItem>
+        <StaggerItem>
+          <Card className="h-full border-accent/40 p-7">
+            <Badge variant="accent">Best value</Badge>
+            <h3 className="mt-4 font-semibold text-xl">Monthly plan</h3>
+            <p className="mt-1 text-muted">
+              <span className="font-semibold text-3xl text-fg">${MONTHLY_PLAN.usd}</span> / month for{" "}
+              {MONTHLY_PLAN.credits.toLocaleString("en-US")} credits
+            </p>
+            <ul className="mt-6 space-y-3 text-muted text-sm">
+              <Feature>
+                {perDollar} credits per dollar, against up to {bestPack} with packs
+              </Feature>
+              <Feature>Everything in pay as you go</Feature>
+              <Feature>Credits never expire, so a quiet month carries over</Feature>
+              <Feature>Cancel any time and keep your credits</Feature>
+            </ul>
           </Card>
         </StaggerItem>
         <StaggerItem>

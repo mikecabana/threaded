@@ -1,4 +1,4 @@
-import { Gift, Repeat, ShoppingBag, SlidersHorizontal, Sparkles } from "lucide-react";
+import { CalendarSync, Gift, Repeat, ShoppingBag, SlidersHorizontal, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import type { ActivityItem } from "@/lib/data/billing";
 import { cn } from "@/lib/utils";
@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 const ICONS = {
   purchase: ShoppingBag,
   auto_recharge: Repeat,
+  monthly_plan: CalendarSync,
   trial: Gift,
   usage: Sparkles,
   adjust: SlidersHorizontal,
