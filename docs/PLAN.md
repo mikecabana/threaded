@@ -625,7 +625,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | **0: Setup** | Meta app (Threads use case, testers, callbacks); **submit App Review early for basic + insights + publish**; Vercel + Neon + Upstash + AI Gateway + Stripe (test) + Resend; scaffold, design tokens, motion primitives, demo fixtures; Terms + Privacy pages | Demo account renders the Home shell |
 | **1: MVP** | OAuth + workspaces; initial sync; deterministic stats; goal picker; Studio with streaming; **curated catalog + model picker**; **credits wallet** (trial, Checkout top-ups, reserve/settle, auto-recharge); **BYOK** ($5/month plan); **post now + schedule + Queue**; rate limits | A tester connects, buys credits (test mode), generates, and has a scheduled post publish on time |
 | **2: Intelligence + polish** | LLM classification + Profile DNA, The Read + DNA reveal choreography, Insights page, daily cron (snapshots, token refresh), scorecard, evals harness, **admin margin dashboard**, **series via `reply_to_id`** | Daily loop runs unattended; margins visible per model |
-| **Launch: Quebec readiness** | **Monitoring and consent:** Sentry (with post text and tokens scrubbed), Google Tag Manager behind Consent Mode, and a cookie banner shown where consent is required (Quebec, the EU, the UK and Switzerland, from Cloudflare's or Vercel's location headers), with the Privacy page updated (done). **Search and sharing:** share images, canonical URLs, robots.txt, sitemap, structured data, a features section and FAQ on the home page (done). Then the Law 25 privacy items; live Stripe Tax; the lawyer's changes (SETUP.md §5) | Public sign-ups open |
+| **Launch: Quebec readiness** | **Monitoring and consent:** Sentry (with post text and tokens scrubbed), Google Tag Manager behind Consent Mode, and a cookie banner shown where consent is required (Quebec, the EU, the UK and Switzerland, from Cloudflare's or Vercel's location headers), with the Privacy page updated (done). **Search and sharing:** share images, canonical URLs, robots.txt, sitemap, structured data, a features section and FAQ on the home page (done). Then the Law 25 privacy items; live Stripe Tax; the lawyer's changes; a pricing and costs review against real usage (SETUP.md §5) | Public sign-ups open |
 | **After launch: French** | **French** (Bill 96): site, app, Terms, Privacy and emails, with `fr-CA` as a first-class locale and AI output in the user's language. Pinned until after launch (Oct 27, 2026) | Everything a Quebec customer sees exists in French |
 | **3: Grow** | Keyword-search trend radar, reply analysis, A/B variants, opt-in nightly "Today's plays", weekly digest email | |
 | **4: Agencies** | Multiple Threads profiles per workspace, team seats, email/Google login, optional subscription plans | |
@@ -661,7 +661,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 
 ## 15. Decisions log
 
-All open decisions are resolved; see the table at the top. Revisit the markup, packs and trial size once the margin dashboard has real data.
+All open decisions are resolved; see the table at the top. **Before launch, revisit pricing and costs** (the markup, packs, trial credits and own-key fee, against Stripe's fees and the running costs) once the margin dashboard has real data (SETUP.md §5).
 
 ## 16. Phase 0 status
 
@@ -732,6 +732,7 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - Stripe live mode: check that Tax shows Active, add the GST/HST and QST registrations once you have the numbers, and create the live webhook endpoint
 - A Resend account (Phase 2c emails)
 - Legal review of the Terms and Privacy drafts by a Quebec lawyer, and the Law 25 items (French follows right after launch)
+- Pricing and costs: revisit the markup, packs, trial credits and own-key fee against real usage before launch
 - Keyword search: add `threads_keyword_search` to the Meta app, set `THREADS_KEYWORD_SEARCH=1`, reconnect, and include it in App Review (SETUP.md §1, step 7)
 
 ## 18. Phase 2 progress
@@ -784,6 +785,8 @@ All open decisions are resolved; see the table at the top. Revisit the markup, p
 - **Share images** (`lib/og/images.tsx`): the home page's shows the promise, the three goals and a suggested post scored for engagement next to the author's best, drawn with the brand fonts (Geist and Instrument Serif, OFL, in `assets/fonts`). Connect, Terms and Privacy get titled cards. All are prerendered at build.
 - **On the page:** a search-led title and description, a Features section (Profile DNA, analytics, ideas, scheduling, the scorecard, alerts) and an FAQ, with the same questions in schema.org `FAQPage` data next to `Organization`, `WebSite` and `WebApplication`. No ratings or reviews we don't have. The hero's headline now paints with the page instead of fading in after hydration: on a throttled phone (slow 4G, 4× CPU) the largest paint went from about 3.9s to 1.1s.
 - Tests: canonical URLs, indexing rules, robots and sitemap, structured data matching the FAQ and pricing; end to end, the home page's tags, a real 1200×630 image and its FAQ, the other pages' canonicals and images, robots.txt, the sitemap and manifest, and `noindex` once signed in.
+
+**Voice settings (done):** Settings → Voice replaces the last "Soon" cards (the Models card is gone: Studio already picks the model per batch, and background tasks run on our own). People set emoji (like my posts, none, a little, lots), casing (like my posts, normal, all lowercase), up to 30 words or phrases to never use, Studio's default tone, and free-form notes ("Anything else Studio should follow", up to 500 characters). Prompt `generate.v6` adds them as the author's own rules, which win over the habits learned from their posts (`lib/ai/voice.ts`); the notes come last, quoted, as guidance that never outranks those rules or Threaded's own (no made-up numbers, no copying); post-processing drops any idea that still uses a banned word (whole words, any case) or, with emoji turned off, an emoji. Studio starts on the saved tone and links to the settings. Tests: parsing the form, the rules and notes in the prompt, matching words and emoji, the drops; an integration test for a batch with the settings; end to end, saving them (notes included), Studio's tone, and a batch that leaves out the idea with a banned word.
 
 **Account & data (done):** Settings → Account & data, so people can act on their rights themselves (Law 25, including data portability):
 - **Download your data** (`lib/accounts/export.ts`, `GET /api/account/export`): one JSON file with the profile, alert email, settings, billing and credit history, every post with its labels and insight snapshots, account insights and audience, every Profile DNA version, Studio batches with their research and ideas, scheduled posts and the alerts sent. No tokens, keys or internal ids.

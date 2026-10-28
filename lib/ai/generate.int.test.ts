@@ -3,7 +3,16 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { provisionThreadsAccount } from "@/lib/accounts/provision";
 import { encryptSecret } from "@/lib/crypto/secrets";
 import { db } from "@/lib/db";
-import { creditLedger, generations, posts, suggestions, threadsTokens, wallets, workspaces } from "@/lib/db/schema";
+import {
+  creditLedger,
+  generations,
+  posts,
+  suggestions,
+  threadsTokens,
+  userSettings,
+  wallets,
+  workspaces,
+} from "@/lib/db/schema";
 import { TRIAL_CREDITS } from "@/lib/pricing";
 import type { AccountIdentity } from "@/lib/session/identity";
 import { KEYWORD_SEARCH_SCOPE } from "@/lib/threads/oauth";
@@ -188,6 +197,39 @@ describe("startGeneration", () => {
       );
     const { response } = await run();
     expect(response.status).toBe(429);
+  });
+});
+
+describe("voice settings", () => {
+  afterEach(async () => {
+    await db().delete(userSettings).where(eq(userSettings.userId, identity.userId));
+  });
+
+  it("tells the writer the author's rules, and drops an idea that breaks one", async () => {
+    await db()
+      .insert(userSettings)
+      .values({
+        userId: identity.userId,
+        voicePrefs: { bannedWords: ["procrastination"], casing: "lowercase", notes: "Call my product Tidy." },
+      });
+    const { generationId } = await run();
+    const lastPrompt = mockCalls.filter((call) => call.task === "generate").at(-1)?.prompt ?? "";
+    expect(lastPrompt).toContain('Never use these words or phrases: "procrastination".');
+    expect(lastPrompt).toContain("Write everything in lowercase");
+    expect(lastPrompt).toContain('"""\nCall my product Tidy.\n"""');
+
+    const [row] = await db()
+      .select()
+      .from(generations)
+      .where(eq(generations.id, generationId as string));
+    expect(row).toMatchObject({ status: "done", dropped: 1 });
+    const kept = await db()
+      .select()
+      .from(suggestions)
+      .where(eq(suggestions.generationId, generationId as string));
+    // The mock writes five; the one with the banned word goes, and the batch still has three.
+    expect(kept.map((s) => s.text).join(" ")).not.toContain("procrastination");
+    expect(kept).toHaveLength(3);
   });
 });
 

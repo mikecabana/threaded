@@ -12,6 +12,7 @@ import {
 } from "@/lib/billing/wallet";
 import { loadProfileDataset } from "@/lib/data/dataset";
 import { latestDna, loadPostFeatures } from "@/lib/data/intelligence";
+import { getVoicePrefs } from "@/lib/data/settings";
 import { db } from "@/lib/db";
 import { generations, suggestions, threadsProfiles, workspaces } from "@/lib/db/schema";
 import { winningDrafts } from "@/lib/publishing/scorecard";
@@ -123,11 +124,12 @@ export async function startGeneration(input: {
     profilePictureUrl: profile.profilePictureUrl,
     isVerified: profile.isVerified,
   };
-  const [dataset, features, stored, winners] = await Promise.all([
+  const [dataset, features, stored, winners, voice] = await Promise.all([
     loadProfileDataset(threadsProfile, now),
     loadPostFeatures(profile.id),
     latestDna(profile.id),
     winningDrafts(profile.id),
+    getVoicePrefs(identity.userId),
   ]);
   const context = buildContext({
     goal: request.goal,
@@ -140,7 +142,7 @@ export async function startGeneration(input: {
     topic: request.topic,
     winners,
   });
-  const instructions = buildInstructions(request);
+  const instructions = buildInstructions(request, voice);
   const maxOutputTokens = outputTokenBudget(request.count);
 
   const generationId = randomUUID();
@@ -222,7 +224,7 @@ export async function startGeneration(input: {
     try {
       const processed =
         outcome.kind === "ok" && outcome.output
-          ? postProcess(outcome.output.suggestions, pastPosts, request.count)
+          ? postProcess(outcome.output.suggestions, pastPosts, request.count, voice)
           : null;
       if (!processed || processed.kept.length === 0) {
         await db()

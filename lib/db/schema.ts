@@ -315,11 +315,13 @@ export const userSettings = pgTable("user_settings", {
     .references(() => users.id, { onDelete: "cascade" }),
   modelPicks:
     jsonb("model_picks").$type<Partial<Record<"generate" | "research" | "critique" | "classify" | "dna", string>>>(),
+  /** Settings → Voice (lib/ai/voice.ts). */
   voicePrefs: jsonb("voice_prefs").$type<{
     emoji?: "none" | "some" | "lots";
     casing?: "normal" | "lowercase";
     bannedWords?: string[];
-    spiceDefault?: number;
+    spice?: "mild" | "bold" | "spicy";
+    notes?: string;
   }>(),
 });
 

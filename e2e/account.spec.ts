@@ -222,6 +222,35 @@ test("looks up a topic on Threads and the web before writing, and shows what it 
   await expect(balance(page, 2594)).toBeVisible();
 });
 
+test("voice settings set Studio's default tone and leave out ideas that break them", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/settings");
+  const voice = page.getByRole("form", { name: "Voice settings" });
+  await voice.getByRole("radio", { name: "Spicy" }).check({ force: true });
+  await voice.getByRole("radio", { name: "all lowercase" }).check({ force: true });
+  await voice.getByLabel("Words to never use").fill("procrastination, synergy");
+  await voice.getByLabel("Anything else Studio should follow").fill("Call my product Tidy.\nNo politics.");
+  await voice.getByRole("button", { name: "Save voice" }).click();
+  await expect(voice.getByRole("status")).toHaveText("Saved. Studio uses these from your next batch.");
+
+  await page.reload();
+  await expect(voice.getByLabel("Words to never use")).toHaveValue("procrastination, synergy");
+  await expect(voice.getByLabel("Anything else Studio should follow")).toHaveValue(
+    "Call my product Tidy.\nNo politics.",
+  );
+  await expect(voice.getByRole("radio", { name: "Spicy" })).toBeChecked();
+  await expect(voice.getByRole("radio", { name: "all lowercase" })).toBeChecked();
+
+  // Studio starts on the saved tone. The mock writes five ideas; the "procrastination" one is left out.
+  await page.goto("/studio");
+  await expect(page.getByRole("radio", { name: "Spicy" })).toBeChecked();
+  await page.getByRole("button", { name: /Generate/ }).click();
+  const ideas = page.getByRole("region", { name: "Ideas", exact: true });
+  await expect(ideas.getByRole("button", { name: "Copy" })).toHaveCount(3, { timeout: 20_000 });
+  await expect(ideas).not.toContainText("procrastination");
+  await expect(ideas.getByText("1 idea was left out")).toContainText("voice settings");
+});
+
 test("shows a billing problem across the app until it's dismissed", async ({ page }) => {
   const pool = new Pool({ connectionString: databaseUrl });
   try {

@@ -5,7 +5,7 @@ import { buildContext } from "./context";
 import { chargeBatch, RESEARCH_USAGE, researchCredits, SEARCH_USD } from "./cost";
 import { createMockModel } from "./mock-model";
 import type { ResolvedModel } from "./models";
-import { buildInstructions, buildPrompt, PROMPT_VERSION } from "./prompt";
+import { buildInstructions, buildPrompt } from "./prompt";
 import { researchTopic } from "./research";
 import {
   MAX_BRIEF,
@@ -209,7 +209,6 @@ describe("research in the generation prompt", () => {
 
   it("passes on what Threads is saying, and asks for an angle it's missing (v5)", () => {
     const prompt = buildPrompt(request, context, research(null, [], "Everyone says patch; nobody says how."));
-    expect(PROMPT_VERSION).toBe("generate.v5");
     expect(prompt).toContain(
       'What recent popular Threads posts about "php2shell" are saying:\nEveryone says patch; nobody says how.',
     );
