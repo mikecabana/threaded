@@ -82,6 +82,26 @@ describe("provisionThreadsAccount", () => {
     expect(wallet.balance).toBe(TRIAL_CREDITS);
   });
 
+  it("signs a new account in from two places at once", async () => {
+    const both = await Promise.all(
+      ["tab-1", "tab-2"].map((accessToken) =>
+        provisionThreadsAccount({
+          profile: { ...profile, id: "3003", username: "twice" },
+          accessToken,
+          expiresAt,
+          scopes,
+        }),
+      ),
+    );
+    // One creates the account, the other signs in to it.
+    expect(both.map((r) => r.isNewProfile).sort()).toEqual([false, true]);
+    expect(new Set(both.map((r) => r.workspaceId)).size).toBe(1);
+    expect(new Set(both.map((r) => r.userId)).size).toBe(1);
+    expect(both.filter((r) => r.trialGranted)).toHaveLength(1);
+    const [wallet] = await db().select().from(wallets).where(eq(wallets.workspaceId, both[0].workspaceId));
+    expect(wallet.balance).toBe(TRIAL_CREDITS);
+  });
+
   it("ignores an invalid timezone", async () => {
     const result = await provisionThreadsAccount({
       profile: { ...profile, id: "2001", username: "other" },

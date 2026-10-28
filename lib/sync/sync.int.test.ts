@@ -114,13 +114,29 @@ describe("sync", () => {
   });
 
   it("tracks runs and marks the profile synced", async () => {
-    const runId = await startSyncRun(PROFILE, "initial");
+    const runId = (await startSyncRun(PROFILE, "initial")) as string;
     expect(await hasActiveSyncRun(PROFILE)).toBe(true);
     await finishSyncRun(runId, PROFILE, { ok: true, stats: { posts: 3 } });
     expect(await hasActiveSyncRun(PROFILE)).toBe(false);
     expect(await latestSyncRun(PROFILE)).toMatchObject({ status: "succeeded", step: "done", stats: { posts: 3 } });
     const [profile] = await db().select().from(threadsProfiles).where(eq(threadsProfiles.id, PROFILE));
     expect(profile.lastSyncedAt).not.toBeNull();
+  });
+
+  it("runs one sync at a time per profile", async () => {
+    // Two sign-ins at once, or a double click on "Sync now", start two workflows.
+    const claims = await Promise.all([startSyncRun(PROFILE, "manual"), startSyncRun(PROFILE, "manual")]);
+    const runId = claims.find((id) => id !== null);
+    expect(claims.filter((id) => id === null)).toHaveLength(1);
+    expect(await startSyncRun(PROFILE, "daily")).toBeNull();
+
+    await finishSyncRun(runId as string, PROFILE, { ok: false, error: "boom" });
+    const next = await startSyncRun(PROFILE, "manual");
+    expect(next).not.toBeNull();
+    // A run that never finished stops blocking after 30 minutes.
+    const later = await startSyncRun(PROFILE, "daily", new Date(Date.now() + 31 * 60_000));
+    expect(later).not.toBeNull();
+    for (const id of [next, later]) await finishSyncRun(id as string, PROFILE, { ok: true, stats: {} });
   });
 });
 

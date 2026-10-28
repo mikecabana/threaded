@@ -37,6 +37,8 @@ export async function refreshSync(profileId: string, kind: "daily" | "manual" = 
 
 async function runSync(profileId: string, kind: "initial" | "daily" | "manual", postDays: number, accountDays: number) {
   const runId = await startRun(profileId, kind);
+  // Another sync for this profile is already running.
+  if (!runId) return null;
   try {
     await refreshProfile(profileId);
     const listed = await listPosts(profileId, postDays);

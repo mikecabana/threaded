@@ -1,5 +1,6 @@
 import "server-only";
 import { attachDatabasePool } from "@vercel/functions";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { requireEnv } from "@/lib/env";
@@ -25,5 +26,13 @@ export function db() {
 
 export type Db = ReturnType<typeof db>;
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/**
+ * Holds a Postgres advisory lock on `key` until the transaction ends, so
+ * transactions that take the same key run one after the other.
+ */
+export async function lockFor(tx: Tx, key: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
+}
 
 export { schema };
