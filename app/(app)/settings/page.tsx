@@ -1,10 +1,11 @@
-import { BellRing, ChevronRight, LogOut } from "lucide-react";
+import { BellRing, ChevronRight, Download, LogOut } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Avatar } from "@/components/app/avatar";
 import { SyncNowButton } from "@/components/app/sync-now-button";
 import { ThemeToggle } from "@/components/app/theme-toggle";
+import { DeleteAccount, DisconnectThreads } from "@/components/settings/data-controls";
 import { EmailForm } from "@/components/settings/email-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,8 @@ import { exitDemoAction, startDemoAction } from "@/lib/actions/demo";
 import { removeEmailAction } from "@/lib/actions/email";
 import { signOutAction } from "@/lib/actions/session";
 import { currentStaff } from "@/lib/admin/access";
+import { isLivePlan } from "@/lib/billing/subscription";
+import { billingOverview } from "@/lib/data/billing";
 import { DEMO_PERSONA_IDS, DEMO_PERSONAS } from "@/lib/demo/personas";
 import { alertAddress } from "@/lib/email/verify";
 import { timeAgo } from "@/lib/format";
@@ -25,7 +28,6 @@ export const metadata: Metadata = { title: "Settings" };
 const UPCOMING = [
   { title: "Models", body: "Pick the AI model for each task, with its price per use." },
   { title: "Voice", body: "Emoji, casing, banned words and how spicy suggestions get." },
-  { title: "Account & data", body: "Re-sync, disconnect Threads, or delete everything." },
 ];
 
 export default function SettingsPage({ searchParams }: { searchParams: Promise<{ email?: string }> }) {
@@ -53,6 +55,10 @@ export default function SettingsPage({ searchParams }: { searchParams: Promise<{
 
       <Suspense fallback={null}>
         <AdminLink />
+      </Suspense>
+
+      <Suspense fallback={<Skeleton className="h-56 rounded-2xl" />}>
+        <DataCard />
       </Suspense>
 
       <Link href="/settings/billing" className="group block">
@@ -111,6 +117,60 @@ async function AccountCard() {
             : "Your first sync hasn't finished yet."}
         </p>
         {viewer.connected && <SyncNowButton />}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Account & data: download everything, disconnect Threads, or delete the account. */
+async function DataCard() {
+  const viewer = await requireViewer();
+  if (viewer.kind === "demo") return null;
+  const billing = await billingOverview(viewer.workspaceId);
+  const consequences = [
+    "Your Threads posts, insights, Profile DNA, ideas and scheduled posts are deleted, and nothing scheduled goes out.",
+    billing.balance > 0 ? `Your ${billing.balance.toLocaleString("en-US")} unused credits are lost.` : null,
+    billing.plan && isLivePlan(billing.plan.status) ? "Your own-key plan ends now." : null,
+    "Payment records stay with Stripe, and our credit history stays for accounting, without your name or Threads account.",
+  ].filter((line): line is string => line !== null);
+  const rows = [
+    {
+      title: "Download your data",
+      body: "Your profile, posts and insights, Profile DNA, ideas, scheduled posts and credit history, as a JSON file.",
+      action: (
+        <Button asChild variant="outline" size="sm">
+          <a href="/api/account/export" download>
+            <Download /> Download
+          </a>
+        </Button>
+      ),
+    },
+    viewer.connected && {
+      title: "Disconnect Threads",
+      body: "Stops syncing and posting, and forgets Threaded's access. Your data stays; signing in with Threads reconnects.",
+      action: <DisconnectThreads />,
+    },
+    {
+      title: "Delete account",
+      body: "Deletes your account and everything Threaded keeps about you.",
+      action: <DeleteAccount username={viewer.profile.username} consequences={consequences} />,
+    },
+  ].filter((row) => !!row);
+  return (
+    <Card id="data">
+      <CardHeader>
+        <CardTitle className="text-fg">Account &amp; data</CardTitle>
+      </CardHeader>
+      <CardContent className="divide-y divide-border p-0">
+        {rows.map((row) => (
+          <div key={row.title} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div className="min-w-0 max-w-md">
+              <h3 className="font-medium text-sm">{row.title}</h3>
+              <p className="mt-0.5 text-muted text-sm">{row.body}</p>
+            </div>
+            {row.action}
+          </div>
+        ))}
       </CardContent>
     </Card>
   );

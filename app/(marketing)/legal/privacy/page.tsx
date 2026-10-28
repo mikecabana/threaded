@@ -134,10 +134,14 @@ export default function PrivacyPage() {
             which address.
           </li>
           <li>
-            Disconnecting Threads deletes your access token. Deleting your account, or removing {SITE.name} from your
-            Threads settings, deletes your Threads data, drafts and settings.
+            Disconnecting Threads (in Settings, or by removing {SITE.name} from your Threads settings) deletes your
+            access token and keeps your data. Deleting your account in Settings, or asking Threads to delete your data,
+            deletes your profile, posts, insights, Profile DNA, ideas, scheduled posts, settings and alert email.
           </li>
-          <li>Billing records are kept as long as accounting law requires.</li>
+          <li>
+            Billing records are kept as long as accounting law requires: payments with Stripe, and our credit history,
+            without your name or Threads account. Unused credits are lost when you delete your account.
+          </li>
         </ul>
       </section>
 
@@ -145,8 +149,9 @@ export default function PrivacyPage() {
         <h2>Your rights</h2>
         <p>
           Depending on where you live, you can ask to access, correct, export or delete your data, or object to how we
-          use it. Email <a href={`mailto:${SITE.contactEmail}`}>{SITE.contactEmail}</a> and we'll respond within 30
-          days.
+          use it. You can download your data and delete your account yourself under Settings → Account &amp; data. For
+          anything else, email <a href={`mailto:${SITE.contactEmail}`}>{SITE.contactEmail}</a> and we'll respond within
+          30 days.
         </p>
       </section>
     </LegalPage>
