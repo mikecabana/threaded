@@ -77,7 +77,7 @@ export function ConsentManager() {
   return (
     <section
       aria-label="Cookie choices"
-      className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-lg rounded-2xl border border-border-strong bg-surface p-4 shadow-2xl sm:bottom-5"
+      className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 mx-auto max-w-lg rounded-2xl border border-border-strong bg-surface p-4 shadow-2xl sm:bottom-[calc(1.25rem+env(safe-area-inset-bottom))]"
     >
       <h2 className="font-medium text-sm">Cookies and measurement</h2>
       <p className="mt-1 text-muted text-sm leading-relaxed">

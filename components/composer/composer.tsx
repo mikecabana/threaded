@@ -215,7 +215,7 @@ export function Composer({
         exit={{ opacity: 0 }}
         onClick={close}
       />
-      <div className="pointer-events-none absolute inset-0 flex items-end justify-center sm:items-center sm:p-6">
+      <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-[env(safe-area-inset-bottom)] sm:items-center sm:p-6">
         <m.div
           {...sheet}
           transition={uiSpring}

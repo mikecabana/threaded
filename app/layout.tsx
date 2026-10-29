@@ -33,6 +33,11 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: "#0a0a0b",
   colorScheme: "dark light",
+  // Edge to edge. Without it, Safari 26 on iOS ends the viewport above its
+  // floating toolbar and clips fixed elements there, so the page shows through
+  // under the mobile tab bar. The safe-area insets (globals.css, the tab bar)
+  // keep content clear of the toolbar, the status bar and the notch.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
