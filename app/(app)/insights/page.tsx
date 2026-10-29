@@ -95,7 +95,7 @@ async function InsightsContent() {
   const goalLabel = GOAL_META[goal].label.toLowerCase();
 
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       {hasDna && (
         <Reveal className="lg:col-span-2">
           <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
@@ -139,7 +139,7 @@ async function InsightsContent() {
 
 function InsightsSkeleton() {
   return (
-    <div className="grid gap-5 lg:grid-cols-2" aria-busy>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2" aria-busy>
       <Skeleton className="h-72 rounded-2xl lg:col-span-2" />
       <Skeleton className="h-72 rounded-2xl lg:col-span-2" />
       <Skeleton className="h-64 rounded-2xl" />

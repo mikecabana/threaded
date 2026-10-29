@@ -3,6 +3,7 @@
 import { m, useReducedMotion } from "motion/react";
 import { useId } from "react";
 import { cn } from "@/lib/utils";
+import { useReveal } from "./scroll-reveal";
 
 const W = 100;
 const H = 32;
@@ -39,6 +40,7 @@ function smoothPath(points: [number, number][]): string {
 export function Sparkline({ values, className }: { values: number[]; className?: string }) {
   const id = useId();
   const reduce = useReducedMotion();
+  const reveal = useReveal();
   const line = smoothPath(toPoints(values));
   const area = line ? `${line} L${W} ${H} L0 ${H} Z` : "";
 
@@ -59,8 +61,7 @@ export function Sparkline({ values, className }: { values: number[]; className?:
         d={area}
         fill={`url(#${id}-fill)`}
         initial={reduce ? false : { opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true }}
+        {...reveal({ opacity: 1 })}
         transition={{ duration: 0.8, delay: 0.5 }}
       />
       <m.path
@@ -71,8 +72,7 @@ export function Sparkline({ values, className }: { values: number[]; className?:
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
         initial={reduce ? false : { pathLength: 0 }}
-        whileInView={{ pathLength: 1 }}
-        viewport={{ once: true }}
+        {...reveal({ pathLength: 1 })}
         transition={{ duration: 1.2, ease: [0.65, 0, 0.35, 1] }}
       />
     </svg>
