@@ -11,9 +11,10 @@ import { KeyForm } from "./key-form";
 import { SubmitButton } from "./submit-button";
 
 /**
- * Bring-your-own-key. The states: not set up; key saved but the plan not
- * started; running on the key; switched back with the plan running out; and
- * the plan's payment failing.
+ * Bring-your-own-key, for workspaces that have used it (usesOwnKey). The
+ * states: key saved but the plan not started; running on the key; switched
+ * back with the plan running out; the plan's payment failing; and the plan
+ * ended, ready to start again.
  */
 export function OwnKeyCard({
   workspaceId,
@@ -29,8 +30,6 @@ export function OwnKeyCard({
   const { mode, keyLast4 } = overview;
   // This card is the own-key plan's; a Monthly plan has its own card.
   const plan = overview.plan?.kind === "own_key" ? overview.plan : null;
-  const monthlyRunning =
-    overview.plan?.kind === "monthly" && isLivePlan(overview.plan.status) && !overview.plan.cancelAtPeriodEnd;
   const live = isLivePlan(plan?.status);
   const periodEnd = plan?.periodEnd ? formatDate(plan.periodEnd) : null;
 
@@ -110,11 +109,6 @@ export function OwnKeyCard({
             </form>
           </div>
         </>
-      ) : monthlyRunning ? (
-        <p className="text-sm text-subtle">
-          You're on the Monthly plan. To use your own key instead, cancel it first; it runs to the end of the period,
-          and your credits stay.
-        </p>
       ) : (
         <>
           {live && plan?.cancelAtPeriodEnd && (

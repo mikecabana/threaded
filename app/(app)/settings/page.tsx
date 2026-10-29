@@ -66,9 +66,7 @@ export default function SettingsPage({ searchParams }: { searchParams: Promise<{
         <Card className="flex items-center justify-between gap-4 p-5 transition-colors group-hover:border-border-strong">
           <div>
             <h2 className="font-medium">Billing</h2>
-            <p className="mt-1 text-muted text-sm">
-              Credits, top-ups, auto-recharge, or your own Vercel AI Gateway key.
-            </p>
+            <p className="mt-1 text-muted text-sm">Credits, top-ups, the Monthly plan and auto-recharge.</p>
           </div>
           <ChevronRight className="size-5 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" />
         </Card>
@@ -139,7 +137,9 @@ async function DataCard() {
   const consequences = [
     "Your Threads posts, insights, Profile DNA, ideas and scheduled posts are deleted, and nothing scheduled goes out.",
     billing.balance > 0 ? `Your ${billing.balance.toLocaleString("en-US")} unused credits are lost.` : null,
-    billing.plan && isLivePlan(billing.plan.status) ? "Your own-key plan ends now." : null,
+    billing.plan && isLivePlan(billing.plan.status)
+      ? `Your ${billing.plan.kind === "monthly" ? "Monthly" : "own-key"} plan ends now.`
+      : null,
     "Payment records stay with Stripe, and our credit history stays for accounting, without your name or Threads account.",
   ].filter((line): line is string => line !== null);
   const rows = [

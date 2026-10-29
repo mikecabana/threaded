@@ -5,11 +5,11 @@ import {
   Check,
   ChevronDown,
   Dna,
-  KeyRound,
   Link2,
   Send,
   Sparkles,
   Trophy,
+  Users,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { GoalIcon } from "@/components/goal/goal-icon";
@@ -17,10 +17,12 @@ import { Reveal, Stagger, StaggerItem } from "@/components/motion/reveal";
 import { ThreadLine } from "@/components/motion/thread-line";
 import { TiltCard } from "@/components/motion/tilt-card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { GOAL_META, GOALS } from "@/lib/goals";
 import { FAQS } from "@/lib/marketing/faq";
-import { BYOK_PLATFORM_FEE_USD, CREDIT_PACKS, creditsToUsd, MONTHLY_PLAN, TRIAL_CREDITS } from "@/lib/pricing";
+import { CREDIT_PACKS, creditsToUsd, MONTHLY_PLAN, TRIAL_CREDITS } from "@/lib/pricing";
+import { SITE } from "@/lib/site";
 import { DemoButton } from "./demo-button";
 
 function SectionHeading({ eyebrow, title, children }: { eyebrow: string; title: string; children?: ReactNode }) {
@@ -230,18 +232,22 @@ export function Pricing() {
         <StaggerItem>
           <Card className="h-full p-7">
             <Badge variant="outline">
-              <KeyRound /> Bring your own key
+              <Users /> For agencies
             </Badge>
-            <h3 className="mt-4 font-semibold text-xl">Your Vercel AI Gateway key</h3>
+            <h3 className="mt-4 font-semibold text-xl">Agency</h3>
             <p className="mt-1 text-muted">
-              <span className="font-semibold text-3xl text-fg">${BYOK_PLATFORM_FEE_USD}</span> / month platform fee
+              <span className="font-semibold text-3xl text-fg">Let's talk</span>
             </p>
             <ul className="mt-6 space-y-3 text-muted text-sm">
-              <Feature>AI usage is billed to your own Gateway account</Feature>
-              <Feature>Use any model your Gateway offers</Feature>
-              <Feature>Sync, analytics and scheduling included</Feature>
-              <Feature>Switch back to credits any time</Feature>
+              <Feature>For teams that run Threads accounts for clients</Feature>
+              <Feature>Tell us how you work, and we'll shape a plan around it</Feature>
+              <Feature>Start on pay as you go in the meantime</Feature>
             </ul>
+            <Button asChild variant="outline" size="lg" className="mt-8 w-full">
+              <a href={`mailto:${SITE.contactEmail}?subject=${encodeURIComponent(`${SITE.name} for agencies`)}`}>
+                Get in touch
+              </a>
+            </Button>
           </Card>
         </StaggerItem>
       </Stagger>

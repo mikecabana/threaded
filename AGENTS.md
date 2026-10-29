@@ -3,7 +3,8 @@
 Threaded is a Threads growth companion. People sign in with Threads; it learns what their
 audience rewards ("Profile DNA") and writes post ideas in their voice, aimed at followers,
 views or engagement. They post or schedule them from the app. It's a multi-tenant SaaS, live
-in production, paid with prepaid credits, a Monthly plan, or their own AI Gateway key.
+in production, paid with prepaid credits or a Monthly plan. Agencies get in touch for a plan
+that fits.
 
 Read these first, in this order:
 
@@ -24,10 +25,12 @@ Read these first, in this order:
   - **Launch work, technical parts:** monitoring, cookie consent, SEO, account and data
     controls, voice settings, and a pricing review.
 - **Last changes:**
+  - **Agency tier instead of own key:** the pricing page's own-key plan is now an Agency tier
+    with no price and a "Get in touch" email. Settings shows the own-key card only to
+    workspaces that have used it.
   - **Mobile app shell (#33):** on phones the page scrolls inside the shell, between the top
     bar and the tabs. This is the fix for iOS Safari 26.
   - **Gateway model picker in `/admin` (#31).**
-  - **Monthly plan (#30).**
 - **Open, and only the owner can do these** (dashboards, accounts, people):
   - Meta App Review (submitted).
   - A Quebec lawyer's review of the Terms and Privacy policy.
@@ -43,8 +46,9 @@ Read these first, in this order:
     2. In a later PR, run `pnpm db:generate` to drop it.
 
     See "Migrations must work with the previous deployment" below.
-  - **The roadmap's polish items:** drag-and-drop onto the week calendar, and the "all Gateway
-    models" toggle for own-key users.
+  - **Remove the own-key plan's code** once no workspace is on it (check Stripe for live
+    own-key subscriptions). Code first, then its columns in a later release, as above.
+  - **The roadmap's polish item:** drag-and-drop onto the week calendar.
   - **French, after launch:** the site, the app, the Terms and Privacy policy, and the emails
     (Bill 96).
   - **Phase 3:** a trend radar, reply analysis, A/B variants and a weekly digest.

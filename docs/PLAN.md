@@ -5,8 +5,8 @@ Implementation and UI/UX plan. Working name: **Threaded** (after the repo).
 > **What it does:** A SaaS app. Connect a Threads account, and Threaded reads your posts and
 > insights, learns what works for *you*, and writes post suggestions aimed at one of three goals:
 > **More Followers**, **More Views** or **More Engagement**. You can post or schedule a suggestion
-> straight to Threads. You pick the AI model from our curated list and **pay per use**, or
-> **bring your own Vercel AI Gateway key**.
+> straight to Threads. You pick the AI model from our curated list and **pay per use**, or take
+> the **Monthly plan**. Agencies get in touch for a plan that fits.
 
 **Decisions made so far**
 
@@ -14,8 +14,8 @@ Implementation and UI/UX plan. Working name: **Threaded** (after the repo).
 |---|---|
 | Direct publishing and scheduling in v1? | **Yes.** It's in the MVP, so `threads_content_publish` is part of the first App Review submission. |
 | Personal tool or product? | **Multi-tenant SaaS.** |
-| Who picks AI models? | **Each user**, from a curated list priced per use. Users can also **BYOK** (their own Vercel AI Gateway key) and pay Vercel directly. |
-| Do BYOK users pay us? | **Yes: a $5/month platform fee** covering sync, analytics and scheduling. |
+| Who picks AI models? | **Each user**, from a curated list priced per use. |
+| Bring your own key? | **No longer offered to new customers** (Oct 29, 2026). It asked creators to open a Vercel account and paste an AI Gateway key, which put our vendor in the contract, and the Monthly plan now serves heavy users. The pricing page offers an **Agency** tier instead: no price, and a "Get in touch" email to work out what agencies need. Workspaces that have used their own key keep it, at **$5/month** (§6). |
 | Markup, packs, trial | **2× default markup** (per model in the catalog; raised from 1.5× before launch, see §15), packs of **$5 / $20 / $50** for **500 / 2,200 / 5,750 credits** (bigger packs carry a bonus), **$1 trial** (100 credits) once per Threads account. |
 | A subscription for credits? | **The Monthly plan: $9/month for 1,200 credits** (133 per dollar, against 100–115 for packs), added with each paid invoice. They never expire either. One plan at a time with BYOK. |
 | Expiry and refunds | Credits, purchased or free, **never expire**. **Not refundable** except where the law requires; failed generations are refunded automatically. |
@@ -288,7 +288,7 @@ Posts published through Threaded have a known `media_id`. For posts written else
 | Generate, Variant, Rerank (user-initiated) | **Charged per use** | Runs on their key. We charge nothing. |
 | Post classification + Profile DNA (background) | Included. We absorb the cost on a fixed Fast-tier model. | Runs on their key |
 | Nightly "Today's plays" (opt-in) | Charged per use | Runs on their key |
-| Model choice | Curated list | Curated list + "all models" toggle |
+| Model choice | Curated list | Curated list |
 
 ### Credits
 
@@ -318,6 +318,9 @@ Posts published through Threaded have a known `media_id`. For posts written else
 - **Trial:** about $1 of credits, granted once per **Threads account id**, which prevents farming new accounts for trials. That's enough for the onboarding analysis plus several Studio batches.
 
 ### BYOK
+
+Not offered to new workspaces since Oct 29, 2026 (the decisions table): Settings shows the card only where a key was saved or an own-key plan ran (`usesOwnKey`). The rest of this section still describes how it works for them.
+
 - **Setup:** Settings → Billing → "Use your own AI key". We validate it with `getCredits()` and show the user's Gateway balance.
 - **Pricing:** a **$5/month platform fee**, a Stripe subscription started through Checkout. The workspace runs on its key only while the plan is live (active, trialing or past due) **and** a key is saved. Subscription webhooks re-read the subscription from Stripe, so out-of-order events are harmless.
 - **Switching back** deletes the key and sets the plan to end with its period; adding a key before then resumes the same plan. When the plan ends for good, the key is deleted and an in-app notice explains the switch. Deleting the account cancels the plan immediately.
@@ -633,7 +636,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | **Launch: Quebec readiness** | **Monitoring and consent:** Sentry (with post text and tokens scrubbed), Google Tag Manager behind Consent Mode, and a cookie banner shown where consent is required (Quebec, the EU, the UK and Switzerland, from Cloudflare's or Vercel's location headers), with the Privacy page updated (done). **Search and sharing:** share images, canonical URLs, robots.txt, sitemap, structured data, a features section and FAQ on the home page (done). Then the Law 25 privacy items; live Stripe Tax; the lawyer's changes; a pricing and costs review against real usage (SETUP.md §5) | Public sign-ups open |
 | **After launch: French** | **French** (Bill 96): site, app, Terms, Privacy and emails, with `fr-CA` as a first-class locale and AI output in the user's language. Pinned until after launch (Oct 27, 2026) | Everything a Quebec customer sees exists in French |
 | **3: Grow** | Keyword-search trend radar, reply analysis, A/B variants, opt-in nightly "Today's plays", weekly digest email | |
-| **4: Agencies** | Multiple Threads profiles per workspace, team seats, email/Google login, optional subscription plans | |
+| **4: Agencies** | Shaped by the agencies who get in touch through the Agency tier. Likely: multiple Threads profiles per workspace, team seats, email/Google login, their own AI key | |
 
 **Phase 2, in order.** Each milestone ships as its own PR, tested end to end.
 
@@ -642,7 +645,7 @@ Threads OAuth needs exact HTTPS redirect URIs. Register production plus one fixe
 | **2a: Intelligence** | Post classification (§4c: Fast-tier model, 20 posts per call, cached per post and versioned) and Profile DNA (weekly, mid-tier, stored as versioned JSON). The DNA becomes the voice guide in the generation prompt, and classification makes exemplars and insights topic-aware. Runs inside the sync workflows; the cost is ours (§6). | A real account's posts are classified, its DNA is stored, and Studio's prompt uses both |
 | **2b: Payoff screens** | The Insights page (§9c: views and followers over time annotated with posts, the heatmap, the format × topic matrix, the sortable post table, a plain-English line per chart). Onboarding: The Read (live sync progress) and the DNA reveal, replacing Home's progress card on first sign-in | Insights replaces the placeholder; a first sign-in plays The Read, then the DNA reveal |
 | **2c: Feedback loop + reliability** | The suggestion scorecard (+1h/+24h/+72h chips; winners join the exemplar pool, §5). Emails through Resend: a failed scheduled post, a declined auto-recharge, a lapsed plan, and a reconnect reminder before a private profile's 90-day grant ends. The evals harness (`pnpm eval`, §11). The admin margin dashboard (§6) | Phase 2's exit criteria above |
-| **Polish (any time)** | Series via `reply_to_id` (§7, done), drag-and-drop onto the week calendar, the "all Gateway models" toggle for BYOK | |
+| **Polish (any time)** | Series via `reply_to_id` (§7, done), drag-and-drop onto the week calendar | |
 
 ---
 
@@ -817,5 +820,12 @@ All open decisions are resolved; see the table at the top. **Pricing review befo
 - Insights no longer scrolls sideways on phones. Its grid has an explicit single column, the posts table scrolls inside its card, and the chart's screen-reader table is hidden through a wrapper (a table ignores `sr-only`'s `width: 1px`).
 - Trade-offs on phones: Safari's toolbar no longer shrinks on scroll, and there's no pull-to-refresh on app pages.
 - Tests: `e2e/app-shell.spec.ts` stubs `IntersectionObserver` so it never reports, as in Safari. With that stub, every app page shows its content and none scrolls sideways. On phones the document stays put, the page scrolls between the bars, and a new page opens at its top.
+
+**Agency tier instead of own key (done):** the own-key plan asked a Threads creator to open a Vercel account, add billing there, and paste an AI Gateway key: our vendor, not something they know. The Monthly plan now does its job for heavy users. So:
+- The landing page's third pricing card is now **Agency**: no price, "Let's talk", and a **Get in touch** button that opens an email to the contact address. The FAQ says agencies can email us, and no longer mentions the Gateway or "any model your key offers" (that toggle was never built, and is dropped).
+- Terms §5 is now "Your own AI key", available where we agree to it, for example on an Agency plan, without naming Vercel.
+- In the app, Settings → Billing shows the own-key card only to workspaces that have used it (a saved key, or an own-key plan running or ended), so anyone on it keeps it. The code stays until no one is.
+- Account deletion now says "Your Monthly plan ends now" on the Monthly plan (it said "own-key" for both).
+- Tests: the FAQ never mentions the Gateway; end to end, a new account doesn't see the own-key card, a former own-key customer does and can start it again, and it's gone once the Monthly plan takes the slot.
 
 **Phase 2 is complete.** Next on the roadmap (§13): Launch, Quebec readiness (the Law 25 items, live Stripe Tax, the lawyer's review; monitoring and consent are done). French is pinned until after launch.

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/marketing/legal-page";
-import { BYOK_PLATFORM_FEE_USD, MONTHLY_PLAN, TRIAL_CREDITS } from "@/lib/pricing";
+import { MONTHLY_PLAN, TRIAL_CREDITS } from "@/lib/pricing";
 import { pageMetadata } from "@/lib/seo";
 import { SITE } from "@/lib/site";
 
@@ -68,11 +68,12 @@ export default function TermsPage() {
       </section>
 
       <section>
-        <h2>5. Bring your own key</h2>
+        <h2>5. Your own AI key</h2>
         <p>
-          You may connect your own Vercel AI Gateway key instead of using credits. AI usage is then billed by Vercel to
-          your account under their terms, and {SITE.name} charges a platform fee of ${BYOK_PLATFORM_FEE_USD} per month,
-          billed in advance and cancellable any time. You're responsible for your key and its spending limits.
+          Where we agree to it, for example on an Agency plan, you may use your own AI key instead of credits. AI usage
+          is then billed by your AI provider under their terms, and {SITE.name} charges the monthly platform fee shown
+          when you start the plan, billed in advance and cancellable any time. You're responsible for your key and its
+          spending limits.
         </p>
       </section>
 
