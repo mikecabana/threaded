@@ -54,14 +54,19 @@ export function RailNav() {
   );
 }
 
-/** Mobile bottom tab bar (Settings lives behind the avatar on small screens). */
+/**
+ * Mobile bottom tab bar (Settings lives behind the avatar on small screens).
+ * Its background carries on below it: Safari 26 on iOS pins fixed elements
+ * above its floating toolbar and keeps drawing the page underneath, so
+ * without it the page scrolls by under the tabs.
+ */
 export function BottomTabs() {
   const isActive = useActive();
   return (
     <LayoutGroup id="bottom-tabs">
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-40 border-border border-t bg-bg/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-border border-t bg-bg/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-40 after:bg-bg md:hidden"
       >
         <div className="grid grid-cols-4">
           {NAV_ITEMS.filter((item) => item.href !== "/settings").map(({ href, label, icon: Icon }) => {
