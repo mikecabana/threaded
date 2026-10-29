@@ -193,8 +193,10 @@ export function Pricing() {
       </SectionHeading>
       <Stagger className="mx-auto grid max-w-2xl gap-5 lg:max-w-6xl lg:grid-cols-3">
         <StaggerItem>
-          <Card className="h-full p-7">
-            <Badge variant="outline">Free to start</Badge>
+          <Card className="flex h-full flex-col p-7">
+            <div>
+              <Badge variant="outline">Free to start</Badge>
+            </div>
             <h3 className="mt-4 font-semibold text-xl">Pay as you go</h3>
             <p className="mt-1 text-muted">
               <span className="font-semibold text-3xl text-fg">${creditsToUsd(TRIAL_CREDITS).toFixed(0)}</span> of free
@@ -206,14 +208,18 @@ export function Pricing() {
               <Feature>Profile analysis and insights included</Feature>
               <Feature>Credits never expire</Feature>
             </ul>
-            <DemoButton className="mt-8 w-full" size="lg">
-              Try the demo
-            </DemoButton>
+            <div className="mt-auto pt-8">
+              <DemoButton className="w-full" size="lg">
+                Try the demo
+              </DemoButton>
+            </div>
           </Card>
         </StaggerItem>
         <StaggerItem>
-          <Card className="h-full border-accent/40 p-7">
-            <Badge variant="accent">Best value</Badge>
+          <Card className="flex h-full flex-col border-accent/40 p-7">
+            <div>
+              <Badge variant="accent">Best value</Badge>
+            </div>
             <h3 className="mt-4 font-semibold text-xl">Monthly plan</h3>
             <p className="mt-1 text-muted">
               <span className="font-semibold text-3xl text-fg">${MONTHLY_PLAN.usd}</span> / month for{" "}
@@ -230,10 +236,12 @@ export function Pricing() {
           </Card>
         </StaggerItem>
         <StaggerItem>
-          <Card className="h-full p-7">
-            <Badge variant="outline">
-              <Users /> For agencies
-            </Badge>
+          <Card className="flex h-full flex-col p-7">
+            <div>
+              <Badge variant="outline">
+                <Users /> For agencies
+              </Badge>
+            </div>
             <h3 className="mt-4 font-semibold text-xl">Agency</h3>
             <p className="mt-1 text-muted">
               <span className="font-semibold text-3xl text-fg">Let's talk</span>
@@ -243,11 +251,13 @@ export function Pricing() {
               <Feature>Tell us how you work, and we'll shape a plan around it</Feature>
               <Feature>Start on pay as you go in the meantime</Feature>
             </ul>
-            <Button asChild variant="outline" size="lg" className="mt-8 w-full">
-              <a href={`mailto:${SITE.contactEmail}?subject=${encodeURIComponent(`${SITE.name} for agencies`)}`}>
-                Get in touch
-              </a>
-            </Button>
+            <div className="mt-auto pt-8">
+              <Button asChild variant="outline" size="lg" className="w-full">
+                <a href={`mailto:${SITE.contactEmail}?subject=${encodeURIComponent(`${SITE.name} for agencies`)}`}>
+                  Get in touch
+                </a>
+              </Button>
+            </div>
           </Card>
         </StaggerItem>
       </Stagger>
