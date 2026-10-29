@@ -2,6 +2,7 @@
 
 import { m, type Variants } from "motion/react";
 import type { ComponentProps } from "react";
+import { useReveal } from "./scroll-reveal";
 import { revealSpring } from "./springs";
 
 const itemVariants: Variants = {
@@ -9,15 +10,17 @@ const itemVariants: Variants = {
   show: { opacity: 1, y: 0, transition: revealSpring },
 };
 
-type DivProps = Omit<ComponentProps<typeof m.div>, "variants" | "initial" | "whileInView" | "animate">;
+type DivProps = Omit<ComponentProps<typeof m.div>, "variants" | "initial" | "whileInView" | "animate" | "viewport">;
 
-/** Fades and lifts its content in the first time it scrolls into view. */
+const VIEWPORT = { once: true, margin: "0px 0px -8% 0px" } as const;
+
+/** Fades and lifts its content in the first time it scrolls into view (or mounts, in the app shell). */
 export function Reveal({ delay = 0, ...props }: DivProps & { delay?: number }) {
+  const reveal = useReveal();
   return (
     <m.div
       initial={{ opacity: 0, y: 14 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "0px 0px -8% 0px" }}
+      {...reveal({ opacity: 1, y: 0 }, VIEWPORT)}
       transition={{ ...revealSpring, delay }}
       {...props}
     />
@@ -29,11 +32,11 @@ export function Reveal({ delay = 0, ...props }: DivProps & { delay?: number }) {
  * the reveal has played stay hidden, so key the Stagger by the data it shows.
  */
 export function Stagger({ stagger = 0.07, delay = 0, ...props }: DivProps & { stagger?: number; delay?: number }) {
+  const reveal = useReveal();
   return (
     <m.div
       initial="hidden"
-      whileInView="show"
-      viewport={{ once: true, margin: "0px 0px -8% 0px" }}
+      {...reveal("show", VIEWPORT)}
       variants={{ hidden: {}, show: { transition: { staggerChildren: stagger, delayChildren: delay } } }}
       {...props}
     />

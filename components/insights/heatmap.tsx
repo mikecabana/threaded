@@ -2,6 +2,7 @@
 
 import { m } from "motion/react";
 import { useState } from "react";
+import { useReveal } from "@/components/motion/scroll-reveal";
 import type { HeatCell } from "@/lib/analysis/insights";
 import { hourLabel, weekdayName } from "@/lib/analysis/time";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ export function Heatmap({
   goalLabel: string;
   cascade?: boolean;
 }) {
+  const reveal = useReveal();
   const steps = stepsFor(cells);
   const byKey = new Map(cells.map((c) => [`${c.weekday}:${c.hour}`, c]));
   const [active, setActive] = useState<HeatCell | null>(null);
@@ -79,8 +81,7 @@ export function Heatmap({
                   )}
                   style={{ background: step === undefined ? "var(--surface-2)" : shade(step) }}
                   initial={cascade ? { opacity: 0, scale: 0.4 } : false}
-                  whileInView={cascade ? { opacity: 1, scale: 1 } : undefined}
-                  viewport={{ once: true }}
+                  {...(cascade ? reveal({ opacity: 1, scale: 1 }) : {})}
                   transition={{ type: "spring", stiffness: 260, damping: 22, delay: (row + hour) * 0.018 }}
                   onPointerEnter={() => cell && setActive(cell)}
                   onPointerLeave={() => setActive(null)}

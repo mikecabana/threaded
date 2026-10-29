@@ -2,6 +2,7 @@
 
 import { m, useReducedMotion } from "motion/react";
 import { type KeyboardEvent, type PointerEvent, useEffect, useId, useRef, useState } from "react";
+import { useReveal } from "@/components/motion/scroll-reveal";
 import { dayLabel, snippet, type TrendPoint } from "@/lib/analysis/insights";
 import { formatMetric, type MetricFormat } from "@/lib/format";
 
@@ -53,6 +54,7 @@ export function TrendChart({
 }) {
   const id = useId();
   const reduce = useReducedMotion();
+  const reveal = useReveal();
   const [ref, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
 
@@ -158,8 +160,7 @@ export function TrendChart({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 initial={reduce ? false : { pathLength: 0 }}
-                whileInView={{ pathLength: 1 }}
-                viewport={{ once: true }}
+                {...reveal({ pathLength: 1 })}
                 transition={{ duration: 1.2, ease: [0.65, 0, 0.35, 1] }}
               />
               {points.map((p, i) =>
@@ -232,25 +233,28 @@ export function TrendChart({
           </span>
         )}
       </div>
-      <table className="sr-only">
-        <caption>{label} by day</caption>
-        <thead>
-          <tr>
-            <th scope="col">Day</th>
-            <th scope="col">{label}</th>
-            <th scope="col">Posts that day</th>
-          </tr>
-        </thead>
-        <tbody>
-          {points.map((p) => (
-            <tr key={p.date}>
-              <td>{dayLabel(p.date)}</td>
-              <td>{formatMetric(p.value, format)}</td>
-              <td>{p.posts.map((post) => snippet(post.text, 50)).join("; ")}</td>
+      {/* sr-only on a wrapper: a table ignores width: 1px, and would widen the page. */}
+      <div className="sr-only">
+        <table>
+          <caption>{label} by day</caption>
+          <thead>
+            <tr>
+              <th scope="col">Day</th>
+              <th scope="col">{label}</th>
+              <th scope="col">Posts that day</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {points.map((p) => (
+              <tr key={p.date}>
+                <td>{dayLabel(p.date)}</td>
+                <td>{formatMetric(p.value, format)}</td>
+                <td>{p.posts.map((post) => snippet(post.text, 50)).join("; ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

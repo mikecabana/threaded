@@ -4,6 +4,7 @@ import { useInView, useMotionValueEvent, useReducedMotion, useSpring } from "mot
 import { useEffect, useRef } from "react";
 import { formatMetric, type MetricFormat } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useScrollReveal } from "./scroll-reveal";
 
 interface CountUpProps {
   value: number;
@@ -13,12 +14,14 @@ interface CountUpProps {
 }
 
 /**
- * Springs a number up to `value` when it scrolls into view, and between values
- * when it changes. Screen readers get the final value only.
+ * Springs a number up to `value` when it scrolls into view (or mounts, in the
+ * app shell), and between values when it changes. Screen readers get the
+ * final value only.
  */
 export function CountUp({ value, format = "number", from = 0, className }: CountUpProps) {
   const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: "0px 0px -10% 0px" });
+  const onScroll = useScrollReveal();
+  const inView = useInView(ref, { once: true, margin: "0px 0px -10% 0px" }) || !onScroll;
   const reduce = useReducedMotion();
   const spring = useSpring(from, { stiffness: 70, damping: 20, restDelta: 0.001 });
 

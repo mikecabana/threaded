@@ -1,11 +1,13 @@
 "use client";
 
 import { m, useReducedMotion } from "motion/react";
+import { useReveal } from "@/components/motion/scroll-reveal";
 import { cn } from "@/lib/utils";
 
-/** 0–100 score as a ring in the goal accent; fills when it scrolls into view. */
+/** 0–100 score as a ring in the goal accent; fills when it scrolls into view (or mounts, in the app shell). */
 export function GoalFitRing({ value, size = 44, className }: { value: number; size?: number; className?: string }) {
   const reduce = useReducedMotion();
+  const reveal = useReveal();
   const clamped = Math.max(0, Math.min(100, value));
   return (
     <div
@@ -26,9 +28,7 @@ export function GoalFitRing({ value, size = 44, className }: { value: number; si
           strokeWidth="3"
           strokeLinecap="round"
           initial={reduce ? false : { pathLength: 0 }}
-          whileInView={{ pathLength: clamped / 100 }}
-          animate={reduce ? { pathLength: clamped / 100 } : undefined}
-          viewport={{ once: true }}
+          {...(reduce ? { animate: { pathLength: clamped / 100 } } : reveal({ pathLength: clamped / 100 }))}
           transition={{ type: "spring", stiffness: 60, damping: 16, delay: 0.15 }}
         />
       </svg>

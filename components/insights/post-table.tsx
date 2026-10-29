@@ -60,7 +60,7 @@ export function PostTable({ rows, now }: { rows: PostRow[]; now: string }) {
   }
 
   return (
-    <div>
+    <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <caption className="sr-only">Your posts. Column headers sort the table.</caption>
         <thead className="border-border border-b text-xs">
