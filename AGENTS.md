@@ -169,6 +169,10 @@ height: top bar, scrolling `<main>`, then the tab bar. This has consequences:
   - Wrap wide tables in `overflow-x-auto`.
   - Never put `sr-only` on a `<table>`: tables ignore `width: 1px`. Put it on a wrapping
     `<div>`.
+- **A bar pinned to the top of a page must be one solid colour.** Safari 26 also draws the
+  page behind the status bar, and fills that strip with the pinned bar's colour only when
+  it's opaque and unblurred. With a see-through background or `backdrop-blur`, the page shows
+  through above the marketing header. `e2e/site-header.spec.ts` checks it.
 
 **More gotchas:**
 

@@ -828,4 +828,6 @@ All open decisions are resolved; see the table at the top. **Pricing review befo
 - Account deletion now says "Your Monthly plan ends now" on the Monthly plan (it said "own-key" for both).
 - Tests: the FAQ never mentions the Gateway; end to end, a new account doesn't see the own-key card, a former own-key customer does and can start it again, and it's gone once the Monthly plan takes the slot.
 
+**Marketing header on iPhones (done):** on the landing page, the page scrolled visibly behind the status bar, above the sticky header. Safari 26 draws the page there and fills the strip with the colour of the bar pinned at the top, but only when that bar is one solid colour: the header was 70% opaque with a backdrop blur, which Safari reads as "not one colour". The header is now opaque, with no blur. The same header is on every marketing page, so the legal and connect pages are fixed too. Tests: `e2e/site-header.spec.ts` checks the header's background is fully opaque, unblurred and sticky (it failed on the old header). Check on a real iPhone: Safari's behaviour here isn't documented.
+
 **Phase 2 is complete.** Next on the roadmap (§13): Launch, Quebec readiness (the Law 25 items, live Stripe Tax, the lawyer's review; monitoring and consent are done). French is pinned until after launch.
