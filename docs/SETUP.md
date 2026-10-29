@@ -277,17 +277,17 @@ judge calls, roughly $0.50 on the default models.
 
 ## 5. Before launch
 
-- [x] Replace `SITE.contactEmail` in `lib/site.ts` with the real support address (`contact@getthreaded.app`, also the Meta app's contact email; Meta still has to verify it).
+- [x] Replace `SITE.contactEmail` in `lib/site.ts` with the real support address (`contact@getthreaded.app`, also the Meta app's contact email, which Meta has verified).
 - [ ] Have a Quebec lawyer review `/legal/terms` and `/legal/privacy`, then remove the draft banner in `components/marketing/legal-page.tsx`. Ask in particular about Quebec's Consumer Protection Act: its rules for online (distance) contracts (what to disclose before purchase, the confirmation afterwards) and for the renewing $5/month plan.
 - [ ] **French** (Charter of the French Language, as amended by Bill 96): French versions of the site, app, Terms, Privacy and emails, planned as the launch phase in `docs/PLAN.md` §13. Confirm the exact scope with the lawyer. Stripe receipts and Checkout already switch to French.
 - [ ] **Privacy (Quebec's Law 25):**
   - Name the person in charge of protecting personal information, and publish their title and contact details on the site.
   - Do a privacy impact assessment before personal information leaves Quebec. Vercel, Neon, Stripe, Meta and the AI providers all process it elsewhere.
   - Keep a register of confidentiality incidents.
-- [ ] **Live Stripe:** the head office address, GST/HST + QST registrations with your numbers, the product tax code, and `STRIPE_AUTOMATIC_TAX=1` (§3). Live and test mode are configured separately: check that Tax shows **Active** in live mode, or Checkout fails while tax is on.
-- [ ] **Live Stripe webhook:** a live-mode endpoint for `https://<production-host>/api/stripe/webhook` with the same six events (§3). Its signing secret, not the test endpoint's, goes in Production's `STRIPE_WEBHOOK_SECRET`.
-- [ ] **Meta:** verify the app's contact email (App settings → Basic), then submit App Review (§1, step 6). The app is published (Live mode), but a Live app can only ask for permissions App Review approved, so until then only people with a role on the app (admins, developers, Threads testers) can sign in.
-- [ ] **Database URLs:** change `sslmode=require` to `sslmode=verify-full` in `DATABASE_URL` and `DATABASE_URL_UNPOOLED` (Production and Preview). It's the same check `pg` does today, and it clears the "SSL modes" warning in the logs before `pg` 9 changes what `require` means.
+- [x] **Live Stripe:** the head office address, GST/HST + QST registrations with your numbers, the product tax code, and `STRIPE_AUTOMATIC_TAX=1` (§3). Live and test mode are configured separately: check that Tax shows **Active** in live mode, or Checkout fails while tax is on.
+- [x] **Live Stripe webhook:** a live-mode endpoint for `https://<production-host>/api/stripe/webhook` with the same six events (§3). Its signing secret, not the test endpoint's, goes in Production's `STRIPE_WEBHOOK_SECRET`.
+- [ ] **Meta:** App Review is submitted and in progress (§1, step 6); the contact email is verified. The app is published (Live mode), but a Live app can only ask for permissions App Review approved, so until then only people with a role on the app (admins, developers, Threads testers) can sign in.
+- [x] **Database URLs:** change `sslmode=require` to `sslmode=verify-full` in `DATABASE_URL` and `DATABASE_URL_UNPOOLED` (Production and Preview). It's the same check `pg` does today, and it clears the "SSL modes" warning in the logs before `pg` 9 changes what `require` means.
 - [ ] **Monitoring and cookies:** the Sentry project and Tag Manager container, their keys in Vercel, and Cloudflare's visitor location headers ([Monitoring and cookies](#monitoring-and-cookies)). The privacy impact assessment (Law 25, above) covers Sentry and Google too.
 - [ ] **Search:** verify the domain in Google Search Console and submit the sitemap, import it into Bing, and check `robots.txt` on the live site ([Search and sharing](#search-and-sharing)).
 - [x] **Pricing and costs:** reviewed before launch (`docs/PLAN.md` §15): 2× markup, bonus credits on the bigger packs, Profile DNA rebuilt only when there are new posts. Still worth checking: whether Stripe pays out USD into a USD bank account (otherwise every sale loses 2% to conversion), and the real margins in `/admin` → Margins once there's traffic.

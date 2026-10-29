@@ -5,10 +5,16 @@ your audience rewards and writes post ideas in your voice, aimed at **more
 followers**, **more views** or **more engagement**. You can post or schedule
 them without leaving the app.
 
-**Status:** Phase 1 is feature-complete: Threads sign-in and sync, AI post
-ideas in Studio, billing (credit packs, auto-recharge, or your own AI Gateway
-key), and posting or scheduling straight to Threads from a Queue. Three demo
-accounts work with no setup. See [`docs/PLAN.md`](docs/PLAN.md).
+**Status:** live in production. Shipped so far:
+- Threads sign-in and sync, with Profile DNA and Insights.
+- Studio, which writes posts and threads and can research a topic on the web and on Threads
+  first.
+- Posting, scheduling and series from a Queue.
+- Billing: credit packs, auto-recharge, a Monthly plan, or your own AI Gateway key.
+- Alert emails, an admin area, and account and data controls.
+
+Three demo accounts work with no setup. To work on the code, start with
+[`AGENTS.md`](AGENTS.md); the full plan and progress log are in [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Quick start
 
@@ -23,20 +29,20 @@ variables are needed for the demo. Service setup is in [`docs/SETUP.md`](docs/SE
 ## Stack
 
 Next.js 16 (App Router, Cache Components) · React 19 · Tailwind CSS 4 · Motion ·
-AI SDK + Vercel AI Gateway · Neon Postgres + Drizzle · Upstash Redis · Stripe ·
-Vercel Workflow. Biome, Vitest and Playwright for quality.
+AI SDK + Vercel AI Gateway · Neon Postgres + Drizzle · Upstash Redis · Stripe · Resend ·
+Vercel Workflow · Sentry. Biome, Vitest and Playwright for quality.
 
 ## Layout
 
 ```
 app/(marketing)     landing, connect, legal pages
-app/(app)           signed-in app: home, studio, queue, insights, settings
-components/motion   animation building blocks (count-up, thread line, sparkline, tilt…)
-components/ui       base components (button, card, badge, segmented control)
-lib/analysis        scoring, KPIs and timing; pure functions with tests
-lib/demo            demo personas and their generated 60-day history
-lib/db              Drizzle schema (migrations in drizzle/)
-lib/session         viewer and session handling
-docs/               plan and setup guides
-e2e/                Playwright tests
+app/(onboarding)    The Read and the DNA reveal, after a first sign-in
+app/(app)           signed-in app: home, studio, queue, insights, settings, admin
+workflows/          background runs: sync, publishing, auto-recharge
+lib/                domain code (ai, billing, publishing, sync, analysis, db, …)
+components/         UI by area; ui/ and motion/ are the building blocks
+docs/               PLAN.md (product, architecture, progress) and SETUP.md (services, launch checklist)
+e2e/                Playwright tests and mock servers
 ```
+
+A fuller map, the commands, and the conventions are in [`AGENTS.md`](AGENTS.md).
