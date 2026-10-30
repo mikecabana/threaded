@@ -169,12 +169,10 @@ height: top bar, scrolling `<main>`, then the tab bar. This has consequences:
   - Wrap wide tables in `overflow-x-auto`.
   - Never put `sr-only` on a `<table>`: tables ignore `width: 1px`. Put it on a wrapping
     `<div>`.
-- **A bar pinned to the top of a page can't carry a backdrop blur itself.** Safari 26 also
-  draws the page behind the status bar, and fills that strip with one colour read from the
-  bar pinned at the top. A see-through background is fine (it's blended over the page
-  colour), but `backdrop-blur` on the bar makes Safari give up and show the page through.
-  Put the blur on a `pointer-events-none` layer inside the bar, as the marketing header
-  does. `e2e/site-header.spec.ts` checks it.
+- **Don't pin a blurred bar to the top of a page.** Safari 26 also draws the page behind
+  the status bar, colouring that strip from a fixed or sticky bar at the top, and a
+  backdrop blur on that bar makes it show the page through instead. The marketing header
+  simply scrolls away with the page (`e2e/site-header.spec.ts`).
 
 **More gotchas:**
 

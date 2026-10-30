@@ -4,14 +4,11 @@ import { Button } from "@/components/ui/button";
 import { DemoButton } from "./demo-button";
 
 export function SiteHeader() {
-  // iOS Safari 26 fills the strip behind the status bar with one colour read
-  // from the bar pinned at the top. A see-through background is fine (Safari
-  // blends it over the page colour), but a backdrop blur on the bar makes it
-  // give up and show the page through. So the blur sits on a layer behind the
-  // content that Safari's check passes over (pointer-events: none).
+  // Scrolls away with the page rather than staying pinned: on iOS Safari 26 a
+  // pinned, blurred bar let the page show through behind the status bar above
+  // it. Nothing passes under it now, so it sits on the page's own background.
   return (
-    <header className="sticky top-0 z-40 border-border/60 border-b bg-bg/70">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 backdrop-blur-xl" />
+    <header className="border-border/60 border-b">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
         <Link href="/" aria-label="Threaded home">
           <Logo />
