@@ -456,7 +456,6 @@ export function Studio({
               threadsSearch: threadsSearch === "on",
               streamed: streamed.length,
               checks: !demo,
-              outcome: final ? { kept: final.byIndex.size, dropped: final.dropped } : null,
             })}
           />
         )}
@@ -472,26 +471,22 @@ export function Studio({
         )}
 
         <div className="grid gap-4">
+          {/* The ideas show together once they're checked, so one that's left out never flashes up. */}
           <AnimatePresence initial={false} mode="popLayout">
-            {streamed.map((idea, index) => {
-              const settled = final?.byIndex.get(index);
-              if (final && !settled) return null; // dropped in post-processing
+            {[...(final?.byIndex ?? [])].map(([index, settled]) => {
               if (hidden.has(index)) return null;
               return (
                 <IdeaCard
-                  // biome-ignore lint/suspicious/noArrayIndexKey: streamed ideas have no id until they're stored
+                  // Keyed by where the idea came in the batch: the demo's ideas have no id.
                   key={index}
                   author={author}
-                  idea={settled?.idea ?? idea}
-                  streaming={!settled}
-                  saved={settled?.status === "saved"}
-                  queued={settled?.status === "scheduled" || settled?.status === "posted" ? settled.status : undefined}
-                  onToggleSave={
-                    settled ? () => setStatus(index, settled.status === "saved" ? "new" : "saved") : undefined
-                  }
-                  onDismiss={settled ? () => setStatus(index, "dismissed") : undefined}
+                  idea={settled.idea}
+                  saved={settled.status === "saved"}
+                  queued={settled.status === "scheduled" || settled.status === "posted" ? settled.status : undefined}
+                  onToggleSave={() => setStatus(index, settled.status === "saved" ? "new" : "saved")}
+                  onDismiss={() => setStatus(index, "dismissed")}
                   onCompose={
-                    composer && settled?.id
+                    composer && settled.id
                       ? (mode) =>
                           composer.open({
                             text: settled.idea.text ?? "",

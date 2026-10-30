@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-// Studio's progress timeline: one line per step of a batch, the current one
-// with a spinner and the finished ones saying what they did. Studio sees three
+// Studio's progress timeline, shown while a batch is written: one line per
+// step, the current one with a spinner and the finished ones saying what they
+// did. Once the batch is checked, the ideas take its place. Studio sees three
 // moments: the response starting (the server has read the author's posts and
 // researched the topic by then), the ideas streaming in, and the final check.
 // The steps follow those, and the server says what it read before writing in
@@ -57,8 +58,6 @@ export interface ProgressInput {
   wrote: number | null;
   /** Only an account's ideas are checked and saved; the demo's aren't. */
   checks: boolean;
-  /** What the check kept and left out, once it's done. */
-  outcome: { kept: number; dropped: number } | null;
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -81,18 +80,14 @@ function researchText(topic: string, research: BatchContext["research"]): string
     : `Read ${read.join(" and ")} about “${topic}”`;
 }
 
-function checkText({ kept, dropped }: { kept: number; dropped: number }): string {
-  if (dropped === 0) return kept === 1 ? "Checked and saved it" : `Checked and saved all ${kept}`;
-  if (kept === 0) return dropped === 1 ? "Left it out" : `Left out all ${dropped}`;
-  return `Saved ${kept}, left out ${dropped}`;
-}
-
 /**
  * The timeline's lines, in order. Only steps that have started are listed; a
- * step that was running when the batch failed is left off (the error says why).
+ * step that was running when the batch failed is left off (the error says why),
+ * and a finished batch has none: its ideas show instead.
  */
 export function progressSteps(input: ProgressInput): ProgressStep[] {
   const { phase, topic } = input;
+  if (phase === "done") return [];
   if (!input.responded) {
     if (phase !== "streaming") return [];
     const text = topic
@@ -116,13 +111,9 @@ export function progressSteps(input: ProgressInput): ProgressStep[] {
     steps.push({ id: "write", state: "active", text: `Writing ${noun} ${current} of ${input.count}…` });
   }
 
-  if (input.checks && wrote !== null) {
-    if (input.outcome) {
-      steps.push({ id: "check", state: "done", text: checkText(input.outcome) });
-    } else if (phase === "finalizing") {
-      const them = wrote === 1 ? "it" : "them";
-      steps.push({ id: "check", state: "active", text: `Checking ${them} against your posts and voice settings…` });
-    }
+  if (input.checks && wrote !== null && phase === "finalizing") {
+    const them = wrote === 1 ? "it" : "them";
+    steps.push({ id: "check", state: "active", text: `Checking ${them} against your posts and voice settings…` });
   }
   return steps;
 }

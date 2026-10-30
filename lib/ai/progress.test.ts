@@ -14,7 +14,6 @@ const base: ProgressInput = {
   streamed: 0,
   wrote: null,
   checks: true,
-  outcome: null,
 };
 
 const lines = (input: Partial<ProgressInput>) =>
@@ -35,7 +34,7 @@ describe("the context header", () => {
 });
 
 describe("Studio's progress steps", () => {
-  it("reads the posts first, then writes, then checks and saves", () => {
+  it("reads the posts first, then writes, then checks, then gives way to the ideas", () => {
     expect(lines({})).toEqual(["… Reading your best posts…"]);
     expect(lines({ responded: true, context })).toEqual([
       "✓ Read your 8 best posts and your Profile DNA",
@@ -47,9 +46,7 @@ describe("Studio's progress steps", () => {
       "✓ Wrote 3 ideas",
       "… Checking them against your posts and voice settings…",
     ]);
-    expect(
-      lines({ phase: "done", responded: true, context, streamed: 3, wrote: 3, outcome: { kept: 3, dropped: 0 } }),
-    ).toEqual(["✓ Read your 8 best posts and your Profile DNA", "✓ Wrote 3 ideas", "✓ Checked and saved all 3"]);
+    expect(lines({ phase: "done", responded: true, context, streamed: 3, wrote: 3 })).toEqual([]);
   });
 
   it("looks the topic up before writing, and says what it read", () => {
@@ -68,21 +65,17 @@ describe("Studio's progress steps", () => {
     expect(lines({ topic, responded: true, context })[1]).toBe("✓ Couldn't look up “php2shell” this time");
   });
 
-  it("counts threads and what the check left out", () => {
-    const done = { phase: "done" as const, responded: true, context, shape: "thread" as const, streamed: 3, wrote: 3 };
-    expect(lines({ ...done, outcome: { kept: 2, dropped: 1 } }).slice(1)).toEqual([
+  it("counts threads, and no more than were asked for", () => {
+    const checking = { phase: "finalizing" as const, responded: true, context, shape: "thread" as const, streamed: 3 };
+    expect(lines({ ...checking, wrote: 3 }).slice(1)).toEqual([
       "✓ Wrote 3 threads",
-      "✓ Saved 2, left out 1",
+      "… Checking them against your posts and voice settings…",
     ]);
-    expect(lines({ ...done, outcome: { kept: 0, dropped: 3 } }).at(-1)).toBe("✓ Left out all 3");
     // Extras past the batch size aren't counted: the check keeps no more than were asked for.
-    expect(lines({ ...done, streamed: 5, wrote: 5, outcome: { kept: 3, dropped: 0 } }).slice(1)).toEqual([
-      "✓ Wrote 3 threads",
-      "✓ Checked and saved all 3",
-    ]);
-    expect(lines({ ...done, wrote: 1, outcome: { kept: 1, dropped: 0 } }).slice(1)).toEqual([
+    expect(lines({ ...checking, streamed: 5, wrote: 5 })[1]).toBe("✓ Wrote 3 threads");
+    expect(lines({ ...checking, count: 1, streamed: 1, wrote: 1 }).slice(1)).toEqual([
       "✓ Wrote 1 thread",
-      "✓ Checked and saved it",
+      "… Checking it against your posts and voice settings…",
     ]);
   });
 
@@ -94,7 +87,7 @@ describe("Studio's progress steps", () => {
       "✓ Read your profile",
     );
     // The demo sends no counts, and its ideas aren't checked or saved.
-    expect(lines({ phase: "done", responded: true, checks: false, streamed: 3, wrote: 3 })).toEqual([
+    expect(lines({ phase: "finalizing", responded: true, checks: false, streamed: 3, wrote: 3 })).toEqual([
       "✓ Read your best posts",
       "✓ Wrote 3 ideas",
     ]);

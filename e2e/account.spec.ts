@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
-import { shown } from "./helpers";
+import { holdNextBatch, shown } from "./helpers";
 
 // A real account end to end: Threads sign-in against e2e/mock-meta.mjs,
 // payments against e2e/mock-billing.mjs, and a real Postgres. Needs
@@ -88,14 +88,13 @@ test("generates ideas in Studio, charges credits, and surfaces saved ideas on Ho
 
   await page.goto("/studio");
   await expect(page.getByRole("button", { name: /Generate/ })).toContainText("cr");
+  await holdNextBatch(page);
   await page.getByRole("button", { name: /Generate/ }).click();
+  // The batch's steps show while it's written, then give way to the ideas.
+  const progress = page.getByRole("list", { name: "Progress" });
+  await expect(progress).toHaveText("Reading your best posts…");
   await expect(page.getByRole("button", { name: "Copy" })).toHaveCount(3, { timeout: 20_000 });
-  // Each step of the batch on its own line, saying what it did.
-  await expect(page.getByRole("list", { name: "Progress" }).getByRole("listitem")).toHaveText([
-    /^Read your \d+ best posts/,
-    "Wrote 3 ideas",
-    "Checked and saved all 3",
-  ]);
+  await expect(progress).toHaveCount(0);
 
   // The mock call costs 2 credits (actual cost × markup), charged after it finishes.
   await expect(page.getByRole("link", { name: /credits/ })).toContainText("98");
@@ -214,17 +213,14 @@ test("looks up a topic on Threads and the web before writing, and shows what it 
   await shown(page.getByLabel("Topic")).fill("php2shell");
   // The estimate now includes a search.
   await expect(generate).toContainText(`≈${before + 3} cr`);
+  await holdNextBatch(page);
   await generate.click();
+  await expect(page.getByRole("list", { name: "Progress" })).toHaveText(
+    "Looking up “php2shell” on Threads and the web…",
+  );
   // Scoped to the new batch: the idea saved earlier is listed under Saved ideas too.
   const ideas = page.getByRole("region", { name: "Ideas", exact: true });
   await expect(ideas.getByRole("button", { name: "Copy" })).toHaveCount(3, { timeout: 20_000 });
-
-  await expect(page.getByRole("list", { name: "Progress" }).getByRole("listitem")).toHaveText([
-    /^Read your \d+ best posts/,
-    "Read 2 posts on Threads and 2 web pages about “php2shell”",
-    "Wrote 3 ideas",
-    "Checked and saved all 3",
-  ]);
 
   // What recent popular posts on Threads are saying, with links to the two by other people.
   const threads = ideas.getByRole("region", { name: "On Threads" });
