@@ -29,14 +29,12 @@ export interface IdeaView {
 }
 
 /**
- * One idea, from its first streamed characters to a saved post. While
- * streaming, fields fill in as the model writes them; once final, the actions
- * appear.
+ * One idea, once it's written and checked: the post as Threads will show it,
+ * why it should work, and what to do with it.
  */
 export function IdeaCard({
   author,
   idea,
-  streaming,
   saved,
   queued,
   onToggleSave,
@@ -45,7 +43,6 @@ export function IdeaCard({
 }: {
   author: PostAuthor;
   idea: IdeaView;
-  streaming: boolean;
   saved?: boolean;
   /** Set once the idea is in the queue (or already posted). */
   queued?: "scheduled" | "posted";
@@ -69,7 +66,6 @@ export function IdeaCard({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, x: -24, scale: 0.97, transition: { duration: 0.2 } }}
       transition={revealSpring}
-      aria-busy={streaming}
     >
       <Card className={cn("p-5 transition-colors", saved && "border-accent/50")}>
         {parts.length > 0 ? (
@@ -79,7 +75,7 @@ export function IdeaCard({
             meta={
               <>
                 {format && <Badge variant="accent">{format}</Badge>}
-                {!streaming && onDismiss && <DismissButton onDismiss={onDismiss} />}
+                {onDismiss && <DismissButton onDismiss={onDismiss} />}
               </>
             }
           />
@@ -90,11 +86,8 @@ export function IdeaCard({
             meta={
               <>
                 {format && <Badge variant="accent">{format}</Badge>}
-                {!streaming && onDismiss && <DismissButton onDismiss={onDismiss} />}
+                {onDismiss && <DismissButton onDismiss={onDismiss} />}
               </>
-            }
-            trailing={
-              streaming && <span className="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 animate-pulse bg-accent" />
             }
           />
         )}
@@ -127,48 +120,41 @@ export function IdeaCard({
           </p>
         )}
 
-        {!streaming && (
-          <m.div
-            className="mt-4 flex flex-wrap gap-2"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={revealSpring}
-          >
-            <CopyButton text={posts.join("\n\n")} />
-            {!onCompose && (
-              <Button asChild variant="outline" size="sm">
-                <a href={threadsIntentUrl(text)} target="_blank" rel="noopener noreferrer">
-                  Open in Threads
-                  <ArrowUpRight />
-                </a>
-              </Button>
-            )}
-            {queued ? (
-              <Button asChild variant="ghost" size="sm">
-                <Link href="/queue">
-                  <Check /> {queued === "posted" ? "Posted" : "In your queue"}
-                </Link>
-              </Button>
-            ) : (
-              onCompose && (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => onCompose("schedule")}>
-                    <CalendarClock /> Schedule
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => onCompose("now")}>
-                    <Send /> Post now
-                  </Button>
-                </>
-              )
-            )}
-            {onToggleSave && !queued && (
-              <Button variant={saved ? "secondary" : "outline"} size="sm" onClick={onToggleSave} aria-pressed={saved}>
-                {saved ? <BookmarkCheck /> : <Bookmark />}
-                {saved ? "Saved" : "Save"}
-              </Button>
-            )}
-          </m.div>
-        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <CopyButton text={posts.join("\n\n")} />
+          {!onCompose && (
+            <Button asChild variant="outline" size="sm">
+              <a href={threadsIntentUrl(text)} target="_blank" rel="noopener noreferrer">
+                Open in Threads
+                <ArrowUpRight />
+              </a>
+            </Button>
+          )}
+          {queued ? (
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/queue">
+                <Check /> {queued === "posted" ? "Posted" : "In your queue"}
+              </Link>
+            </Button>
+          ) : (
+            onCompose && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => onCompose("schedule")}>
+                  <CalendarClock /> Schedule
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => onCompose("now")}>
+                  <Send /> Post now
+                </Button>
+              </>
+            )
+          )}
+          {onToggleSave && !queued && (
+            <Button variant={saved ? "secondary" : "outline"} size="sm" onClick={onToggleSave} aria-pressed={saved}>
+              {saved ? <BookmarkCheck /> : <Bookmark />}
+              {saved ? "Saved" : "Save"}
+            </Button>
+          )}
+        </div>
       </Card>
     </m.article>
   );

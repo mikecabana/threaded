@@ -21,6 +21,7 @@ import { installFakeThreads } from "@/test/fake-threads";
 import { RATE_LIMIT, startGeneration } from "./generate";
 import { MOCK_SUGGESTIONS, MOCK_THREAD_PARTS, mockCalls } from "./mock-model";
 import { byokContext } from "./models";
+import { CONTEXT_HEADER, readContextHeader } from "./progress";
 import { PROMPT_VERSION } from "./prompt";
 import { generateRequestSchema } from "./schemas";
 
@@ -72,6 +73,8 @@ describe("startGeneration", () => {
   it("streams the batch, stores it, and charges the actual cost", async () => {
     const { response, body, generationId } = await run();
     expect(response.status).toBe(200);
+    // Studio's timeline says what was read before writing, as counts: this account has no posts or DNA yet.
+    expect(readContextHeader(response.headers.get(CONTEXT_HEADER))).toEqual({ posts: 0, dna: false, research: null });
     // The stream carries the model's JSON as it was written.
     expect(JSON.parse(body).suggestions).toHaveLength(5);
 
@@ -272,6 +275,8 @@ describe("web research", () => {
   it("looks up a specific topic, briefs the writer and charges for the search", async () => {
     const { response, generationId } = await run({ topic: "php2shell" });
     expect(response.status).toBe(200);
+    // Two web pages, and no Threads posts: this connection can't search Threads.
+    expect(readContextHeader(response.headers.get(CONTEXT_HEADER))?.research).toEqual({ threads: 0, web: 2 });
     const row = await generation(generationId);
     expect(row.status).toBe("done");
     expect(row.research).toMatchObject({
@@ -319,9 +324,10 @@ describe("web research", () => {
   });
 
   it("writes the batch without research when the search fails", async () => {
-    const { generationId } = await run({ topic: "fail-search" });
+    const { response, generationId } = await run({ topic: "fail-search" });
     const row = await generation(generationId);
     expect(row).toMatchObject({ status: "done", research: null, creditsCharged: 2 });
+    expect(readContextHeader(response.headers.get(CONTEXT_HEADER))?.research).toBeNull();
   });
 
   it("doesn't search without a topic", async () => {
@@ -358,7 +364,9 @@ describe("Threads posts on the topic", () => {
   });
 
   it("reads recent top posts by other people, and tells the writer what they're missing", async () => {
-    const { generationId } = await run({ topic: "php2shell" });
+    const { response, generationId } = await run({ topic: "php2shell" });
+    // Studio's timeline counts the two posts read, and the two web pages.
+    expect(readContextHeader(response.headers.get(CONTEXT_HEADER))?.research).toEqual({ threads: 2, web: 2 });
     const [url] = search();
     expect(url.searchParams.get("q")).toBe("php2shell");
     expect(url.searchParams.get("search_type")).toBe("TOP");
