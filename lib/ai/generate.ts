@@ -31,6 +31,7 @@ import {
 import { type ByokFailure, byokFailure } from "./errors";
 import { isAiConfigured, type ResolvedModel, resolveModel } from "./models";
 import { postProcess } from "./postprocess";
+import { CONTEXT_HEADER, contextHeader } from "./progress";
 import { buildInstructions, buildPrompt, PROMPT_VERSION } from "./prompt";
 import { type ResearchRun, researchTopic } from "./research";
 import { type GenerateRequest, type SuggestionBatch, suggestionBatchSchema } from "./schemas";
@@ -347,8 +348,14 @@ export async function startGeneration(input: {
     },
   });
 
+  // What was read before writing, for Studio's progress timeline (counts only).
+  const read = contextHeader({
+    posts: context.exemplars.length,
+    dna: context.dna !== null,
+    research: run ? { threads: run.threadsPosts, web: run.research.sources.length } : null,
+  });
   return createTextStreamResponse({
     stream: body,
-    headers: { "x-generation-id": generationId, "cache-control": "no-store" },
+    headers: { "x-generation-id": generationId, [CONTEXT_HEADER]: read, "cache-control": "no-store" },
   });
 }

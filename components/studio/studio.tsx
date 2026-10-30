@@ -1,7 +1,7 @@
 "use client";
 
 import { useObject } from "@ai-sdk/react";
-import { AtSign, Globe, LoaderCircle, Sparkles, Square, TriangleAlert } from "lucide-react";
+import { AtSign, Globe, Sparkles, Square, TriangleAlert } from "lucide-react";
 import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Segmented } from "@/components/ui/segmented";
 import { switchToCreditsAction } from "@/lib/actions/billing";
 import { setModelPickAction, setSuggestionStatusAction } from "@/lib/actions/studio";
+import { type BatchContext, CONTEXT_HEADER, progressSteps, readContextHeader } from "@/lib/ai/progress";
 import {
   type GenerateRequest,
   type IdeaShape,
@@ -24,6 +25,7 @@ import { FORMAT_LABELS, POST_FORMATS } from "@/lib/analysis/formats";
 import type { StoredSuggestion } from "@/lib/data/suggestions";
 import { GOAL_META, type Goal } from "@/lib/goals";
 import { IdeaCard, type IdeaView } from "./idea-card";
+import { ProgressTimeline } from "./progress-timeline";
 
 export interface StudioModel {
   modelId: string;
@@ -114,8 +116,16 @@ export function Studio({
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [final, setFinal] = useState<Final | null>(null);
   const [hidden, setHidden] = useState<Set<number>>(new Set());
-  /** The topic being looked up, until the response starts (the search runs before it). */
-  const [searching, setSearching] = useState<string | null>(null);
+  /** The batch being written, for the progress timeline (lib/ai/progress.ts). */
+  const [batch, setBatch] = useState<{
+    /** The topic researched before writing, if any. */
+    topic: string | null;
+    shape: IdeaShape;
+    count: number;
+    responded: boolean;
+    context: BatchContext | null;
+    wrote: number | null;
+  } | null>(null);
   const meta = useRef<{ generationId: string | null; demo: boolean }>({ generationId: null, demo: false });
   const results = useRef<HTMLElement>(null);
 
@@ -175,7 +185,8 @@ export function Studio({
     schema: suggestionBatchSchema,
     fetch: async (input, init) => {
       const response = await fetch(input, init);
-      setSearching(null);
+      const context = readContextHeader(response.headers.get(CONTEXT_HEADER));
+      setBatch((current) => current && { ...current, responded: response.ok, context });
       meta.current = {
         generationId: response.headers.get("x-generation-id"),
         demo: response.headers.get("x-threaded-demo") === "1",
@@ -192,6 +203,7 @@ export function Studio({
         setErrorCode("failed");
         return;
       }
+      setBatch((current) => current && { ...current, wrote: done.suggestions.length });
       await finalize(done.suggestions);
     },
     onError: (error) => {
@@ -205,7 +217,14 @@ export function Studio({
     setErrorCode(null);
     setFinal(null);
     setHidden(new Set());
-    setSearching(researches ? topic.trim() : null);
+    setBatch({
+      topic: researches ? topic.trim() : null,
+      shape,
+      count: Number(count),
+      responded: false,
+      context: null,
+      wrote: null,
+    });
     const request: Partial<GenerateRequest> = {
       goal,
       spice,
@@ -429,6 +448,19 @@ export function Studio({
       <section ref={results} aria-label="Ideas" aria-live="polite" className="min-w-0 scroll-mt-4">
         {phase === "idle" && streamed.length === 0 && <EmptyStudio goal={goal} />}
 
+        {batch && phase !== "idle" && (
+          <ProgressTimeline
+            steps={progressSteps({
+              ...batch,
+              phase,
+              threadsSearch: threadsSearch === "on",
+              streamed: streamed.length,
+              checks: !demo,
+              outcome: final ? { kept: final.byIndex.size, dropped: final.dropped } : null,
+            })}
+          />
+        )}
+
         {phase === "error" && (
           <Card className="mb-4 flex items-start gap-3 border-negative/30 bg-negative/5 p-4 text-sm">
             <TriangleAlert className="mt-0.5 size-4 shrink-0 text-negative" aria-hidden />
@@ -437,17 +469,6 @@ export function Studio({
               <ErrorActions code={errorCode} onSwitched={() => router.refresh()} />
             </div>
           </Card>
-        )}
-
-        {phase === "streaming" && streamed.length === 0 && (
-          <p className="mb-4 flex items-center gap-2 text-muted text-sm">
-            <LoaderCircle className="size-4 animate-spin" aria-hidden />
-            {searching
-              ? threadsSearch === "on"
-                ? `Looking up “${searching}” on Threads and the web…`
-                : `Checking the web for “${searching}”…`
-              : "Reading your best posts…"}
-          </p>
         )}
 
         <div className="grid gap-4">

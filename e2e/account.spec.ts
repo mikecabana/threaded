@@ -90,6 +90,12 @@ test("generates ideas in Studio, charges credits, and surfaces saved ideas on Ho
   await expect(page.getByRole("button", { name: /Generate/ })).toContainText("cr");
   await page.getByRole("button", { name: /Generate/ }).click();
   await expect(page.getByRole("button", { name: "Copy" })).toHaveCount(3, { timeout: 20_000 });
+  // Each step of the batch on its own line, saying what it did.
+  await expect(page.getByRole("list", { name: "Progress" }).getByRole("listitem")).toHaveText([
+    /^Read your \d+ best posts/,
+    "Wrote 3 ideas",
+    "Checked and saved all 3",
+  ]);
 
   // The mock call costs 2 credits (actual cost × markup), charged after it finishes.
   await expect(page.getByRole("link", { name: /credits/ })).toContainText("98");
@@ -212,6 +218,13 @@ test("looks up a topic on Threads and the web before writing, and shows what it 
   // Scoped to the new batch: the idea saved earlier is listed under Saved ideas too.
   const ideas = page.getByRole("region", { name: "Ideas", exact: true });
   await expect(ideas.getByRole("button", { name: "Copy" })).toHaveCount(3, { timeout: 20_000 });
+
+  await expect(page.getByRole("list", { name: "Progress" }).getByRole("listitem")).toHaveText([
+    /^Read your \d+ best posts/,
+    "Read 2 posts on Threads and 2 web pages about “php2shell”",
+    "Wrote 3 ideas",
+    "Checked and saved all 3",
+  ]);
 
   // What recent popular posts on Threads are saying, with links to the two by other people.
   const threads = ideas.getByRole("region", { name: "On Threads" });

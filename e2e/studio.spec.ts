@@ -17,6 +17,11 @@ test("demo Studio streams sample ideas for free", async ({ page }) => {
     .filter({ has: page.getByText("maya.builds") });
   await expect(page.getByRole("button", { name: "Copy" })).toHaveCount(3, { timeout: 15_000 });
   await expect(ideas.first()).toContainText("What's one thing you stopped doing this year");
+  // The demo's ideas aren't checked or saved, so its timeline ends at writing.
+  await expect(page.getByRole("list", { name: "Progress" }).getByRole("listitem")).toHaveText([
+    "Read your best posts",
+    "Wrote 3 ideas",
+  ]);
 
   // Saving works locally in the demo; dismissing removes the card.
   await page.getByRole("button", { name: "Save", exact: true }).first().click();
