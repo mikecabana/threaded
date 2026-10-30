@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import { DemoButton } from "./demo-button";
 
 export function SiteHeader() {
+  // Scrolls away with the page rather than staying pinned: on iOS Safari 26 a
+  // pinned, blurred bar let the page show through behind the status bar above
+  // it. Nothing passes under it now, so it sits on the page's own background.
   return (
-    <header className="sticky top-0 z-40 border-border/60 border-b bg-bg/70 backdrop-blur-xl">
+    <header className="border-border/60 border-b">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
         <Link href="/" aria-label="Threaded home">
           <Logo />
