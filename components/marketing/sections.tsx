@@ -55,7 +55,7 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section id="how" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
+    <section id="how" className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
       <SectionHeading eyebrow="How it works" title="From your history to your next great post" />
       <ol className="mx-auto max-w-xl">
         {STEPS.map((step, i) => (
@@ -114,7 +114,7 @@ const FEATURES = [
 
 export function Features() {
   return (
-    <section id="features" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
+    <section id="features" className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
       <SectionHeading eyebrow="Features" title="Everything you need to grow on Threads">
         Analytics, ideas and scheduling in one place, all working from what your own audience responds to.
       </SectionHeading>
@@ -137,7 +137,7 @@ export function Features() {
 
 export function GoalCards() {
   return (
-    <section id="goals" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
+    <section id="goals" className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
       <SectionHeading eyebrow="Three goals" title="Tell it what growth means to you">
         Each goal scores your posts differently and steers every suggestion. Switch any time; the whole app follows.
       </SectionHeading>
@@ -187,7 +187,7 @@ export function Pricing() {
   const perDollar = Math.round(MONTHLY_PLAN.credits / MONTHLY_PLAN.usd);
   const bestPack = Math.max(...CREDIT_PACKS.map((p) => Math.round(p.credits / p.usd)));
   return (
-    <section id="pricing" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
+    <section id="pricing" className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
       <SectionHeading eyebrow="Pricing" title="Pay for what you generate">
         No subscription to start. See the price of every generation before you run it.
       </SectionHeading>
@@ -267,7 +267,7 @@ export function Pricing() {
 
 export function Faq() {
   return (
-    <section id="faq" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
+    <section id="faq" className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
       <SectionHeading eyebrow="FAQ" title="Questions, answered" />
       <Reveal className="mx-auto max-w-2xl">
         <div className="divide-y divide-border border-border border-y">
