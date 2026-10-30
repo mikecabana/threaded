@@ -52,6 +52,15 @@ export async function billingOverview(workspaceId: string): Promise<BillingOverv
   };
 }
 
+/**
+ * Whether the own-key card belongs in Settings. Own key isn't offered to new
+ * workspaces any more (agencies ask us instead), so the card stays only where
+ * it has been used: a key saved, or an own-key plan running or ended.
+ */
+export function usesOwnKey(overview: Pick<BillingOverview, "mode" | "keyLast4" | "plan">): boolean {
+  return overview.mode === "byok" || overview.keyLast4 !== null || overview.plan?.kind === "own_key";
+}
+
 export interface ActivityItem {
   id: string;
   at: Date;

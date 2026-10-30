@@ -3,7 +3,6 @@ import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { landingStructuredData } from "@/components/marketing/structured-data";
 import { FAQS } from "./marketing/faq";
-import { BYOK_PLATFORM_FEE_USD } from "./pricing";
 import { indexable, pageMetadata, siteUrl } from "./seo";
 import { SITE } from "./site";
 
@@ -104,6 +103,10 @@ describe("the home page's structured data", () => {
     expect(cost).toContain("$1 of free credits");
     expect(cost).toContain("$5, $20 or $50 packs");
     expect(cost).toContain("$9 a month for 1,200 credits");
-    expect(cost).toContain(`$${BYOK_PLATFORM_FEE_USD} monthly platform fee`);
+    expect(cost).toContain("Agencies running accounts for clients can email contact@getthreaded.app");
+  });
+
+  it("never asks people to bring a key from our AI provider", () => {
+    expect(JSON.stringify(FAQS)).not.toMatch(/Vercel|Gateway|own key/i);
   });
 });

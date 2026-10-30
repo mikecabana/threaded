@@ -10,7 +10,7 @@ them without leaving the app.
 - Studio, which writes posts and threads and can research a topic on the web and on Threads
   first.
 - Posting, scheduling and series from a Queue.
-- Billing: credit packs, auto-recharge, a Monthly plan, or your own AI Gateway key.
+- Billing: credit packs, auto-recharge and a Monthly plan. Agencies get in touch.
 - Alert emails, an admin area, and account and data controls.
 
 Three demo accounts work with no setup. To work on the code, start with

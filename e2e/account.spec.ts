@@ -151,9 +151,22 @@ test("buys a credit pack through Stripe Checkout", async ({ page }) => {
   await expect(shown(page.getByLabel("Credit activity"))).toContainText("Bought credits");
 });
 
-test("switches to the user's own AI key and back", async ({ page }) => {
+test("offers the own key only where it's been used, and switches to it and back", async ({ page }) => {
   await signIn(page);
   await page.goto("/settings/billing");
+  await expect(page.getByRole("region", { name: "Monthly plan" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Use your own AI key" })).toHaveCount(0);
+
+  // Someone whose own-key plan ended still gets the card, and can start it again.
+  const pool = new Pool({ connectionString: databaseUrl });
+  try {
+    await pool.query(
+      `update workspaces set plan_kind = 'own_key', subscription_status = 'canceled' where name = '@mock.user'`,
+    );
+  } finally {
+    await pool.end();
+  }
+  await page.reload();
   const key = shown(page.getByLabel("Vercel AI Gateway key"));
 
   await key.fill("vck_bad_key_0000000000");
@@ -239,8 +252,8 @@ test("the Monthly plan adds its credits every month until it's cancelled", async
   await expect(monthly).toContainText("Your plan");
   await expect(monthly).toContainText(/Your next 1,200 credits come on/);
   await expect(shown(page.getByLabel("Credit activity"))).toContainText("Monthly plan");
-  // One plan at a time: the own-key card points to the Monthly plan instead of taking a key.
-  await expect(shown(page.getByText(/You're on the Monthly plan\. To use your own key instead/))).toBeVisible();
+  // The Monthly plan took the slot from the own-key plan that was ending, so that card is gone.
+  await expect(page.getByRole("heading", { name: "Use your own AI key" })).toHaveCount(0);
 
   // Next month's invoice arrives by webhook, and so do its credits.
   const pool = new Pool({ connectionString: databaseUrl });

@@ -16,7 +16,7 @@ import { TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS, typicalCredits } from "@/l
 import { DEFAULT_AUTO_RECHARGE } from "@/lib/billing/auto-recharge";
 import { isStripeConfigured, savedCard } from "@/lib/billing/stripe";
 import { isLivePlan } from "@/lib/billing/subscription";
-import { billingActivity, billingOverview } from "@/lib/data/billing";
+import { billingActivity, billingOverview, usesOwnKey } from "@/lib/data/billing";
 import { type AccountViewer, requireViewer, type Viewer } from "@/lib/session/viewer";
 
 export const metadata: Metadata = { title: "Billing" };
@@ -29,7 +29,7 @@ export default function BillingPage(props: PageProps<"/settings/billing">) {
           <ChevronLeft className="size-4" aria-hidden /> Settings
         </Link>
         <h1 className="mt-2 font-semibold text-2xl tracking-tight sm:text-3xl">Billing</h1>
-        <p className="mt-1 text-muted">Credits every month, credits as you go, or your own AI Gateway key.</p>
+        <p className="mt-1 text-muted">Credits every month, or credits as you go.</p>
       </Reveal>
       <Suspense fallback={<BillingSkeleton />}>
         <BillingContent searchParams={props.searchParams} />
@@ -121,12 +121,14 @@ async function AccountBilling({
         card={card ? `${card.brand[0].toUpperCase()}${card.brand.slice(1)} •••• ${card.last4}` : null}
         unavailable={unavailable}
       />
-      <OwnKeyCard
-        workspaceId={viewer.workspaceId}
-        overview={overview}
-        formatDate={formatDate}
-        unavailable={unavailable}
-      />
+      {usesOwnKey(overview) && (
+        <OwnKeyCard
+          workspaceId={viewer.workspaceId}
+          overview={overview}
+          formatDate={formatDate}
+          unavailable={unavailable}
+        />
+      )}
       <ActivityList items={activity} formatDate={formatDate} />
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-subtle">
         <p>

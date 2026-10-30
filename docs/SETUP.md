@@ -278,7 +278,7 @@ judge calls, roughly $0.50 on the default models.
 ## 5. Before launch
 
 - [x] Replace `SITE.contactEmail` in `lib/site.ts` with the real support address (`contact@getthreaded.app`, also the Meta app's contact email, which Meta has verified).
-- [ ] Have a Quebec lawyer review `/legal/terms` and `/legal/privacy`, then remove the draft banner in `components/marketing/legal-page.tsx`. Ask in particular about Quebec's Consumer Protection Act: its rules for online (distance) contracts (what to disclose before purchase, the confirmation afterwards) and for the renewing $5/month plan.
+- [ ] Have a Quebec lawyer review `/legal/terms` and `/legal/privacy`, then remove the draft banner in `components/marketing/legal-page.tsx`. Ask in particular about Quebec's Consumer Protection Act: its rules for online (distance) contracts (what to disclose before purchase, the confirmation afterwards) and for the renewing Monthly plan.
 - [ ] **French** (Charter of the French Language, as amended by Bill 96): French versions of the site, app, Terms, Privacy and emails, planned as the launch phase in `docs/PLAN.md` §13. Confirm the exact scope with the lawyer. Stripe receipts and Checkout already switch to French.
 - [ ] **Privacy (Quebec's Law 25):**
   - Name the person in charge of protecting personal information, and publish their title and contact details on the site.
