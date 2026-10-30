@@ -4,11 +4,14 @@ import { Button } from "@/components/ui/button";
 import { DemoButton } from "./demo-button";
 
 export function SiteHeader() {
-  // Opaque and unblurred on purpose: iOS Safari 26 fills the strip behind the
-  // status bar with this bar's colour only when it's one solid colour; with a
-  // see-through background or a backdrop blur, the page shows through above it.
+  // iOS Safari 26 fills the strip behind the status bar with one colour read
+  // from the bar pinned at the top. A see-through background is fine (Safari
+  // blends it over the page colour), but a backdrop blur on the bar makes it
+  // give up and show the page through. So the blur sits on a layer behind the
+  // content that Safari's check passes over (pointer-events: none).
   return (
-    <header className="sticky top-0 z-40 border-border/60 border-b bg-bg">
+    <header className="sticky top-0 z-40 border-border/60 border-b bg-bg/70">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 backdrop-blur-xl" />
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
         <Link href="/" aria-label="Threaded home">
           <Logo />
